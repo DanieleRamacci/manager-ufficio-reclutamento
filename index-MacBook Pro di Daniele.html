@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Visualizza Bandi CNR</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background-color: #f4f4f4; }
+    .tooltip {
+      position: relative;
+      cursor: pointer;
+    }
+    .tooltip:hover::after {
+      content: attr(data-tip);
+      position: absolute;
+      left: 0;
+      top: 100%;
+      background: #333;
+      color: #fff;
+      padding: 5px;
+      border-radius: 5px;
+      white-space: pre-wrap;
+      width: 300px;
+      z-index: 1;
+    }
+    #loading::after {
+      content: "";
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      margin-left: 10px;
+      border: 2px solid #ccc;
+      border-top: 2px solid #333;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      vertical-align: middle;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .update-buttons { margin-top: 10px; }
+    .update-buttons button { margin-right: 10px; }
+  </style>
+</head>
+<body>
+  <nav style="margin-bottom: 20px;">
+    <a href="index.html" style="margin-right: 15px;">Controllo Bandi</a>
+    <a href="search.html">Ricerca Libera</a>
+  </nav>
+
+  <div style="display: flex; justify-content: space-between; align-items: center;">
+    <h1>Elenco Bandi CNR</h1>
+    <div style="text-align: right; font-size: 0.9em; color: gray;">
+      <div id="lastUpdateURP"></div>
+      <div id="lastUpdateSOL"></div>
+    </div>
+  </div>
+
+  <div id="loading" style="color: #444; margin-top: 10px; font-style: italic;">
+    ⏳ In attesa caricamento iniziale...
+  </div>
+
+  <div class="update-buttons">
+    <button onclick="aggiornaURP()">🔄 Aggiorna URP</button>
+    <button onclick="aggiornaSOL()">🔄 Aggiorna Selezioni Online</button>
+  </div>
+
+  <label for="mese">Filtra per mese:</label>
+  <select id="mese">
+    <option value="">Tutti</option>
+    <option value="01">Gennaio</option>
+    <option value="02">Febbraio</option>
+    <option value="03">Marzo</option>
+    <option value="04">Aprile</option>
+    <option value="05">Maggio</option>
+    <option value="06">Giugno</option>
+    <option value="07">Luglio</option>
+    <option value="08">Agosto</option>
+    <option value="09">Settembre</option>
+    <option value="10">Ottobre</option>
+    <option value="11">Novembre</option>
+    <option value="12">Dicembre</option>
+  </select>
+
+  <label for="anno">Anno:</label>
+  <input type="text" id="anno" placeholder="es. 2025" size="4">
+
+  <label>
+    <input type="checkbox" id="soloGraduatoria">
+    Solo bandi con graduatoria pubblicata in quel mese
+  </label>
+
+  <button onclick="filtraBandi()">Applica filtro</button>
+
+  <table id="tabellaBandi">
+    <thead>
+      <tr>
+        <th>Codice Bando</th>
+        <th>Descrizione</th>
+        <th>Link URP</th>
+        <th>Link SOL</th>
+        <th>Protocollo</th>
+        <th>Data Pubblicazione</th>
+        <th>Allineamento</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    let urpData = [];
+    let solData = [];
+
+    function normalizzaCodice(codice) {
+      return codice?.toUpperCase().replace(/\s+/g, "").replace(/\./g, "") || "";
+    }
+
+    async function getLastModified(url, elementId) {
+      try {
+        const res = await fetch(url, { method: 'HEAD' });
+        const lastMod = res.headers.get("Last-Modified");
+        if (lastMod) {
+          const parsed = new Date(lastMod);
+          document.getElementById(elementId).textContent = `Ultimo aggiornamento: ${parsed.toLocaleString()}`;
+        }
+      } catch (err) {
+        document.getElementById(elementId).textContent = `⚠️ Errore caricamento meta info per ${url}`;
+      }
+    }
+
+    async function aggiornaURP() {
+      document.getElementById("loading").style.display = "block";
+      document.getElementById("loading").textContent = "⏳ Aggiornamento dati da URP in corso...";
+      try {
+        await fetch("update_urp", { method: "POST" });
+        setTimeout(() => location.reload(), 1500);
+      } catch (e) {
+        alert("Errore nell'aggiornamento URP");
+      }
+    }
+
+    async function aggiornaSOL() {
+      document.getElementById("loading").style.display = "block";
+      document.getElementById("loading").textContent = "⏳ Aggiornamento dati da Selezioni Online in corso...";
+      try {
+        await fetch("update_sol", { method: "POST" });
+        setTimeout(() => location.reload(), 1500);
+      } catch (e) {
+        alert("Errore nell'aggiornamento Selezioni Online");
+      }
+    }
+
+async function fetchJSONWithRetry(url, maxRetries = 100) {
+  let tentativi = 0;
+  while (tentativi < maxRetries) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        return await res.json();
+      }
+      if (res.status === 404) {
+        document.getElementById("loading").textContent = `⏳ File ${url} non ancora pronto... (attesa)`;
+      } else {
+        document.getElementById("loading").textContent = `❌ Errore HTTP ${res.status} su ${url}`;
+      }
+    } catch (err) {
+      console.error("Errore fetch:", err);
+      document.getElementById("loading").textContent = `❌ Errore di rete durante il caricamento ${url}`;
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    tentativi++;
+  }
+
+  throw new Error(`Impossibile caricare ${url} dopo ${maxRetries} tentativi.`);
+}
+
+async function caricaDati() {
+  document.getElementById("loading").style.display = "block";
+  document.getElementById("loading").textContent = "⏳ Caricamento dati URP in corso...";
+
+  urpData = await fetchJSONSafe("bandi-completi-urp.json");
+  getLastModified("bandi-completi-urp.json", "lastUpdateURP");
+
+  document.getElementById("loading").textContent = "⏳ Caricamento dati Selezioni Online in corso...";
+  solData = await fetchJSONWithRetry("bandi-concorsi-pubblici-sol.json");
+  getLastModified("bandi-concorsi-pubblici-sol.json", "lastUpdateSOL");
+
+  document.getElementById("loading").style.display = "none";
+  filtraBandi();
+}
+
+
+    function filtraBandi() {
+      const mese = document.getElementById("mese").value;
+      const anno = document.getElementById("anno").value;
+      const soloGraduatoria = document.getElementById("soloGraduatoria").checked;
+      const tbody = document.querySelector("#tabellaBandi tbody");
+      tbody.innerHTML = "";
+
+      urpData.forEach(item => {
+        let dataRiferimento = soloGraduatoria ? item.data_pubblicazione_graduatoria : item.data_pubblicazione_bando;
+        if (!dataRiferimento) return;
+
+        const match = dataRiferimento.match(/(\d{2})-(\d{2})-(\d{4})/);
+        if (!match) return;
+
+        const [, , meseDoc, annoDoc] = match;
+        if ((mese && mese !== meseDoc) || (anno && anno !== annoDoc)) return;
+        if (soloGraduatoria && !item.graduatoria_presente) return;
+
+        const tr = document.createElement("tr");
+        const codiceEstratto = item.estratto.match(/bando\s+n\.?\s*([^\n\r]+)/i)?.[1]?.trim() || "--";
+
+        const codiceCell = document.createElement("td");
+        codiceCell.textContent = codiceEstratto;
+
+        const desc = document.createElement("td");
+        desc.innerHTML = `<span class="tooltip" data-tip="${item.estratto.replace(/"/g, '&quot;')}">Mostra</span>`;
+
+        const link = document.createElement("td");
+        link.innerHTML = `<a href="${item.url}" target="_blank">Apri</a>`;
+
+        const codiceNormURP = normalizzaCodice(codiceEstratto);
+        const matchSOL = solData.find(sol => {
+          const codiceNormSOL = normalizzaCodice(sol.codice);
+          return codiceNormSOL.includes(codiceNormURP) || codiceNormURP.includes(codiceNormSOL);
+        });
+
+        const linkSOL = document.createElement("td");
+        if (matchSOL) {
+          const solLink = `https://selezionionline.cnr.it/jconon/call-detail?callCode=${encodeURIComponent(matchSOL.codice)}`;
+          linkSOL.innerHTML = `<a href="${solLink}" target="_blank">Vai</a>`;
+        } else {
+          linkSOL.textContent = "--";
+        }
+
+        const protocollo = document.createElement("td");
+        protocollo.textContent = item.numero_protocollo || "";
+
+        const dataPub = document.createElement("td");
+        dataPub.textContent = dataRiferimento;
+
+        const allineamento = document.createElement("td");
+        if (matchSOL) {
+          const haGraduatoriaInSOL = matchSOL.graduatoria_allegato === true;
+          const haGraduatoriaInURP = !!item.data_pubblicazione_graduatoria;
+
+          if (haGraduatoriaInSOL && haGraduatoriaInURP) {
+            allineamento.textContent = "✅";
+          } else if (haGraduatoriaInSOL && !haGraduatoriaInURP) {
+            allineamento.textContent = "❌ (Manca su URP)";
+          } else if (!haGraduatoriaInSOL && haGraduatoriaInURP) {
+            allineamento.textContent = "❌ (Manca su SOL)";
+          } else {
+            allineamento.textContent = "--";
+          }
+        } else {
+          allineamento.textContent = "-- (Non trovato su SOL)";
+        }
+
+        tr.appendChild(codiceCell);
+        tr.appendChild(desc);
+        tr.appendChild(link);
+        tr.appendChild(linkSOL);
+        tr.appendChild(protocollo);
+        tr.appendChild(dataPub);
+        tr.appendChild(allineamento);
+        tbody.appendChild(tr);
+      });
+    }
+
+    document.addEventListener("DOMContentLoaded", caricaDati);
+  </script>
+</body>
+</html>

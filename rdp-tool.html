@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <title>Bandi → RDP: generatore script</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --border:#e5e7eb; --muted:#6b7280; --bg:#fafafa; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; }
+    h1 { margin: 0 0 8px 0; }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    input[type="text"], input[type="search"] { padding: 8px 10px; border:1px solid var(--border); border-radius: 8px; min-width: 260px; }
+    .btn { padding: 8px 10px; border:1px solid var(--border); border-radius: 8px; background: white; cursor: pointer; }
+    .btn:hover { background: #f9fafb; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { border-bottom: 1px solid var(--border); padding: 10px; text-align: left; vertical-align: top; }
+    th { background: #f6f6f6; position: sticky; top: 0; }
+    .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: #f3f4f6; padding: 2px 6px; border-radius: 6px; }
+    .pill { display:inline-block; padding: 2px 8px; border-radius:999px; background:#eef2ff; margin: 2px 6px 2px 0; }
+    .muted { color: var(--muted); }
+    details { margin-top: 8px; border:1px solid var(--border); border-radius: 8px; background: #fff; }
+    details[open] { box-shadow: 0 1px 8px rgba(0,0,0,.04); }
+    summary { padding: 10px 12px; cursor: pointer; user-select: none; }
+    textarea { width: 100%; height: 220px; font-family: ui-monospace, monospace; font-size: 12px; padding: 10px; border:0; border-top:1px solid var(--border); border-radius: 0 0 8px 8px; background:#f8fafc; }
+    .nowrap { white-space: nowrap; }
+    .small { font-size: 12px; }
+    .w-rows { max-width: 720px; }
+  </style>
+</head>
+<body>
+  <h1>Bandi → RDP: generatore script</h1>
+  <p class="muted small w-rows">
+    Cerca un bando per <strong>codice</strong>, inserisci gli <strong>utenti da aggiungere</strong> (CSV),
+    poi premi <strong>Genera script</strong>. Lo script NON modifica il JSON: lo copi e lo incolli nella
+    <em>Script Console</em> di Alfresco.
+  </p>
+
+  <div class="row">
+    <input id="search" type="search" placeholder="Cerca per codice (es. 999.999)" />
+    <button class="btn" id="btnClear">Pulisci</button>
+  </div>
+
+  <table id="tbl">
+    <thead>
+      <tr>
+        <th class="nowrap">Codice</th>
+        <th>Titolo</th>
+        <th>RDP attuali</th>
+        <th>Nuovi utenti (CSV)</th>
+        <th>Azione</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+ <script>
+  // === CONFIG ===
+  const API_ENDPOINT = `${location.origin}/api/bandi-rdp`; // esposto da Flask
+  const FILTER_TYPE = 'all';             // opzionale: active/all (puoi passarlo anche da querystring)
+
+  const state = { all: [], filtered: [] };
+  const $ = (sel, root=document) => root.querySelector(sel);
+
+  function esc(s) {
+    return String(s ?? '')
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function renderRows(list) {
+    const tbody = $('#tbl tbody');
+    tbody.innerHTML = list.map((item, idx) => {
+      const members = (item.rdp_members || [])
+        .map(m => `<span class="pill">${esc(m)}</span>`)
+        .join(' ') || '<span class="muted small">—</span>';
+
+      return `
+        <tr data-idx="${idx}">
+          <td class="nowrap"><span class="code">${esc(item.codice || '')}</span></td>
+          <td>${esc(item.titolo || '')}</td>
+          <td>${members}</td>
+          <td>
+            <input type="text" placeholder="es. mario.rossi, luisa.bianchi" />
+            <div class="small muted">Non modifica il JSON — solo per generare lo script</div>
+          </td>
+          <td>
+            <button class="btn" onclick="generateFor(${idx})">Genera script</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="5">
+            <details id="details-${idx}">
+              <summary>Script generato (clic per aprire/chiudere)</summary>
+              <div style="padding:10px 12px;">
+                <div class="row">
+                  <button class="btn" onclick="copyScript(${idx})">Copia</button>
+                  <span class="small muted">Lo script usa <span class="code">CONTAINS</span> sul codice e aggiunge gli utenti al gruppo RDP del bando.</span>
+                </div>
+              </div>
+              <textarea id="out-${idx}" readonly placeholder="Premi 'Genera script' nella riga per popolare questo riquadro."></textarea>
+            </details>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function filterList() {
+    const q = ($('#search').value || '').trim().toLowerCase();
+    state.filtered = !q
+      ? state.all.slice()
+      : state.all.filter(it => String(it.codice || '').toLowerCase().includes(q));
+    renderRows(state.filtered);
+  }
+
+  function initSearch() {
+    $('#search').addEventListener('input', filterList);
+    $('#btnClear').addEventListener('click', () => {
+      $('#search').value = '';
+      filterList();
+      $('#search').focus();
+    });
+  }
+
+  // Esc per la parte CONTAINS: mettiamo fra doppi apici se contiene spazi o punti
+  function containsFieldValue(v) {
+    const s = String(v || '');
+    // Escape dei " per sicurezza
+    const safe = s.replace(/"/g, '\\"');
+    // se contiene spazi o caratteri speciali, usa le virgolette
+    return /[\s.:]/.test(safe) ? `"${safe}"` : safe;
+  }
+
+  // Generatore script (stile originale)
+  function generateFor(idx) {
+    const item = state.filtered[idx];
+    if (!item) return;
+
+    const tr = $('#tbl tbody').querySelector(`tr[data-idx="${idx}"]`);
+    const input = tr ? tr.querySelector('input[type="text"]') : null;
+    const usersCsv = input ? input.value.trim() : '';
+    const users = usersCsv ? usersCsv.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    const codice = containsFieldValue(item.codice || '');
+    const adds = users.length
+      ? users.map(u => `      rdp.addAuthority('${u}');`).join('\n')
+      : "      // Esempio: rdp.addAuthority('nome.cognome');";
+
+    const script =
+`var pageSize = 100,
+ currentPage = 0,
+ currentPageSize = -1
+ competitionQuery = {
+    page : { maxItems: 1 },
+    language : 'cmis-strict',
+    query : "select * from jconon_competition:folder"
+  },
+  competition = search.query(competitionQuery)[0],
+  callsQuery = "select * from jconon_call:folder root where IN_TREE(root, '" + competition.nodeRef + "') and (CONTAINS(root, 'jconon_call:codice:${codice}'))",
+  sort1 = { column: 'cm:modified', ascending: false },
+  paging = { maxItems: pageSize, skipCount: 0 },
+  def = { query: callsQuery, store: 'workspace://SpacesStore', language: 'cmis-alfresco', sort: [sort1], page: paging },
+  i = 0;
+while (currentPageSize != 0) {
+  paging.skipCount = currentPage * pageSize; currentPage++;
+  var calls = search.query(def);
+  currentPageSize = (null != calls ? calls.length : 0);
+  if (currentPageSize > 0) {
+    calls.forEach(function(call) {
+      i++;
+      logger.info('Bando: ' + call.properties['jconon_call:codice']);
+      var rdp = groups.getGroup(call.properties['jconon_call:rdp']);
+${adds}
+    });
+  }
+}
+logger.info("Bandi totali: " + i);`;
+
+    const out = document.getElementById(`out-${idx}`);
+    if (out) out.value = script;
+
+    const det = document.getElementById(`details-${idx}`);
+    if (det && !det.open) det.open = true;
+  }
+
+  async function copyScript(idx) {
+    const out = document.getElementById(`out-${idx}`);
+    if (!out) return;
+    try {
+      await navigator.clipboard.writeText(out.value);
+    } catch {
+      out.select();
+      document.execCommand('copy');
+    }
+  }
+
+  // === bootstrap: chiama l'API Flask e popola la tabella ===
+  async function bootstrap() {
+    // indicatore minimo di caricamento
+    $('#tbl tbody').innerHTML = `<tr><td colspan="5" class="muted">Caricamento dati…</td></tr>`;
+    try {
+      const url = `${API_ENDPOINT}?filterType=${encodeURIComponent(FILTER_TYPE)}`;
+      const res = await fetch(url, { headers: { 'accept': 'application/json' } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      state.all = Array.isArray(data) ? data : [];
+      state.filtered = state.all.slice();
+      renderRows(state.filtered);
+      initSearch();
+    } catch (e) {
+      $('#tbl tbody').innerHTML = '';
+      document.body.insertAdjacentHTML('beforeend',
+        `<p class="muted">Errore nel caricamento via API: ${esc(String(e))}</p>`);
+    }
+  }
+
+  bootstrap();
+</script>
+
+</body>
+</html>

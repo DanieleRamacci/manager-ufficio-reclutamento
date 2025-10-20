@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Ricerca libera Bandi CNR</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    input[type="text"] { width: 400px; padding: 5px; }
+    .result-block { margin-top: 20px; }
+    details { margin-left: 20px; }
+    summary { cursor: pointer; font-weight: bold; color: #2a5d9f; }
+    pre { background: #f4f4f4; padding: 10px; border: 1px solid #ccc; overflow-x: auto; }
+  </style>
+</head>
+<body>
+    <nav style="margin-bottom: 20px;">
+  <a href="index.html" style="margin-right: 15px;">Controllo Bandi</a>
+  <a href="search.html">Ricerca Libera</a>
+</nav>
+  <h1>🔍 Ricerca libera tra i Bandi CNR (URP e Selezioni Online)</h1>
+
+  <input type="text" id="searchInput" placeholder="Inserisci codice bando, titolo, protocollo, ecc...">
+  <button onclick="eseguiRicerca()">Cerca</button>
+
+  <div class="result-block">
+    <h2>📄 Risultati URP</h2>
+    <div id="resultURP"></div>
+  </div>
+
+  <div class="result-block">
+    <h2>🌐 Risultati Selezioni Online</h2>
+    <div id="resultSOL"></div>
+  </div>
+
+  <script>
+    let urpData = [];
+    let solData = [];
+
+    async function caricaDati() {
+      const urpResp = await fetch("bandi-completi-urp.json");
+      urpData = await urpResp.json();
+
+      const solResp = await fetch("bandi_concorsi_pubblici_completi.json");
+      solData = await solResp.json();
+    }
+
+    function formatJSONTree(data) {
+      const html = Object.entries(data).map(([key, value]) => {
+        if (typeof value === 'object' && value !== null) {
+          return `<details><summary>${key}</summary>${formatJSONTree(value)}</details>`;
+        } else {
+          return `<div><strong>${key}</strong>: ${value}</div>`;
+        }
+      }).join('');
+      return html;
+    }
+
+    function eseguiRicerca() {
+      const search = document.getElementById("searchInput").value.trim().toLowerCase();
+      const resultURP = document.getElementById("resultURP");
+      const resultSOL = document.getElementById("resultSOL");
+
+      resultURP.innerHTML = "";
+      resultSOL.innerHTML = "";
+
+      if (!search) {
+        resultURP.innerHTML = "<i>Inserisci un termine da cercare.</i>";
+        resultSOL.innerHTML = "<i>Inserisci un termine da cercare.</i>";
+        return;
+      }
+
+      const urpMatch = urpData.filter(item => JSON.stringify(item).toLowerCase().includes(search));
+      const solMatch = solData.filter(item => JSON.stringify(item).toLowerCase().includes(search));
+
+      if (urpMatch.length === 0) resultURP.innerHTML = "<i>Nessun risultato trovato nei dati URP.</i>";
+      if (solMatch.length === 0) resultSOL.innerHTML = "<i>Nessun risultato trovato nei dati di Selezioni Online.</i>";
+
+      urpMatch.forEach(obj => {
+        const block = document.createElement("div");
+        block.innerHTML = formatJSONTree(obj);
+        resultURP.appendChild(block);
+      });
+
+      solMatch.forEach(obj => {
+        const block = document.createElement("div");
+        block.innerHTML = formatJSONTree(obj);
+        resultSOL.appendChild(block);
+      });
+    }
+
+    caricaDati();
+  </script>
+</body>
+</html>

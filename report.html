@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Report Bandi CNR</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    h2 { margin-top: 40px; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 30px; }
+    th, td { border: 1px solid #aaa; padding: 8px; text-align: center; }
+    th { background-color: #f0f0f0; }
+  </style>
+</head>
+<body>
+     <nav style="margin-bottom: 20px;">
+    <a href="index.html" style="margin-right: 15px;">Controllo Bandi</a>
+    <a href="search.html">Ricerca Libera</a>
+    <a href="mobilita-urp.html">mobilità</a>
+    <a href="report.html">report</a>
+    <a href="report-v2.html">report v2</a>
+
+
+  </nav>
+  <h1>Report Bandi CNR per Anno e Mese</h1>
+  <div id="tables-container"></div>
+
+  <script>
+    async function loadJSON(filename) {
+      const response = await fetch(filename);
+      return await response.json();
+    }
+
+    function extractDateInfo(dateStr, format = 'urp') {
+      if (!dateStr) return null;
+      try {
+        let date;
+        if (format === 'urp') {
+          const [day, month, year] = dateStr.split('-');
+          date = new Date(`${year}-${month}-${day}`);
+        } else if (format === 'iso') {
+          date = new Date(dateStr);
+        }
+        return {
+          year: date.getFullYear(),
+          month: date.getMonth() + 1
+        };
+      } catch {
+        return null;
+      }
+    }
+
+    function updateStats(stats, year, month, key) {
+      if (!stats[year]) stats[year] = {};
+      if (!stats[year][month]) stats[year][month] = {
+        urp: 0, sol: 0, mobilita: 0,
+        graduatorie_urp: 0, graduatorie_sol: 0, graduatorie_mobilita: 0
+      };
+      stats[year][month][key]++;
+    }
+
+    function generateTable(year, data) {
+      const months = [
+        'Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
+        'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'
+      ];
+
+      let html = `<h2>Anno ${year}</h2>`;
+      html += `<table><thead>
+        <tr>
+          <th>Mese</th>
+          <th>Bandi URP</th>
+          <th>Bandi Selezioni Online</th>
+          <th>Bandi Mobilità</th>
+          <th>Graduatorie URP</th>
+          <th>Graduatorie Selezioni Online</th>
+          <th>Graduatorie Mobilità</th>
+        </tr></thead><tbody>`;
+
+      for (let m = 1; m <= 12; m++) {
+        const row = data[m] || {
+          urp: 0, sol: 0, mobilita: 0,
+          graduatorie_urp: 0, graduatorie_sol: 0, graduatorie_mobilita: 0
+        };
+        html += `<tr>
+          <td>${months[m - 1]}</td>
+          <td>${row.urp}</td>
+          <td>${row.sol}</td>
+          <td>${row.mobilita}</td>
+          <td>${row.graduatorie_urp}</td>
+          <td>${row.graduatorie_sol}</td>
+          <td>${row.graduatorie_mobilita}</td>
+        </tr>`;
+      }
+
+      html += '</tbody></table>';
+      return html;
+    }
+
+    async function generateReport() {
+      const [urpData, solData, mobData] = await Promise.all([
+        loadJSON('bandi-completi-urp.json'),
+        loadJSON('bandi-concorsi-pubblici-sol.json'),
+        loadJSON('bandi-mobilita.json')
+      ]);
+
+      const stats = {};
+
+      // Bandi da URP
+      for (const bando of urpData) {
+        const pubDate = extractDateInfo(bando.data_pubblicazione_bando, 'urp');
+        if (pubDate) updateStats(stats, pubDate.year, pubDate.month, 'urp');
+        if (bando.graduatoria_presente && bando.data_pubblicazione_graduatoria) {
+          const gradDate = extractDateInfo(bando.data_pubblicazione_graduatoria, 'urp');
+          if (gradDate) updateStats(stats, gradDate.year, gradDate.month, 'graduatorie_urp');
+        }
+      }
+
+      // Bandi da Selezioni Online
+      for (const bando of solData) {
+        const pubDate = extractDateInfo(bando.data_pubblicazione_inpa, 'iso');
+        if (pubDate) updateStats(stats, pubDate.year, pubDate.month, 'sol');
+        if (bando.graduatoria_allegato && bando.data_pubblicazione_graduatoria) {
+          const gradDate = extractDateInfo(bando.data_pubblicazione_graduatoria, 'iso');
+          if (gradDate) updateStats(stats, gradDate.year, gradDate.month, 'graduatorie_sol');
+        }
+      }
+
+      // Bandi di Mobilità
+      for (const bando of mobData) {
+        const pubDate = extractDateInfo(bando.data_pubblicazione_bando, 'urp');
+        if (pubDate) updateStats(stats, pubDate.year, pubDate.month, 'mobilita');
+        if (bando.graduatoria_presente && bando.data_pubblicazione_graduatoria) {
+          const gradDate = extractDateInfo(bando.data_pubblicazione_graduatoria, 'urp');
+          if (gradDate) updateStats(stats, gradDate.year, gradDate.month, 'graduatorie_mobilita');
+        }
+      }
+
+      // Genera tabelle per ogni anno
+      const container = document.getElementById('tables-container');
+      const years = Object.keys(stats).sort();
+      for (const year of years) {
+        const tableHTML = generateTable(year, stats[year]);
+        container.innerHTML += tableHTML;
+      }
+    }
+
+    generateReport();
+  </script>
+</body>
+</html>

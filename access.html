@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <title>Accessibilità documenti – Bandi CNR</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; color:#222; }
+    h1 { margin: 0 0 8px 0; }
+    .muted { color:#666; }
+    .small { font-size: .9rem; }
+    .row { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:10px 0 6px; }
+    label { white-space:nowrap; }
+    input[type="text"]{ padding:6px; }
+    select { padding:6px; }
+    button { padding:6px 10px; cursor:pointer; }
+    .pill { display:inline-block; background:#eef2ff; color:#3f51b5; border-radius:999px; padding:2px 8px; font-size:.85rem; margin-left:8px; }
+    .hr { height:1px; background:#e5e5e5; border:0; margin:14px 0; }
+
+    table { width:100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border:1px solid #ddd; padding:8px; vertical-align: top; text-align:left; }
+    th { background:#f7f7f7; }
+    tr.parent-row { cursor: pointer; }
+    tr.parent-row:hover { background:#fafafa; }
+    tr.details-row td { background:#fcfcff; }
+    .link { color:#0b5ed7; text-decoration:none; }
+    .link:hover { text-decoration:underline; }
+
+    .badge { padding:2px 6px; border-radius:6px; font-weight:600; display:inline-block; }
+    .ok { color:#0f6b3a; background:#e8f5ef; border:1px solid #bfe8d1; }
+    .ko { color:#b00020; background:#fdeced; border:1px solid #ffc7cd; }
+    .warn { color:#7a4a00; background:#fff4e0; border:1px solid #ffdfb9; }
+    .neutral { color:#444; background:#f1f1f1; border:1px solid #e1e1e1; }
+
+    .chev { font-weight:700; display:inline-block; width:1.2em; text-align:center; transition: transform .15s ease; }
+    .rot { transform: rotate(90deg); }
+
+    .kvs { display:inline-grid; grid-template-columns:auto auto; gap:2px 10px; font-size:.9rem; }
+    .nowrap { white-space:nowrap; }
+
+    .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .toolbar .grow { flex:1 1 260px; }
+    .counter { margin-left:auto; color:#555; }
+
+    .sub-table th, .sub-table td { border:1px solid #e2e6ff; }
+    .badge-tipo { background:#eef2ff; border:1px solid #dfe6ff; color:#2a3c8a; border-radius:999px; padding:2px 6px; font-size:.8rem; }
+  </style>
+</head>
+<body>
+
+  <nav style="margin-bottom: 16px;">
+    <a href="index.html" class="link">← Torna a Controllo Bandi</a>
+  </nav>
+
+  <h1>Accessibilità documenti – Bandi CNR
+    <span id="lastUpd" class="pill muted"></span>
+  </h1>
+  <div class="small muted">Origine dati: <code>bandi-completi-urp.json</code> (URP nuovo + archivio-vecchio)</div>
+
+  <div class="toolbar" style="margin-top:10px;">
+    <div>
+      <label for="fCat">Categoria:</label>
+      <select id="fCat">
+        <option value="">Tutte</option>
+        <option value="tempo-indeterminato">Tempo Indeterminato</option>
+        <option value="tempo-determinato">Tempo Determinato</option>
+        <option value="categorie-riservatarie">Categorie Riservatarie</option>
+        <option value="direttori-dipartimentiistituti">Direttori Dipartimenti/Istituti</option>
+        <option value="avviamento-numerico-selezione-ans-categorie-riservatarie">Avviamento Numerico</option>
+        <option value="archivio-vecchio">Archivio Vecchio</option>
+      </select>
+    </div>
+    <div>
+      <label for="fFonte">Fonte:</label>
+      <select id="fFonte">
+        <option value="">Tutte</option>
+        <option value="urp_nuovo">URP nuovo</option>
+        <option value="urp_archivio">URP archivio</option>
+      </select>
+    </div>
+    <div>
+      <label for="fAnno">Anno:</label>
+      <input type="text" id="fAnno" placeholder="es. 2024" size="6">
+    </div>
+    <div class="grow">
+      <label for="fQ">Cerca:</label>
+      <input type="text" id="fQ" placeholder="titolo, estratto, codice bando…" style="width:100%;">
+    </div>
+    <div class="counter small"><span id="cnt">0</span> bandi</div>
+    <button id="applica">Applica</button>
+    <button id="pulisci">Pulisci</button>
+  </div>
+
+  <hr class="hr">
+
+  <table id="tab">
+    <thead>
+      <tr>
+        <th class="nowrap">#</th>
+        <th>Categoria</th>
+        <th>Codice Bando</th>
+        <th>Titolo</th>
+        <th>Data bando</th>
+        <th>Protocollo</th>
+        <th class="nowrap">Criteri</th>
+        <th class="nowrap">Tracce</th>
+        <th>Doc. accessibili</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    // ============== helpers ==============
+    function normAccFlag(v) {
+      if (v === undefined || v === null) return "";
+      const s = String(v).trim().toLowerCase();
+      if (v === true || s === "✓" || s === "si" || s === "sì" || s === "true" || s === "1") return "✓";
+      if (v === false || s === "✗" || s === "no" || s === "false" || s === "0") return "✗";
+      return "";
+    }
+    function parseYMDFlexible(s) {
+      if (!s || typeof s !== "string") return null;
+      const s2 = s.trim();
+      let m = s2.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+      if (m) return { y: parseInt(m[3],10), m: m[2], d: m[1] };
+      m = s2.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) return { y: parseInt(m[1],10), m: m[2], d: m[3] };
+      return null;
+    }
+    function estraiCodiceBandoUI(item) {
+      if (item.codice_bando) return item.codice_bando;
+      const joined = `${item.titolo_bando||""} // ${item.estratto||""}`;
+      const t = joined.toLowerCase();
+      let m = t.match(/\bbando\s*n\.?\s*([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)/i);
+      if (m) return m[1].toUpperCase();
+      m = t.match(/\bcodice\s+bando\s+([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)/i);
+      if (m) return m[1].toUpperCase();
+      m = t.match(/\b([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)\b/i);
+      if (m) return m[1].toUpperCase();
+      return "--";
+    }
+    function pick(allegati, tipo) {
+      return (allegati||[]).find(a => (a?.tipo_documento||"") === tipo) || null;
+    }
+    function assess(ac) {
+  const r = { checked:false, is_pdf:false, has_text:false, is_tagged:false, has_struct_tree:false, lang:null, has_title:false, accessible:false, note:"", raw:ac||{} };
+  if (!ac || typeof ac !== "object") return r;
+  r.checked = !!ac.checked;
+  r.is_pdf = !!ac.is_pdf;
+  r.has_text = !!ac.has_text;
+  r.is_tagged = !!ac.is_tagged;
+  r.has_struct_tree = !!ac.has_struct_tree;
+  r.lang = ac.lang || null;
+  r.has_title = !!ac.has_title;
+  r.accessible = !!ac.accessible;
+  r.note = ac.note || "";
+  return r;
+}
+
+// FULL = accessibile (euristica completa)
+// PARTIAL = non accessibile per la nostra euristica, ma il PDF ha testo (quindi non è immagine)
+// IMAGE = nessun testo estraibile (scansione)
+// UNVERIFIED = non verificato
+function classifyAccess(ac) {
+  if (!ac.checked) return "UNVERIFIED";
+  if (ac.accessible) return "FULL";
+  if (ac.has_text) return "PARTIAL";
+  return "IMAGE";
+}
+
+function badgeForClass(cls) {
+  if (cls === "FULL")      return '<span class="badge ok">accessibile</span>';
+  if (cls === "PARTIAL")   return '<span class="badge warn">parzialmente accessibile</span>';
+  if (cls === "IMAGE")     return '<span class="badge ko">solo immagine</span>';
+  return '<span class="badge warn">non verificato</span>';
+}
+
+function badgeFromDoc(doc) {
+  if (!doc) return '<span class="badge neutral">—</span>';
+  const ac = assess(doc.access_check);
+  return badgeForClass(classifyAccess(ac));
+}
+
+function formatDocCell(doc) {
+  if (!doc) return '<span class="badge neutral">—</span>';
+  const ac = assess(doc.access_check);
+  const cls = classifyAccess(ac);
+  const date = (doc.data_iso || doc.data || "") ? `<span class="small muted">${doc.data_iso || doc.data}</span>` : "";
+  const link = doc.link ? ` — <a class="link" href="${doc.link}" target="_blank">doc</a>` : "";
+  return `${badgeForClass(cls)} ${date}${link}`;
+}
+
+    function getLastModified(url, el) {
+      fetch(url, { method: 'HEAD' }).then(r => {
+        const lm = r.headers.get('Last-Modified');
+        if (lm) el.textContent = `Ultimo agg.: ${new Date(lm).toLocaleString()}`;
+      }).catch(()=>{});
+    }
+    async function fetchJSONBest(url1, url2) {
+      try {
+        const r = await fetch(url1);
+        if (r.ok) return await r.json();
+      } catch(e){/*ignore*/}
+      if (url2) {
+        const r2 = await fetch(url2);
+        if (r2.ok) return await r2.json();
+      }
+      return null;
+    }
+
+    // ============== data load ==============
+    let rawData = null; // oggetto con categorie/archivio
+    let rows = [];      // lista piatta con {categoria, ...bando}
+
+    function flattenData(data) {
+      const out = [];
+      if (Array.isArray(data)) {
+        data.forEach(b => out.push({ categoria: b.categoria || (b.fonte||""), ...b }));
+        return out;
+      }
+      for (const [cat, li] of Object.entries(data||{})) {
+        if (Array.isArray(li)) {
+          li.forEach(b => out.push({ categoria: cat, ...b }));
+        }
+      }
+      return out;
+    }
+
+    // ============== rendering ==============
+    function rendersummaryRow(bando, idx) {
+      // criteri & tracce sintetici
+      const a = Array.isArray(bando.allegati) ? bando.allegati : [];
+      const docC = pick(a, "criteri");
+      const docT = pick(a, "tracce_prova_scritta");
+
+      // conteggi accessibilità su TUTTI i PDF
+     // conteggi accessibilità su TUTTI i PDF
+let tot=0, full=0, partial=0, image=0, unv=0;
+a.forEach(x=>{
+  if (!x || !x.link) return;
+  const isPdf = x.link.toLowerCase().endsWith(".pdf") || x.link.toLowerCase().includes("system/files");
+  if (!isPdf) return;
+  tot++;
+  const ac = assess(x.access_check);
+  const cls = classifyAccess(ac);
+  if      (cls === "FULL")    full++;
+  else if (cls === "PARTIAL") partial++;
+  else if (cls === "IMAGE")   image++;
+  else                        unv++;
+});
+// percentuale “positiva” = FULL + PARTIAL
+const perc = tot ? Math.round((full + partial) * 100 / tot) : 0;
+
+
+      return `
+        <tr class="parent-row" data-idx="${idx}">
+          <td><span class="chev">▶</span></td>
+          <td>${bando.categoria || ""}</td>
+          <td>${bando.url ? `<a class="link" href="${bando.url}" target="_blank">${(bando.codice_bando || estraiCodiceBandoUI(bando) || "--")}</a>` : (bando.codice_bando || estraiCodiceBandoUI(bando) || "--")}</td>
+          <td>${bando.titolo_bando || ""}</td>
+          <td>${bando.data_pubblicazione_bando || ""}</td>
+          <td>${bando.numero_protocollo || ""}</td>
+          <td>${formatDocCell(docC)}</td>
+          <td>${formatDocCell(docT)}</td>
+         <td>
+  <div class="kvs">
+    <div>Tot PDF</div><div><b>${tot}</b></div>
+    <div>Accessibili</div><div><b>${full}</b></div>
+    <div>Parzialm.</div><div><b>${partial}</b></div>
+    <div>Solo immagine</div><div><b>${image}</b></div>
+    <div>Non verificati</div><div><b>${unv}</b></div>
+    <div>Percentuale (full+partial)</div><div><b>${perc}%</b></div>
+  </div>
+</td>
+
+        </tr>`;
+    }
+
+   function renderDetailRow(bando, idx) {
+  const a = Array.isArray(bando.allegati) ? bando.allegati : [];
+  const rows = a.map((d,i)=>{
+    const ac = assess(d.access_check);                 // <-- come prima
+    const cls = classifyAccess(ac);                    // <-- NOVITÀ
+    const badge = badgeForClass(cls);                  // <-- NOVITÀ
+    return `
+      <tr>
+        <td>${i+1}</td>
+        <td>${d.titolo || ""}</td>
+        <td>${d.tipo_documento ? `<span class="badge-tipo">${d.tipo_documento}</span>` : ""}</td>
+        <td>${d.data_iso || d.data || ""}</td>
+        <td>${d.protocollo || ""}</td>
+        <td>${d.link ? `<a class="link" href="${d.link}" target="_blank">apri</a>` : ""}</td>
+
+        <!-- Esito: ora mostra anche "parzialmente accessibile" o "solo immagine" -->
+        <td>${badge}</td>
+
+        <td>
+          <div class="kvs">
+            <div>Testo</div><div>${ac.has_text ? "✓" : "✗"}</div>
+            <div>Tag</div><div>${ac.is_tagged ? "✓" : "✗"}</div>
+            <div>Struttura</div><div>${ac.has_struct_tree ? "✓" : "✗"}</div>
+            <div>Lingua</div><div>${ac.lang ? `<code>${ac.lang}</code>` : "—"}</div>
+            <div>Titolo</div><div>${ac.has_title ? "✓" : "✗"}</div>
+          </div>
+          ${ac.note ? `<div class="small muted" style="margin-top:6px;">Nota: ${ac.note}</div>` : ""}
+        </td>
+      </tr>`;
+  }).join("");
+
+  return `
+    <tr class="details-row" data-for="${idx}" style="display:none;">
+      <td></td>
+      <td colspan="8">
+        <div class="small muted" style="margin-bottom:6px;">Documenti del bando (clicca l’intestazione per richiudere)</div>
+        <table class="sub-table" style="width:100%; border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Titolo</th>
+              <th>Tipo</th>
+              <th>Data</th>
+              <th>Prot.</th>
+              <th>Link</th>
+              <th>Esito</th>
+              <th>Dettaglio</th>
+            </tr>
+          </thead>
+          <tbody>${rows || ""}</tbody>
+        </table>
+      </td>
+    </tr>`;
+}
+
+
+    function renderTable(list) {
+      const tbody = document.querySelector("#tab tbody");
+      tbody.innerHTML = "";
+      list.forEach((b, i) => {
+        tbody.insertAdjacentHTML("beforeend", rendersummaryRow(b, i));
+        tbody.insertAdjacentHTML("beforeend", renderDetailRow(b, i));
+      });
+      document.getElementById("cnt").textContent = String(list.length);
+
+      // toggle
+      tbody.querySelectorAll("tr.parent-row").forEach(tr => {
+        tr.addEventListener("click", () => {
+          const idx = tr.getAttribute("data-idx");
+          const det = tbody.querySelector(`tr.details-row[data-for="${idx}"]`);
+          const chev = tr.querySelector(".chev");
+          const show = det.style.display === "none";
+          det.style.display = show ? "table-row" : "none";
+          if (chev) chev.classList.toggle("rot", show);
+        });
+      });
+    }
+
+    // ============== filters ==============
+    function applyFilters() {
+      const cat = document.getElementById("fCat").value;
+      const src = document.getElementById("fFonte").value;
+      const yr  = (document.getElementById("fAnno").value || "").trim();
+      const q   = (document.getElementById("fQ").value || "").trim().toLowerCase();
+
+      const out = rows.filter(b => {
+        if (cat && b.categoria !== cat) return false;
+        if (src && (b.fonte||"") !== src) return false;
+        if (yr) {
+          const dt = parseYMDFlexible(b.data_pubblicazione_bando || "");
+          if (!dt || String(dt.y) !== yr) return false;
+        }
+        if (q) {
+          const blob = `${b.titolo_bando||""} ${b.estratto||""} ${b.codice_bando||""}`.toLowerCase();
+          if (!blob.includes(q)) return false;
+        }
+        return true;
+      });
+      renderTable(out);
+    }
+
+    // ============== bootstrap ==============
+    (async function init(){
+      const urlStatic = "/_static/bandi-completi-urp.json";
+      const urlRoot   = "bandi-completi-urp.json";
+      rawData = await fetchJSONBest(urlStatic, urlRoot);
+      if (!rawData) {
+        alert("Impossibile caricare bandi-completi-urp.json");
+        return;
+      }
+      // last modified (se serviamo da _static)
+      getLastModified(urlStatic, document.getElementById("lastUpd"));
+
+      rows = flattenData(rawData);
+      // rendering iniziale
+      renderTable(rows);
+
+      // eventi UI
+      document.getElementById("applica").addEventListener("click", applyFilters);
+      document.getElementById("pulisci").addEventListener("click", () => {
+        document.getElementById("fCat").value = "";
+        document.getElementById("fFonte").value = "";
+        document.getElementById("fAnno").value = "";
+        document.getElementById("fQ").value = "";
+        renderTable(rows);
+      });
+    })();
+  </script>
+</body>
+</html>

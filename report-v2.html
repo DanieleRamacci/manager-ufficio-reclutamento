@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Report Statistico Bandi CNR</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f9f9f9;
+      padding: 20px;
+      color: #333;
+    }
+    h1, h2 { color: #2c3e50; }
+    .chart-container {
+      margin: 40px 0;
+      background: #fff;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .summary-year {
+      margin: 20px 0;
+      padding: 15px;
+      background: #eef9f1;
+      border-left: 5px solid #2ecc71;
+    }
+  </style>
+</head>
+<body>
+    <nav style="margin-bottom: 20px;">
+    <a href="index.html" style="margin-right: 15px;">Controllo Bandi</a>
+    <a href="search.html">Ricerca Libera</a>
+    <a href="mobilita-urp.html">mobilità</a>
+    <a href="report.html">report</a>
+    <a href="report-v2.html">report v2</a>
+
+
+  </nav>
+<h1>Report Statistico Bandi CNR</h1>
+<div id="summary-all-years"></div>
+
+<div class="chart-container">
+  <h2>Andamento Mensile Bandi – Anno più recente</h2>
+  <canvas id="bandiChart"></canvas>
+</div>
+
+<div class="chart-container">
+  <h2>Totale Bandi per Anno</h2>
+  <canvas id="overallChart"></canvas>
+</div>
+
+<script>
+async function loadJSON(filename) {
+  const res = await fetch(filename);
+  return await res.json();
+}
+
+function extractDate(dateStr, format = 'urp') {
+  if (!dateStr) return null;
+  try {
+    let d;
+    if (format === 'urp') {
+      const [day, month, year] = dateStr.split('-');
+      d = new Date(`${year}-${month}-${day}`);
+    } else {
+      d = new Date(dateStr);
+    }
+    return { year: d.getFullYear(), month: d.getMonth() };
+  } catch {
+    return null;
+  }
+}
+
+function update(stats, year, month, key) {
+  if (!stats[year]) stats[year] = Array.from({ length: 12 }, () => ({
+    urp: 0, sol: 0, mob: 0, grad_urp: 0, grad_sol: 0, grad_mob: 0
+  }));
+  stats[year][month][key]++;
+}
+
+async function render() {
+  const [urp, sol, mob] = await Promise.all([
+    loadJSON('bandi-completi-urp.json'),
+    loadJSON('bandi-concorsi-pubblici-sol.json'),
+    loadJSON('bandi-mobilita.json')
+  ]);
+
+  const stats = {};
+
+  // URP
+  for (const b of urp) {
+    const pub = extractDate(b.data_pubblicazione_bando, 'urp');
+    if (pub) update(stats, pub.year, pub.month, 'urp');
+    if (b.graduatoria_presente && b.data_pubblicazione_graduatoria) {
+      const grad = extractDate(b.data_pubblicazione_graduatoria, 'urp');
+      if (grad) update(stats, grad.year, grad.month, 'grad_urp');
+    }
+  }
+
+  // SOL
+  for (const b of sol) {
+    const pub = extractDate(b.data_pubblicazione_inpa, 'iso');
+    if (pub) update(stats, pub.year, pub.month, 'sol');
+    if (b.graduatoria_allegato && b.data_pubblicazione_graduatoria) {
+      const grad = extractDate(b.data_pubblicazione_graduatoria, 'iso');
+      if (grad) update(stats, grad.year, grad.month, 'grad_sol');
+    }
+  }
+
+  // MOBILITA
+  for (const b of mob) {
+    const pub = extractDate(b.data_pubblicazione_bando, 'urp');
+    if (pub) update(stats, pub.year, pub.month, 'mob');
+    if (b.graduatoria_presente && b.data_pubblicazione_graduatoria) {
+      const grad = extractDate(b.data_pubblicazione_graduatoria, 'urp');
+      if (grad) update(stats, grad.year, grad.month, 'grad_mob');
+    }
+  }
+
+  const years = Object.keys(stats).sort();
+  const labels = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"];
+  const summaryContainer = document.getElementById('summary-all-years');
+
+  // SEZIONE: riepilogo per anno
+  for (const year of years) {
+    const monthly = stats[year];
+    const total = monthly.reduce((acc, m) => ({
+      urp: acc.urp + m.urp,
+      sol: acc.sol + m.sol,
+      mob: acc.mob + m.mob,
+      grad_urp: acc.grad_urp + m.grad_urp,
+      grad_sol: acc.grad_sol + m.grad_sol,
+      grad_mob: acc.grad_mob + m.grad_mob
+    }), { urp: 0, sol: 0, mob: 0, grad_urp: 0, grad_sol: 0, grad_mob: 0 });
+
+    const html = `
+      <div class="summary-year">
+        <strong>Statistiche ${year}</strong><br>
+        Bandi URP: ${total.urp}, SOL: ${total.sol}, Mobilità: ${total.mob}<br>
+        Graduatorie URP: ${total.grad_urp} (${((total.grad_urp / total.urp) * 100 || 0).toFixed(1)}%)<br>
+        Graduatorie SOL: ${total.grad_sol} (${((total.grad_sol / total.sol) * 100 || 0).toFixed(1)}%)<br>
+        Graduatorie Mobilità: ${total.grad_mob} (${((total.grad_mob / total.mob) * 100 || 0).toFixed(1)}%)<br>
+      </div>
+    `;
+    summaryContainer.innerHTML += html;
+  }
+
+  // GRAFICO mensile per anno più recente
+  const latestYear = years[years.length - 1];
+  const monthly = stats[latestYear];
+
+  new Chart(document.getElementById('bandiChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'URP', data: monthly.map(m => m.urp), backgroundColor: '#3498db' },
+        { label: 'SOL', data: monthly.map(m => m.sol), backgroundColor: '#e67e22' },
+        { label: 'Mobilità', data: monthly.map(m => m.mob), backgroundColor: '#1abc9c' }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { title: { display: true, text: `Bandi mensili per il ${latestYear}` } }
+    }
+  });
+
+  // GRAFICO aggregato per anno
+  const totalsByYear = years.map(y => stats[y].reduce((sum, m) => sum + m.urp + m.sol + m.mob, 0));
+
+  new Chart(document.getElementById('overallChart'), {
+    type: 'bar',
+    data: {
+      labels: years,
+      datasets: [
+        {
+          label: 'Totale Bandi Pubblicati (URP + SOL + Mobilità)',
+          data: totalsByYear,
+          backgroundColor: '#9b59b6'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: { display: true, text: "Totale bandi per anno" }
+      }
+    }
+  });
+}
+
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Visualizza Bandi CNR</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background-color: #f4f4f4; }
+    .tooltip {
+      position: relative;
+      cursor: pointer;
+    }
+    .tooltip:hover::after {
+      content: attr(data-tip);
+      position: absolute;
+      left: 0;
+      top: 100%;
+      background: #333;
+      color: #fff;
+      padding: 5px;
+      border-radius: 5px;
+      white-space: pre-wrap;
+      width: 300px;
+      z-index: 1;
+    }
+    #loading::after {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-left: 10px;
+  border: 2px solid #ccc;
+  border-top: 2px solid #333;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: middle;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+  </style>
+</head>
+<body>
+  <nav style="margin-bottom: 20px;">
+  <a href="index.html" style="margin-right: 15px;">Controllo Bandi</a>
+  <a href="search.html">Ricerca Libera</a>
+</nav>
+
+  <div style="display: flex; justify-content: space-between; align-items: center;">
+    <h1>Elenco Bandi CNR</h1>
+
+  <div id="lastUpdate" style="font-size: 0.9em; color: gray;"></div>
+</div>
+    
+
+  <div id="loading" style="color: #444; margin-top: 10px; font-style: italic;">
+    ⏳ Caricamento dati da Selezioni Online...
+  </div>
+
+  <label for="mese">Filtra per mese:</label>
+  <select id="mese">
+    <option value="">Tutti</option>
+    <option value="01">Gennaio</option>
+    <option value="02">Febbraio</option>
+    <option value="03">Marzo</option>
+    <option value="04">Aprile</option>
+    <option value="05">Maggio</option>
+    <option value="06">Giugno</option>
+    <option value="07">Luglio</option>
+    <option value="08">Agosto</option>
+    <option value="09">Settembre</option>
+    <option value="10">Ottobre</option>
+    <option value="11">Novembre</option>
+    <option value="12">Dicembre</option>
+  </select>
+
+  <label for="anno">Anno:</label>
+  <input type="text" id="anno" placeholder="es. 2025" size="4">
+
+  <label>
+    <input type="checkbox" id="soloGraduatoria">
+    Solo bandi con graduatoria pubblicata in quel mese
+  </label>
+
+  <button onclick="filtraBandi()">Applica filtro</button>
+
+  <table id="tabellaBandi">
+    <thead>
+      <tr>
+        <th>Codice Bando</th>
+        <th>Descrizione</th>
+        <th>Link URP</th>
+        <th>Link SOL</th>
+        <th>Protocollo</th>
+        <th>Data Pubblicazione</th>
+        <th>Allineamento</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+<div style="margin-top: 10px;">
+  <button id="refreshBtn" style="display: none;" onclick="location.reload()">🔄 Ricarica pagina</button>
+</div>
+
+<script>
+  let urpData = [];
+  let solData = [];
+
+  function normalizzaCodice(codice) {
+    return codice?.toUpperCase().replace(/\s+/g, "").replace(/\./g, "") || "";
+  }
+
+  async function fetchJSONWithRetry(url, maxRetries = 999) {
+    let tentativi = 0;
+    while (tentativi < maxRetries) {
+      try {
+        const response = await fetch(url);
+        if (response.status === 200) {
+          return await response.json();
+        } else if (response.status === 404) {
+          document.getElementById("loading").textContent =
+            `⏳ Attesa file di Selezioni Online... (in fase di creazione)`;
+        } else {
+          document.getElementById("loading").textContent =
+            `❌ Errore HTTP ${response.status} nel caricamento dei dati.`;
+        }
+      } catch (err) {
+        console.error("Errore fetch:", err);
+      }
+      await new Promise(resolve => setTimeout(resolve, 3000)); // Attendi 3 secondi
+      tentativi++;
+    }
+    throw new Error("Troppi tentativi falliti.");
+  }
+
+  async function caricaDati() {
+    try {
+      document.getElementById("loading").style.display = "block";
+      const urpResponse = await fetch("bandi-completi-urp.json");
+      urpData = await urpResponse.json();
+
+      solData = await fetchJSONWithRetry("bandi-concorsi-pubblici-sol.json");
+
+      document.getElementById("loading").style.display = "none";
+      document.getElementById("refreshBtn").style.display = "inline-block";
+
+      filtraBandi();
+    } catch (err) {
+      document.getElementById("loading").textContent = "❌ Errore durante il caricamento dei dati.";
+      console.error(err);
+    }
+  }
+
+  function filtraBandi() {
+    const mese = document.getElementById("mese").value;
+    const anno = document.getElementById("anno").value;
+    const soloGraduatoria = document.getElementById("soloGraduatoria").checked;
+    const tbody = document.querySelector("#tabellaBandi tbody");
+    tbody.innerHTML = "";
+
+    urpData.forEach(item => {
+      let dataRiferimento = soloGraduatoria ? item.data_pubblicazione_graduatoria : item.data_pubblicazione_bando;
+      if (!dataRiferimento) return;
+
+      const match = dataRiferimento.match(/(\d{2})-(\d{2})-(\d{4})/);
+      if (!match) return;
+
+      const [, , meseDoc, annoDoc] = match;
+      if ((mese && mese !== meseDoc) || (anno && anno !== annoDoc)) return;
+      if (soloGraduatoria && !item.graduatoria_presente) return;
+
+      const tr = document.createElement("tr");
+
+      const codiceEstratto = item.estratto.match(/bando\s+n\.?\s*([^\n\r]+)/i)?.[1]?.trim() || "--";
+      const codiceCell = document.createElement("td");
+      codiceCell.textContent = codiceEstratto;
+
+      const desc = document.createElement("td");
+      desc.innerHTML = `<span class="tooltip" data-tip="${item.estratto.replace(/"/g, '&quot;')}">Mostra</span>`;
+
+      const link = document.createElement("td");
+      link.innerHTML = `<a href="${item.url}" target="_blank">Apri</a>`;
+
+      const codiceNormURP = normalizzaCodice(codiceEstratto);
+      const matchSOL = solData.find(sol => {
+        const codiceNormSOL = normalizzaCodice(sol.codice);
+        return codiceNormSOL.includes(codiceNormURP) || codiceNormURP.includes(codiceNormSOL);
+      });
+
+      const linkSOL = document.createElement("td");
+      if (matchSOL) {
+        const solLink = `https://selezionionline.cnr.it/jconon/call-detail?callCode=${encodeURIComponent(matchSOL.codice)}`;
+        linkSOL.innerHTML = `<a href="${solLink}" target="_blank">Vai</a>`;
+      } else {
+        linkSOL.textContent = "--";
+      }
+
+      const protocollo = document.createElement("td");
+      protocollo.textContent = item.numero_protocollo || "";
+
+      const dataPub = document.createElement("td");
+      dataPub.textContent = dataRiferimento;
+
+      const allineamento = document.createElement("td");
+      if (matchSOL) {
+        const haGraduatoriaInSOL = matchSOL.graduatoria_allegato === true;
+        const haGraduatoriaInURP = !!item.data_pubblicazione_graduatoria;
+
+        if (haGraduatoriaInSOL && haGraduatoriaInURP) {
+          allineamento.textContent = "✅";
+        } else if (haGraduatoriaInSOL && !haGraduatoriaInURP) {
+          allineamento.textContent = "❌ (Manca su URP)";
+        } else if (!haGraduatoriaInSOL && haGraduatoriaInURP) {
+          allineamento.textContent = "❌ (Manca su SOL)";
+        } else {
+          allineamento.textContent = "--";
+        }
+      } else {
+        allineamento.textContent = "-- (Non trovato su SOL)";
+      }
+
+      tr.appendChild(codiceCell);
+      tr.appendChild(desc);
+      tr.appendChild(link);
+      tr.appendChild(linkSOL);
+      tr.appendChild(protocollo);
+      tr.appendChild(dataPub);
+      tr.appendChild(allineamento);
+      tbody.appendChild(tr);
+    });
+  }
+
+  caricaDati();
+</script>

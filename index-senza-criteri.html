@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Visualizza Bandi CNR</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background-color: #f4f4f4; }
+    .tooltip {
+      position: relative;
+      cursor: pointer;
+    }
+    .tooltip:hover::after {
+      content: attr(data-tip);
+      position: absolute;
+      left: 0;
+      top: 100%;
+      background: #333;
+      color: #fff;
+      padding: 5px;
+      border-radius: 5px;
+      white-space: pre-wrap;
+      width: 300px;
+      z-index: 1;
+    }
+    #loading::after {
+      content: "";
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      margin-left: 10px;
+      border: 2px solid #ccc;
+      border-top: 2px solid #333;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      vertical-align: middle;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .update-buttons { margin-top: 10px; }
+    .update-buttons button { margin-right: 10px; }
+  </style>
+</head>
+<body>
+
+  <nav style="margin-bottom: 20px;">
+    <a href="index.html" style="margin-right: 15px;">Controllo Bandi</a>
+    <a href="search.html">Ricerca Libera</a>
+    <a href="mobilita-urp.html">mobilità</a>
+    <a href="report.html">report</a>
+    <a href="report-v2.html">report v2</a>
+    <a href="/rdp-tool.html">report v2</a>
+
+  </nav>
+
+  <div style="display: flex; justify-content: space-between; align-items: center;">
+    <h1>Elenco Bandi CNR</h1>
+    <div style="text-align: right; font-size: 0.9em; color: gray;">
+      <div id="lastUpdateURP"></div>
+      <div id="lastUpdateSOL"></div>
+    </div>
+  </div>
+
+  <div id="loading" style="color: #444; margin-top: 10px; font-style: italic; display: none;">
+    ⏳ In attesa caricamento iniziale...
+  </div>
+
+  <div class="update-buttons">
+    <button onclick="aggiornaURP()">🔄 Aggiorna URP</button>
+    <button onclick="aggiornaSOL()">🔄 Aggiorna Selezioni Online</button>
+  </div>
+
+  <label for="mese">Filtra per mese:</label>
+  <select id="mese">
+    <option value="">Tutti</option>
+    <option value="01">Gennaio</option>
+    <option value="02">Febbraio</option>
+    <option value="03">Marzo</option>
+    <option value="04">Aprile</option>
+    <option value="05">Maggio</option>
+    <option value="06">Giugno</option>
+    <option value="07">Luglio</option>
+    <option value="08">Agosto</option>
+    <option value="09">Settembre</option>
+    <option value="10">Ottobre</option>
+    <option value="11">Novembre</option>
+    <option value="12">Dicembre</option>
+  </select>
+
+  <label for="categoria">Categoria:</label>
+  <select id="categoria">
+    <option value="">Tutte</option>
+    <option value="tempo-indeterminato">Tempo Indeterminato</option>
+    <option value="tempo-determinato">Tempo Determinato</option>
+    <option value="categorie-riservatarie">Categorie Riservatarie</option>
+    <option value="direttori-dipartimentiistituti">Direttori Dipartimenti/Istituti</option>
+    <option value="avviamento-numerico-selezione-ans-categorie-riservatarie">Avviamento Numerico</option>
+    <option value="archivio-vecchio">Archivio Vecchio</option>
+  </select>
+
+  <label for="anno">Anno:</label>
+  <input type="text" id="anno" placeholder="es. 2025" size="4">
+
+ <label for="tipoGrad">Tipo evento:</label>
+  <select id="tipoGrad">
+    <option value="">Tutti</option>
+    <option value="graduatoria">Solo pubblicazione graduatoria</option>
+    <option value="scorrimento_utilizzo">Solo scorrimento/utilizzo graduatoria</option>
+  </select>
+
+  <button onclick="filtraBandi()">Applica filtro</button>
+
+  <table id="tabellaBandi">
+    <thead>
+      
+      <tr>
+        <th>Categoria</th>
+        <th>Codice Bando</th>
+        <th>Descrizione</th>
+        <th>Link URP</th>
+        <th>Link SOL</th>
+        <th>Protocollo</th>
+        <th>Data Pubblicazione</th>
+        <th>Allineamento</th>
+        <th>Eventi</th>
+
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    let urpData = [];
+    let solData = [];
+
+    function normalizzaCodice(codice) {
+      return codice?.toUpperCase().replace(/\s+/g, "").replace(/\./g, "") || "";
+    }
+
+    async function getLastModified(url, elementId) {
+      try {
+        const res = await fetch(url, { method: 'HEAD' });
+        const lastMod = res.headers.get("Last-Modified");
+        if (lastMod) {
+          const parsed = new Date(lastMod);
+          document.getElementById(elementId).textContent = `Ultimo aggiornamento: ${parsed.toLocaleString()}`;
+        }
+      } catch (err) {
+        document.getElementById(elementId).textContent = `⚠️ Errore caricamento meta info per ${url}`;
+      }
+    }
+
+    async function fetchJSONWithRetry(url, maxRetries = 100) {
+      let tentativi = 0;
+      while (tentativi < maxRetries) {
+        try {
+          const res = await fetch(url);
+          if (res.ok) {
+            return await res.json();
+          } else if (res.status === 404) {
+            document.getElementById("loading").style.display = "block";
+            document.getElementById("loading").textContent = `⏳ In attesa del file ${url}...`;
+          } else {
+            document.getElementById("loading").textContent = `❌ Errore HTTP ${res.status} su ${url}`;
+          }
+        } catch (err) {
+          document.getElementById("loading").textContent = `❌ Errore di rete durante il caricamento di ${url}`;
+          console.error(err);
+        }
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        tentativi++;
+      }
+      throw new Error(`Impossibile caricare ${url} dopo ${maxRetries} tentativi.`);
+    }
+
+  async function aggiornaURP() {
+      document.getElementById("loading").style.display = "block";
+      document.getElementById("loading").textContent = "⏳ Aggiornamento dati URP in corso...";
+      try {
+        await fetch("/api/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ urp: true, sol: false, mob: false })
+        });
+        // ricarica dopo un attimo
+        setTimeout(() => location.reload(), 1500);
+      } catch (e) {
+        alert("Errore nell'aggiornamento URP");
+      }
+    }
+
+async function aggiornaSOL() {
+    document.getElementById("loading").style.display = "block";
+    document.getElementById("loading").textContent = "⏳ Aggiornamento dati Selezioni Online in corso...";
+    try {
+      await fetch("/api/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ urp: false, sol: true, mob: false })
+      });
+
+      // ricarica i dati SOL (ora col percorso corretto)
+      solData = await fetchJSONWithRetry("/_static/bandi-concorsi-pubblici-sol.json");
+      getLastModified("/_static/bandi-concorsi-pubblici-sol.json", "lastUpdateSOL");
+      document.getElementById("loading").style.display = "none";
+      filtraBandi();
+    } catch (e) {
+      document.getElementById("loading").textContent = "❌ Errore durante l'aggiornamento di Selezioni Online";
+      console.error(e);
+    }
+  }
+
+    async function fetchJSONSafe(url) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+      } catch (err) {
+        console.error(`Errore caricamento ${url}:`, err);
+        return [];
+      }
+    }
+
+
+async function caricaDati() {
+  const loading = document.getElementById("loading");
+  loading.style.display = "block";
+  loading.textContent = "⏳ Caricamento dati URP...";
+
+  // 1) Carica URP e renderizza SUBITO
+  const urpJson = await fetchJSONSafe("/_static/bandi-completi-urp.json");
+  if (Array.isArray(urpJson)) {
+    urpData = urpJson.map(b => ({ ...b, categoria: b.categoria || "" }));
+  } else {
+    urpData = Object.entries(urpJson).flatMap(([categoria, bandi]) =>
+      (Array.isArray(bandi) ? bandi : []).map(b => ({ ...b, categoria }))
+    );
+  }
+  getLastModified("/_static/bandi-completi-urp.json", "lastUpdateURP");
+
+  // Render subito anche se SOL manca
+  loading.textContent = "⏳ In attesa dei dati SOL (se disponibili)...";
+  filtraBandi();
+
+  // 2) Prova a caricare SOL UNA volta (non bloccante). Se 404, inizia polling.
+  const firstSOL = await fetchJSONSafe("/_static/bandi-concorsi-pubblici-sol.json"); // se 404 → []
+  if (Array.isArray(firstSOL) && firstSOL.length > 0) {
+    solData = firstSOL;
+    getLastModified("/_static/bandi-concorsi-pubblici-sol.json", "lastUpdateSOL");
+    loading.style.display = "none";
+    filtraBandi(); // aggiorna con i match SOL
+    return;
+  }
+
+  // 3) Polling leggero ogni 10s finché compare SOL (senza bloccare la UI)
+  let tries = 0, maxTries = 90; // ~15 minuti
+  const iv = setInterval(async () => {
+    tries++;
+    const tmp = await fetchJSONSafe("/_static/bandi-concorsi-pubblici-sol.json");
+    if (Array.isArray(tmp) && tmp.length > 0) {
+      solData = tmp;
+      getLastModified("/_static/bandi-concorsi-pubblici-sol.json", "lastUpdateSOL");
+      loading.style.display = "none";
+      filtraBandi();
+      clearInterval(iv);
+    } else if (tries >= maxTries) {
+      loading.textContent = "⚠️ Dati SOL non disponibili al momento. URP già visibile.";
+      clearInterval(iv);
+    }
+  }, 10000);
+}
+
+
+function filtraBandi() {
+  const mese = document.getElementById("mese").value;
+  const anno = document.getElementById("anno").value;
+  const categoria = document.getElementById("categoria").value;
+  const tipoGrad = document.getElementById("tipoGrad").value; // "", "graduatoria", "scorrimento_utilizzo"
+
+  const tbody = document.querySelector("#tabellaBandi tbody");
+  tbody.innerHTML = "";
+
+  urpData.forEach(item => {
+    if (categoria && item.categoria !== categoria) return;
+
+    // Scegli la data di riferimento in base al filtro tipoGrad
+    let dataRiferimento = null;
+    if (tipoGrad === "graduatoria") {
+      if (!item.graduatoria_presente) return;
+      dataRiferimento = item.data_pubblicazione_graduatoria;
+    } else if (tipoGrad === "scorrimento_utilizzo") {
+      if (!item.scorrimento_utilizzo_presente) return;
+      dataRiferimento = item.data_scorrimento_utilizzo;
+    } else {
+      // Tutti: usa la data del bando (comportamento precedente)
+      dataRiferimento = item.data_pubblicazione_bando;
+    }
+
+    if (!dataRiferimento) return;
+
+    const match = dataRiferimento.match(/(\d{2})-(\d{2})-(\d{4})/);
+    if (!match) return;
+
+    const [, , meseDoc, annoDoc] = match;
+    if ((mese && mese !== meseDoc) || (anno && anno !== annoDoc)) return;
+
+    const tr = document.createElement("tr");
+
+    const categoriaCell = document.createElement("td");
+    categoriaCell.textContent = item.categoria;
+    tr.appendChild(categoriaCell);
+
+    const codiceEstratto = item.estratto.match(/bando\s+n\.?\s*([^\n\r]+)/i)?.[1]?.trim() || "--";
+    const codiceCell = document.createElement("td");
+    codiceCell.textContent = codiceEstratto;
+
+    const desc = document.createElement("td");
+    desc.innerHTML = `<span class="tooltip" data-tip="${item.estratto.replace(/"/g, '&quot;')}">Mostra</span>`;
+
+    const link = document.createElement("td");
+    link.innerHTML = `<a href="${item.url}" target="_blank">Apri</a>`;
+
+    // match con SOL
+    const codiceNormURP = normalizzaCodice(codiceEstratto);
+    const matchSOL = solData.find(sol => {
+      const codiceNormSOL = normalizzaCodice(sol.codice);
+      return codiceNormSOL.includes(codiceNormURP) || codiceNormURP.includes(codiceNormSOL);
+    });
+
+    const linkSOL = document.createElement("td");
+    if (matchSOL) {
+      const solLink = `https://selezionionline.cnr.it/jconon/call-detail?callCode=${encodeURIComponent(matchSOL.codice)}`;
+      linkSOL.innerHTML = `<a href="${solLink}" target="_blank">Vai</a>`;
+    } else {
+      linkSOL.textContent = "--";
+    }
+
+    const protocollo = document.createElement("td");
+    protocollo.textContent = item.numero_protocollo || "";
+
+    const dataPub = document.createElement("td");
+    dataPub.textContent = dataRiferimento;
+
+    // Allineamento: considera sia API che scraping di SOL
+    const allineamento = document.createElement("td");
+    if (matchSOL) {
+      const haGraduatoriaInSOL =
+        matchSOL.graduatoria_presente === true ||
+        !!matchSOL.data_pubblicazione_graduatoria ||
+        matchSOL.graduatoria_allegato === true;
+
+      const haGraduatoriaInURP = !!item.data_pubblicazione_graduatoria;
+
+      if (haGraduatoriaInSOL && haGraduatoriaInURP) {
+        allineamento.textContent = "✅";
+      } else if (haGraduatoriaInSOL && !haGraduatoriaInURP) {
+        allineamento.textContent = "❌ (Manca su URP)";
+      } else if (!haGraduatoriaInSOL && haGraduatoriaInURP) {
+        allineamento.textContent = "❌ (Manca su SOL)";
+      } else {
+        allineamento.textContent = "--";
+      }
+    } else {
+      allineamento.textContent = "-- (Non trovato su SOL)";
+    }
+
+
+    // Badge Eventi
+    const eventi = document.createElement("td");
+    const badge = [];
+    if (item.graduatoria_presente) badge.push("Graduatoria");
+    if (item.scorrimento_utilizzo_presente) badge.push("Scorr./Utilizzo");
+    eventi.textContent = badge.length ? badge.join(" | ") : "--";
+
+    tr.appendChild(codiceCell);
+    tr.appendChild(desc);
+    tr.appendChild(link);
+    tr.appendChild(linkSOL);
+    tr.appendChild(protocollo);
+    tr.appendChild(dataPub);
+    tr.appendChild(allineamento);
+    tr.appendChild(eventi);
+
+    tbody.appendChild(tr);
+  });
+}
+
+
+    document.addEventListener("DOMContentLoaded", caricaDati);
+  </script>
+</body>
+</html>
