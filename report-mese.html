@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <title>Report mensile – precedente & corrente</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; color:#222; }
+    a.link { color:#0b5ed7; text-decoration:none; }
+    a.link:hover { text-decoration:underline; }
+    .muted { color:#666; }
+    .small { font-size:.9rem; }
+    .pill { display:inline-block; background:#eef2ff; color:#3f51b5; border-radius:999px; padding:2px 8px; font-size:.85rem; margin-left:8px; }
+    .hr { height:1px; background:#e5e5e5; border:0; margin:18px 0; }
+    table { width:100%; border-collapse:collapse; margin-top:8px; }
+    th, td { border:1px solid #ddd; padding:8px; text-align:left; vertical-align:top; }
+    th { background:#f7f7f7; }
+    details { border:1px solid #e5e5e5; border-radius:10px; padding:0 12px 12px; background:#fff; margin:12px 0; }
+    summary { list-style:none; cursor:pointer; padding:12px 0; display:flex; gap:12px; align-items:center; }
+    summary::-webkit-details-marker { display:none; }
+    .chev { transition:transform .15s ease; font-weight:700; color:#555; }
+    details[open] .chev { transform:rotate(90deg); }
+    .sum-title { font-size:1.05rem; font-weight:700; }
+    .sum-meta { margin-left:auto; color:#666; font-size:.9rem; display:flex; gap:10px; }
+    .section-title { font-size:1.1rem; font-weight:800; margin:18px 0 8px; }
+  </style>
+</head>
+<body>
+
+  <nav style="margin-bottom: 14px;">
+    <a href="index.html" class="link">← Controllo Bandi</a> ·
+    <a href="access.html" class="link">Accessibilità URP</a>
+  </nav>
+
+  <h1>Report mensile
+    <span id="lblPrev" class="pill muted"></span>
+    <span id="lblCurr" class="pill muted"></span>
+  </h1>
+  <div class="small muted">Dati da <code>bandi-completi-urp.json</code> e <code>bandi-mobilita.json</code></div>
+
+  <!-- ============================
+       BLOCCO: MESE PRECEDENTE
+       ============================ -->
+  <div class="section-title">Mese precedente</div>
+
+  <!-- Bandi (mese precedente) -->
+  <details>
+    <summary>
+      <span class="chev">▶</span>
+      <span class="sum-title">Bandi pubblicati</span>
+      <span class="pill" id="cnt-bandi-prev">0</span>
+      <span class="sum-meta muted"><span>Data: <b>data_pubblicazione_bando</b></span></span>
+    </summary>
+    <table>
+      <thead><tr><th>Categoria</th><th>Codice</th><th>Titolo</th><th>Link URP</th><th>Protocollo</th><th>Data bando</th></tr></thead>
+      <tbody id="tb-bandi-prev"></tbody>
+    </table>
+  </details>
+
+  <!-- Graduatorie (mese precedente) -->
+  <details>
+    <summary>
+      <span class="chev">▶</span>
+      <span class="sum-title">Graduatorie pubblicate</span>
+      <span class="pill" id="cnt-grad-prev">0</span>
+      <span class="sum-meta muted"><span>Data: <b>data_pubblicazione_graduatoria</b></span></span>
+    </summary>
+    <table>
+      <thead><tr><th>Categoria</th><th>Codice</th><th>Titolo</th><th>Link URP</th><th>Protocollo</th><th>Data graduatoria</th></tr></thead>
+      <tbody id="tb-grad-prev"></tbody>
+    </table>
+  </details>
+
+  <!-- Scorrimenti (mese precedente) -->
+  <details>
+    <summary>
+      <span class="chev">▶</span>
+      <span class="sum-title">Scorrimenti/Utilizzi</span>
+      <span class="pill" id="cnt-scorri-prev">0</span>
+      <span class="sum-meta muted"><span>Data: <b>data_scorrimento_utilizzo</b></span></span>
+    </summary>
+    <table>
+      <thead><tr><th>Categoria</th><th>Codice</th><th>Titolo</th><th>Link URP</th><th>Protocollo</th><th>Data scorr./utilizzo</th></tr></thead>
+      <tbody id="tb-scorri-prev"></tbody>
+    </table>
+  </details>
+
+  <!-- Mobilità (mese precedente) -->
+  <details>
+    <summary>
+      <span class="chev">▶</span>
+      <span class="sum-title">Mobilità/Comandi</span>
+      <span class="pill" id="cnt-mob-prev">0</span>
+      <span class="sum-meta muted"><span>Fonte: <b>bandi-mobilita.json</b></span></span>
+    </summary>
+    <table>
+      <thead><tr><th>Titolo</th><th>Link</th><th>Data</th><th>Altri dati</th></tr></thead>
+      <tbody id="tb-mob-prev"></tbody>
+    </table>
+  </details>
+
+  <hr class="hr">
+
+  <!-- ============================
+       BLOCCO: MESE CORRENTE
+       ============================ -->
+  <div class="section-title">Mese corrente</div>
+
+  <!-- Bandi (mese corrente) -->
+  <details>
+    <summary>
+      <span class="chev">▶</span>
+      <span class="sum-title">Bandi pubblicati</span>
+      <span class="pill" id="cnt-bandi-curr">0</span>
+      <span class="sum-meta muted"><span>Data: <b>data_pubblicazione_bando</b></span></span>
+    </summary>
+    <table>
+      <thead><tr><th>Categoria</th><th>Codice</th><th>Titolo</th><th>Link URP</th><th>Protocollo</th><th>Data bando</th></tr></thead>
+      <tbody id="tb-bandi-curr"></tbody>
+    </table>
+  </details>
+
+  <!-- Graduatorie (mese corrente) -->
+  <details>
+    <summary>
+      <span class="chev">▶</span>
+      <span class="sum-title">Graduatorie pubblicate</span>
+      <span class="pill" id="cnt-grad-curr">0</span>
+      <span class="sum-meta muted"><span>Data: <b>data_pubblicazione_graduatoria</b></span></span>
+    </summary>
+    <table>
+      <thead><tr><th>Categoria</th><th>Codice</th><th>Titolo</th><th>Link URP</th><th>Protocollo</th><th>Data graduatoria</th></tr></thead>
+      <tbody id="tb-grad-curr"></tbody>
+    </table>
+  </details>
+
+  <!-- Scorrimenti (mese corrente) -->
+  <details>
+    <summary>
+      <span class="chev">▶</span>
+      <span class="sum-title">Scorrimenti/Utilizzi</span>
+      <span class="pill" id="cnt-scorri-curr">0</span>
+      <span class="sum-meta muted"><span>Data: <b>data_scorrimento_utilizzo</b></span></span>
+    </summary>
+    <table>
+      <thead><tr><th>Categoria</th><th>Codice</th><th>Titolo</th><th>Link URP</th><th>Protocollo</th><th>Data scorr./utilizzo</th></tr></thead>
+      <tbody id="tb-scorri-curr"></tbody>
+    </table>
+  </details>
+
+  <!-- Mobilità (mese corrente) -->
+  <details>
+    <summary>
+      <span class="chev">▶</span>
+      <span class="sum-title">Mobilità/Comandi</span>
+      <span class="pill" id="cnt-mob-curr">0</span>
+      <span class="sum-meta muted"><span>Fonte: <b>bandi-mobilita.json</b></span></span>
+    </summary>
+    <table>
+      <thead><tr><th>Titolo</th><th>Link</th><th>Data</th><th>Altri dati</th></tr></thead>
+      <tbody id="tb-mob-curr"></tbody>
+    </table>
+  </details>
+
+  <script>
+    // ===== Helpers data/mese =====
+    function monthLabelFrom(y, m) {
+      const d = new Date(y, Number(m)-1, 1);
+      return d.toLocaleDateString('it-IT', { month:'long', year:'numeric' });
+    }
+    function getCurrYM() {
+      const d = new Date();
+      return { y: d.getFullYear(), m: String(d.getMonth()+1).padStart(2,'0') };
+    }
+    function getPrevYM() {
+      const d = new Date(); d.setMonth(d.getMonth()-1);
+      return { y: d.getFullYear(), m: String(d.getMonth()+1).padStart(2,'0') };
+    }
+    function parseYMDFlexible(s) {
+      if (!s || typeof s !== "string") return null;
+      const t = s.trim();
+      let m = t.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+      if (m) return { y:+m[3], m:m[2], d:m[1] };
+      m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) return { y:+m[1], m:m[2], d:m[3] };
+      return null;
+    }
+    function isInYM(dateStr, Y, M) {
+      const dt = parseYMDFlexible(dateStr);
+      return !!dt && dt.y === Number(Y) && String(dt.m) === String(M);
+    }
+
+    // ===== IO =====
+    async function fetchJSONBest(url1, url2) {
+      try { const r = await fetch(url1); if (r.ok) return await r.json(); } catch(e){}
+      if (url2) { const r2 = await fetch(url2); if (r2.ok) return await r2.json(); }
+      return null;
+    }
+
+    // ===== URP flatten =====
+    let urpList = [];
+    function flattenURP(data) {
+      const out = [];
+      if (Array.isArray(data)) return data.map(b => ({ categoria: b.categoria || (b.fonte||""), ...b }));
+      for (const [cat, li] of Object.entries(data||{})) {
+        if (Array.isArray(li)) li.forEach(b => out.push({ categoria: cat, ...b }));
+      }
+      return out;
+    }
+    function estraiCodiceBandoUI(item) {
+      const prefer = (item.codice_bando && String(item.codice_bando).trim()) || "";
+      if (prefer) return prefer;
+      const joined = ((item.titolo_bando||"") + " // " + (item.estratto||"")).toLowerCase();
+      let m = joined.match(/\bbando\s*n\.?\s*([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)/i);
+      if (!m) m = joined.match(/\bcodice\s+bando\s+([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)/i);
+      if (!m) m = joined.match(/\b([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)\b/i);
+      return m ? m[1].toUpperCase() : "--";
+    }
+    function rowURP(b, key) {
+      return `<tr>
+        <td>${b.categoria || ""}</td>
+        <td>${estraiCodiceBandoUI(b)}</td>
+        <td>${b.titolo_bando || ""}</td>
+        <td>${b.url ? `<a class="link" href="${b.url}" target="_blank">apri</a>` : "--"}</td>
+        <td>${b.numero_protocollo || ""}</td>
+        <td>${b[key] || ""}</td>
+      </tr>`;
+    }
+
+    // ===== MOB =====
+    let mobList = [];
+    function getMobDate(m) { return m.data_pubblicazione || m.data || m.data_iso || m.pubblicazione || ""; }
+    function getMobTitle(m) { return m.titolo || m.title || m.descrizione || m.description || "(senza titolo)"; }
+    function getMobUrl(m) { return m.url || m.link || ""; }
+    function rowMOB(m) {
+      const d = getMobDate(m), url = getMobUrl(m);
+      const other = Object.keys(m).filter(k => !["titolo","title","descrizione","description","url","link","data","data_iso","data_pubblicazione","pubblicazione"].includes(k));
+      const rest = other.length ? `<code class="small muted">${other.map(k=>`${k}: ${JSON.stringify(m[k])}`).join(" · ")}</code>` : "";
+      return `<tr><td>${getMobTitle(m)}</td><td>${url ? `<a class="link" href="${url}" target="_blank">apri</a>` : "--"}</td><td>${d}</td><td>${rest}</td></tr>`;
+    }
+
+    // ===== Render per mese (prev & curr) =====
+    function renderURPMonth(Y, M, suffix) {
+      const r1 = urpList.filter(b => isInYM(b.data_pubblicazione_bando, Y, M)).map(b => rowURP(b, "data_pubblicazione_bando")).join("");
+      document.getElementById("tb-bandi-"+suffix).innerHTML = r1 || "";
+      document.getElementById("cnt-bandi-"+suffix).textContent = String((r1.match(/<tr>/g)||[]).length);
+
+      const r2 = urpList.filter(b => isInYM(b.data_pubblicazione_graduatoria, Y, M)).map(b => rowURP(b, "data_pubblicazione_graduatoria")).join("");
+      document.getElementById("tb-grad-"+suffix).innerHTML = r2 || "";
+      document.getElementById("cnt-grad-"+suffix).textContent = String((r2.match(/<tr>/g)||[]).length);
+
+      const r3 = urpList.filter(b => isInYM(b.data_scorrimento_utilizzo, Y, M)).map(b => rowURP(b, "data_scorrimento_utilizzo")).join("");
+      document.getElementById("tb-scorri-"+suffix).innerHTML = r3 || "";
+      document.getElementById("cnt-scorri-"+suffix).textContent = String((r3.match(/<tr>/g)||[]).length);
+    }
+    function renderMOBMonth(Y, M, suffix) {
+      const rows = mobList.filter(m => isInYM(getMobDate(m), Y, M)).map(rowMOB).join("");
+      document.getElementById("tb-mob-"+suffix).innerHTML = rows || "";
+      document.getElementById("cnt-mob-"+suffix).textContent = String((rows.match(/<tr>/g)||[]).length);
+    }
+
+    // ===== Init =====
+    const curr = getCurrYM();
+    const prev = getPrevYM();
+    document.getElementById("lblPrev").textContent = "Precedente: " + monthLabelFrom(prev.y, prev.m);
+    document.getElementById("lblCurr").textContent = "Corrente: " + monthLabelFrom(curr.y, curr.m);
+
+    (async function init(){
+      const urp = await fetchJSONBest("/_static/bandi-completi-urp.json", "bandi-completi-urp.json");
+      urpList = flattenURP(urp || []);
+      const mob = await fetchJSONBest("/_static/bandi-mobilita.json", "bandi-mobilita.json");
+      mobList = Array.isArray(mob) ? mob : [];
+
+      // render blocco mese precedente
+      renderURPMonth(prev.y, prev.m, "prev");
+      renderMOBMonth(prev.y, prev.m, "prev");
+
+      // render blocco mese corrente
+      renderURPMonth(curr.y, curr.m, "curr");
+      renderMOBMonth(curr.y, curr.m, "curr");
+    })();
+  </script>
+</body>
+</html>

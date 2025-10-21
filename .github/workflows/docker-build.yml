@@ -1,0 +1,48 @@
+name: Build and Push to GHCR
+
+on:
+  push:
+    branches:
+      - main
+      - test
+  pull_request:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+      # usa fetch-depth 0 se vuoi taggare con versioni/commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set image name (lowercase)
+        run: |
+          IMAGE_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_NAME=${IMAGE_LC}" >> $GITHUB_ENV
+
+      - name: Set Docker image tag based on branch
+        run: |
+          BRANCH_NAME=${GITHUB_REF##*/}
+          if [ "$BRANCH_NAME" = "main" ]; then
+            echo "IMAGE_TAG=latest" >> $GITHUB_ENV
+          else
+            # facoltativo: aggiungi anche lo short sha per evitare collisioni
+            SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+            echo "IMAGE_TAG=${BRANCH_NAME}-${SHORT_SHA}" >> $GITHUB_ENV
+          fi
+
+      - name: Build and push Docker image to GHCR
+        uses: macbre/push-to-ghcr@master
+        with:
+          image_name: ${{ env.IMAGE_NAME }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          tags: ${{ env.IMAGE_TAG }}

@@ -1,0 +1,16 @@
+services:
+  urp-sol-report:
+    build: .
+    container_name: urp-sol-report
+    ports:
+      - "8081:8081"
+    volumes:
+      - .:/app                # hot-reload dal filesystem locale
+      - ./instance:/app/instance   # sessioni/file persistenti (se usi flask sessione su filesystem)
+    env_file:
+      - .env
+    environment:
+      FLASK_ENV: development
+      PYTHONUNBUFFERED: "1"
+      PORT: "8081"
+    command: ["python", "/app/avvia_tool.py"]

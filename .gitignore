@@ -1,8 +1,29 @@
+# ambienti virtuali
 .venv/
 venv/
+
+# build artefacts
 build/
 dist/
+*.egg-info/
+
+# cache Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+
+# tool vari
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+
+# OS / editor
 .DS_Store
+*.swp
+.idea/
+.vscode/
+
+# segreti (se li usi)
 .env
+

@@ -25,7 +25,7 @@
       animation: spin 0.8s linear infinite; vertical-align: middle;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .update-buttons { margin-top: 10px; }
+    .update-buttons { margin-top: 10px;  padding-bottom: 10px; padding-top: 10px;}
     .update-buttons button { margin-right: 10px; }
     .badge-ok { color: #09814a; font-weight: bold; }
     .badge-ko { color: #b00020; font-weight: bold; }
@@ -58,13 +58,17 @@
 
   <nav style="margin-bottom: 20px;">
     <a href="index.html" style="margin-right: 15px;">Controllo Bandi</a>
-    <a href="search.html">Ricerca Libera</a>
+    <a href="access.html">Accessibilità URP</a>
     <a href="mobilita-urp.html">mobilità</a>
-    <a href="report.html">report</a>
-    <a href="report-v2.html">report v2</a>
-    <a href="/rdp-tool.html">report v2</a>
+    <a href="report-mese.html">Report del Mese</a>
+
   </nav>
 
+    <div class="update-buttons">
+      <button onclick="aggiornaURP()">🔄 Aggiorna URP</button>
+      <button onclick="aggiornaSOL()">🔄 Aggiorna Selezioni Online</button>
+    </div>
+    
   <div id="loading" style="color: #444; margin-top: 10px; font-style: italic; display: none;">
     ⏳ In attesa caricamento iniziale...
   </div>
@@ -80,10 +84,7 @@
       </span>
     </summary>
 
-    <div class="update-buttons">
-      <button onclick="aggiornaURP()">🔄 Aggiorna URP</button>
-      <button onclick="aggiornaSOL()">🔄 Aggiorna Selezioni Online</button>
-    </div>
+    
 
     <div class="row small" style="margin-top:8px;">
       <label for="mese">Filtra per mese:</label>

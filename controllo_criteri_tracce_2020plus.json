@@ -187,14 +187,14 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.475 FA COMPLIANCE",
-    "Link_bando": "https://www.urp.cnr.it/node/25501",
+    "Titolo_bando": "Codice Bando 367.489 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/27269",
     "Criteri_presenti": "✓",
-    "Link_Criteri": "https://www.urp.cnr.it/system/files?file=2025-10/bando367_475-compliance_pubblicazione-dei-criteri.pdf",
+    "Link_Criteri": "https://www.urp.cnr.it/system/files?file=2025-10/2-Pubblicazione-dei-criteri-Bando-367.489-1_signed.pdf",
     "Data_pubbl_Criteri": "2025-10-15",
     "Criteri_accessibile": "✗",
     "Criteri_note": "Testo presente ma mancano tag/struttura/lingua",
-    "Criteri_link_doc": "https://www.urp.cnr.it/system/files?file=2025-10/bando367_475-compliance_pubblicazione-dei-criteri.pdf",
+    "Criteri_link_doc": "https://www.urp.cnr.it/system/files?file=2025-10/2-Pubblicazione-dei-criteri-Bando-367.489-1_signed.pdf",
     "Tracce_presenti": "✗",
     "Link_Tracce": "",
     "Data_pubbl_Tracce": "",
@@ -212,23 +212,6 @@
     "Criteri_accessibile": "✗",
     "Criteri_note": "Testo presente ma mancano tag/struttura/lingua",
     "Criteri_link_doc": "https://www.urp.cnr.it/system/files?file=2025-10/bando367_475-compliance_pubblicazione-dei-criteri.pdf",
-    "Tracce_presenti": "✗",
-    "Link_Tracce": "",
-    "Data_pubbl_Tracce": "",
-    "Tracce_accessibile": "",
-    "Tracce_note": "",
-    "Tracce_link_doc": "",
-    "Fonte": "urp_nuovo"
-  },
-  {
-    "Titolo_bando": "Codice Bando 367.474 OTP IN",
-    "Link_bando": "https://www.urp.cnr.it/node/25503",
-    "Criteri_presenti": "✓",
-    "Link_Criteri": "https://www.urp.cnr.it/system/files?file=2025-10/pubblicazione-dei-criteri_firme-oscurate.pdf",
-    "Data_pubbl_Criteri": "2025-10-15",
-    "Criteri_accessibile": "✗",
-    "Criteri_note": "Testo presente ma mancano tag/struttura/lingua",
-    "Criteri_link_doc": "https://www.urp.cnr.it/system/files?file=2025-10/pubblicazione-dei-criteri_firme-oscurate.pdf",
     "Tracce_presenti": "✗",
     "Link_Tracce": "",
     "Data_pubbl_Tracce": "",
@@ -595,8 +578,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.573 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/34678",
+    "Titolo_bando": "Codice Bando 367.574 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/34645",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -614,6 +597,23 @@
   {
     "Titolo_bando": "Codice Bando 367.573 RIC",
     "Link_bando": "https://www.urp.cnr.it/node/34678",
+    "Criteri_presenti": "✗",
+    "Link_Criteri": "",
+    "Data_pubbl_Criteri": "",
+    "Criteri_accessibile": "",
+    "Criteri_note": "",
+    "Criteri_link_doc": "",
+    "Tracce_presenti": "✗",
+    "Link_Tracce": "",
+    "Data_pubbl_Tracce": "",
+    "Tracce_accessibile": "",
+    "Tracce_note": "",
+    "Tracce_link_doc": "",
+    "Fonte": "urp_nuovo"
+  },
+  {
+    "Titolo_bando": "Codice Bando 367.572 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/34677",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -663,25 +663,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.570 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/34675",
-    "Criteri_presenti": "✗",
-    "Link_Criteri": "",
-    "Data_pubbl_Criteri": "",
-    "Criteri_accessibile": "",
-    "Criteri_note": "",
-    "Criteri_link_doc": "",
-    "Tracce_presenti": "✗",
-    "Link_Tracce": "",
-    "Data_pubbl_Tracce": "",
-    "Tracce_accessibile": "",
-    "Tracce_note": "",
-    "Tracce_link_doc": "",
-    "Fonte": "urp_nuovo"
-  },
-  {
-    "Titolo_bando": "Codice Bando 367.568 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/34673",
+    "Titolo_bando": "Codice Bando 367.569 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/34674",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -731,8 +714,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.567 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/34672",
+    "Titolo_bando": "Codice Bando 367.566 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/34671",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -765,8 +748,25 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.565 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/34670",
+    "Titolo_bando": "Codice Bando 367.564 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/34669",
+    "Criteri_presenti": "✗",
+    "Link_Criteri": "",
+    "Data_pubbl_Criteri": "",
+    "Criteri_accessibile": "",
+    "Criteri_note": "",
+    "Criteri_link_doc": "",
+    "Tracce_presenti": "✗",
+    "Link_Tracce": "",
+    "Data_pubbl_Tracce": "",
+    "Tracce_accessibile": "",
+    "Tracce_note": "",
+    "Tracce_link_doc": "",
+    "Fonte": "urp_nuovo"
+  },
+  {
+    "Titolo_bando": "Codice Bando 367.563 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/34668",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -799,25 +799,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.562 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/34667",
-    "Criteri_presenti": "✗",
-    "Link_Criteri": "",
-    "Data_pubbl_Criteri": "",
-    "Criteri_accessibile": "",
-    "Criteri_note": "",
-    "Criteri_link_doc": "",
-    "Tracce_presenti": "✗",
-    "Link_Tracce": "",
-    "Data_pubbl_Tracce": "",
-    "Tracce_accessibile": "",
-    "Tracce_note": "",
-    "Tracce_link_doc": "",
-    "Fonte": "urp_nuovo"
-  },
-  {
-    "Titolo_bando": "Codice Bando 367.560 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/34665",
+    "Titolo_bando": "Codice Bando 367.561 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/34666",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -867,8 +850,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.557 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/34662",
+    "Titolo_bando": "Codice Bando 367.558 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/34663",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -1292,8 +1275,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.554 CTER ISTI",
-    "Link_bando": "https://www.urp.cnr.it/node/33435",
+    "Titolo_bando": "Codice Bando 367.555 CTER ITC",
+    "Link_bando": "https://www.urp.cnr.it/node/33437",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -1309,8 +1292,25 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.554 CTER ISTI",
-    "Link_bando": "https://www.urp.cnr.it/node/33435",
+    "Titolo_bando": "Codice Bando 367.553 CTER IGM",
+    "Link_bando": "https://www.urp.cnr.it/node/33434",
+    "Criteri_presenti": "✗",
+    "Link_Criteri": "",
+    "Data_pubbl_Criteri": "",
+    "Criteri_accessibile": "",
+    "Criteri_note": "",
+    "Criteri_link_doc": "",
+    "Tracce_presenti": "✗",
+    "Link_Tracce": "",
+    "Data_pubbl_Tracce": "",
+    "Tracce_accessibile": "",
+    "Tracce_note": "",
+    "Tracce_link_doc": "",
+    "Fonte": "urp_nuovo"
+  },
+  {
+    "Titolo_bando": "Codice Bando 367.552 CTER IMEM",
+    "Link_bando": "https://www.urp.cnr.it/node/33433",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -1343,8 +1343,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.551 CTER IMEM",
-    "Link_bando": "https://www.urp.cnr.it/node/33432",
+    "Titolo_bando": "Codice Bando 367.550 CTER ISAC",
+    "Link_bando": "https://www.urp.cnr.it/node/33430",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -1360,8 +1360,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.549 CTER IBPM",
-    "Link_bando": "https://www.urp.cnr.it/node/33428",
+    "Titolo_bando": "Codice Bando 367.550 CTER ISAC",
+    "Link_bando": "https://www.urp.cnr.it/node/33430",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -1411,8 +1411,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.548 CTER IBPM",
-    "Link_bando": "https://www.urp.cnr.it/node/33426",
+    "Titolo_bando": "Codice Bando 367.547 CTER ITC",
+    "Link_bando": "https://www.urp.cnr.it/node/33425",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -1428,8 +1428,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.546 CTER IIT",
-    "Link_bando": "https://www.urp.cnr.it/node/33422",
+    "Titolo_bando": "Codice Bando 367.545 CTER STEMS",
+    "Link_bando": "https://www.urp.cnr.it/node/33421",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -1445,8 +1445,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.546 CTER IIT",
-    "Link_bando": "https://www.urp.cnr.it/node/33422",
+    "Titolo_bando": "Codice Bando 367.545 CTER STEMS",
+    "Link_bando": "https://www.urp.cnr.it/node/33421",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -1496,25 +1496,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.543 CTER ISTP",
-    "Link_bando": "https://www.urp.cnr.it/node/33419",
-    "Criteri_presenti": "✗",
-    "Link_Criteri": "",
-    "Data_pubbl_Criteri": "",
-    "Criteri_accessibile": "",
-    "Criteri_note": "",
-    "Criteri_link_doc": "",
-    "Tracce_presenti": "✗",
-    "Link_Tracce": "",
-    "Data_pubbl_Tracce": "",
-    "Tracce_accessibile": "",
-    "Tracce_note": "",
-    "Tracce_link_doc": "",
-    "Fonte": "urp_nuovo"
-  },
-  {
-    "Titolo_bando": "Codice Bando 367.541 CTER IMEM",
-    "Link_bando": "https://www.urp.cnr.it/node/33417",
+    "Titolo_bando": "Codice Bando 367.542 CTER NANO",
+    "Link_bando": "https://www.urp.cnr.it/node/33418",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -1564,8 +1547,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.540 CTER ISB",
-    "Link_bando": "https://www.urp.cnr.it/node/33416",
+    "Titolo_bando": "Codice Bando 367.539 CTER ISPAAM",
+    "Link_bando": "https://www.urp.cnr.it/node/33415",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -1615,8 +1598,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 331.1 RIC IN",
-    "Link_bando": "https://www.urp.cnr.it/node/33461",
+    "Titolo_bando": "Codice Bando 331. 2 RIC IBBR",
+    "Link_bando": "https://www.urp.cnr.it/node/33462",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -1725,23 +1708,6 @@
     "Criteri_accessibile": "",
     "Criteri_note": "",
     "Criteri_link_doc": "",
-    "Tracce_presenti": "✗",
-    "Link_Tracce": "",
-    "Data_pubbl_Tracce": "",
-    "Tracce_accessibile": "",
-    "Tracce_note": "",
-    "Tracce_link_doc": "",
-    "Fonte": "urp_nuovo"
-  },
-  {
-    "Titolo_bando": "Codice Bando 367.477 TEC DSU",
-    "Link_bando": "https://www.urp.cnr.it/node/27264",
-    "Criteri_presenti": "✓",
-    "Link_Criteri": "https://www.urp.cnr.it/system/files?file=2025-09/Criteri-367.477-TEC-DSU_Redacted.pdf",
-    "Data_pubbl_Criteri": "2025-09-16",
-    "Criteri_accessibile": "✗",
-    "Criteri_note": "Testo presente ma mancano tag/struttura/lingua",
-    "Criteri_link_doc": "https://www.urp.cnr.it/system/files?file=2025-09/Criteri-367.477-TEC-DSU_Redacted.pdf",
     "Tracce_presenti": "✗",
     "Link_Tracce": "",
     "Data_pubbl_Tracce": "",
@@ -2380,6 +2346,23 @@
     "Fonte": "urp_nuovo"
   },
   {
+    "Titolo_bando": "Codice Bando 367.476 CTER ISOF",
+    "Link_bando": "https://www.urp.cnr.it/node/25504",
+    "Criteri_presenti": "✓",
+    "Link_Criteri": "https://www.urp.cnr.it/system/files?file=2025-06/1ERRATA-CORRIGE-A-CRITERI-DI-VALUTAZIONE-TITOLI-ALLEGATO-VERBALE-2-Criteri-bando-367_signed.pdf",
+    "Data_pubbl_Criteri": "2025-06-18",
+    "Criteri_accessibile": "✗",
+    "Criteri_note": "Testo presente ma mancano tag/struttura/lingua",
+    "Criteri_link_doc": "https://www.urp.cnr.it/system/files?file=2025-06/1ERRATA-CORRIGE-A-CRITERI-DI-VALUTAZIONE-TITOLI-ALLEGATO-VERBALE-2-Criteri-bando-367_signed.pdf",
+    "Tracce_presenti": "✓",
+    "Link_Tracce": "https://www.urp.cnr.it/system/files?file=2025-08/AVVISO-CONVOCAZIONE-PROVA-ORALE-367.476-CTER-ISOF.pdf",
+    "Data_pubbl_Tracce": "2025-08-07",
+    "Tracce_accessibile": "✗",
+    "Tracce_note": "Testo presente ma mancano tag/struttura/lingua",
+    "Tracce_link_doc": "https://www.urp.cnr.it/system/files?file=2025-08/AVVISO-CONVOCAZIONE-PROVA-ORALE-367.476-CTER-ISOF.pdf",
+    "Fonte": "urp_nuovo"
+  },
+  {
     "Titolo_bando": "Codice Bando 331.5 RIC IFN",
     "Link_bando": "https://www.urp.cnr.it/node/30263",
     "Criteri_presenti": "✓",
@@ -2516,8 +2499,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.521 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/32231",
+    "Titolo_bando": "Codice Bando 367.520 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/32232",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -2533,8 +2516,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.521 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/32231",
+    "Titolo_bando": "Codice Bando 367.520 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/32232",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -2601,8 +2584,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.516 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/32236",
+    "Titolo_bando": "Codice Bando 367.517 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/32235",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -2618,8 +2601,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.516 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/32236",
+    "Titolo_bando": "Codice Bando 367.515 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/32237",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -2652,8 +2635,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.513 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/32239",
+    "Titolo_bando": "Codice Bando 367.514 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/32238",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -2669,8 +2652,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.513 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/32239",
+    "Titolo_bando": "Codice Bando 367.512 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/32240",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -2686,8 +2669,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.511 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/32241",
+    "Titolo_bando": "Codice Bando 367.512 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/32240",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -2737,8 +2720,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.508 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/32244",
+    "Titolo_bando": "Codice Bando 367.509 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/32243",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -2754,8 +2737,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.508 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/32244",
+    "Titolo_bando": "Codice Bando 367.507 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/32245",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -2788,8 +2771,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.505 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/32247",
+    "Titolo_bando": "Codice Bando 367.506 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/32246",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -2805,8 +2788,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.505 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/32247",
+    "Titolo_bando": "Codice Bando 367.504 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/32248",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -2822,8 +2805,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.503 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/32249",
+    "Titolo_bando": "Codice Bando 367.504 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/32248",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -3485,23 +3468,6 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 331.1 RIC ISAC",
-    "Link_bando": "https://www.urp.cnr.it/node/22958",
-    "Criteri_presenti": "✓",
-    "Link_Criteri": "https://www.urp.cnr.it/system/files?file=2025-06/ALL-12_STRALCIO-CRITERI-BANDO-331.1-no-firme.pdf",
-    "Data_pubbl_Criteri": "2025-05-30",
-    "Criteri_accessibile": "✗",
-    "Criteri_note": "Sembra scansione (nessun testo estraibile)",
-    "Criteri_link_doc": "https://www.urp.cnr.it/system/files?file=2025-06/ALL-12_STRALCIO-CRITERI-BANDO-331.1-no-firme.pdf",
-    "Tracce_presenti": "✗",
-    "Link_Tracce": "",
-    "Data_pubbl_Tracce": "",
-    "Tracce_accessibile": "",
-    "Tracce_note": "",
-    "Tracce_link_doc": "",
-    "Fonte": "urp_nuovo"
-  },
-  {
     "Titolo_bando": "Avviso ANS1.20/PD",
     "Link_bando": "https://www.urp.cnr.it/node/25480",
     "Criteri_presenti": "✓",
@@ -3604,8 +3570,59 @@
     "Fonte": "urp_nuovo"
   },
   {
+    "Titolo_bando": "Codice Bando 367.497 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/27293",
+    "Criteri_presenti": "✗",
+    "Link_Criteri": "",
+    "Data_pubbl_Criteri": "",
+    "Criteri_accessibile": "",
+    "Criteri_note": "",
+    "Criteri_link_doc": "",
+    "Tracce_presenti": "✗",
+    "Link_Tracce": "",
+    "Data_pubbl_Tracce": "",
+    "Tracce_accessibile": "",
+    "Tracce_note": "",
+    "Tracce_link_doc": "",
+    "Fonte": "urp_nuovo"
+  },
+  {
+    "Titolo_bando": "Codice Bando 367.497 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/27293",
+    "Criteri_presenti": "✗",
+    "Link_Criteri": "",
+    "Data_pubbl_Criteri": "",
+    "Criteri_accessibile": "",
+    "Criteri_note": "",
+    "Criteri_link_doc": "",
+    "Tracce_presenti": "✗",
+    "Link_Tracce": "",
+    "Data_pubbl_Tracce": "",
+    "Tracce_accessibile": "",
+    "Tracce_note": "",
+    "Tracce_link_doc": "",
+    "Fonte": "urp_nuovo"
+  },
+  {
     "Titolo_bando": "Codice Bando 367.496 RIC",
     "Link_bando": "https://www.urp.cnr.it/node/27290",
+    "Criteri_presenti": "✗",
+    "Link_Criteri": "",
+    "Data_pubbl_Criteri": "",
+    "Criteri_accessibile": "",
+    "Criteri_note": "",
+    "Criteri_link_doc": "",
+    "Tracce_presenti": "✗",
+    "Link_Tracce": "",
+    "Data_pubbl_Tracce": "",
+    "Tracce_accessibile": "",
+    "Tracce_note": "",
+    "Tracce_link_doc": "",
+    "Fonte": "urp_nuovo"
+  },
+  {
+    "Titolo_bando": "Codice Bando 367.494 RIC",
+    "Link_bando": "https://www.urp.cnr.it/node/27284",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -3706,40 +3723,6 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 367.490 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/27273",
-    "Criteri_presenti": "✗",
-    "Link_Criteri": "",
-    "Data_pubbl_Criteri": "",
-    "Criteri_accessibile": "",
-    "Criteri_note": "",
-    "Criteri_link_doc": "",
-    "Tracce_presenti": "✗",
-    "Link_Tracce": "",
-    "Data_pubbl_Tracce": "",
-    "Tracce_accessibile": "",
-    "Tracce_note": "",
-    "Tracce_link_doc": "",
-    "Fonte": "urp_nuovo"
-  },
-  {
-    "Titolo_bando": "Codice Bando 367.487 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/27302",
-    "Criteri_presenti": "✗",
-    "Link_Criteri": "",
-    "Data_pubbl_Criteri": "",
-    "Criteri_accessibile": "",
-    "Criteri_note": "",
-    "Criteri_link_doc": "",
-    "Tracce_presenti": "✗",
-    "Link_Tracce": "",
-    "Data_pubbl_Tracce": "",
-    "Tracce_accessibile": "",
-    "Tracce_note": "",
-    "Tracce_link_doc": "",
-    "Fonte": "urp_nuovo"
-  },
-  {
     "Titolo_bando": "Codice Bando 367.487 RIC",
     "Link_bando": "https://www.urp.cnr.it/node/27302",
     "Criteri_presenti": "✗",
@@ -3759,23 +3742,6 @@
   {
     "Titolo_bando": "Codice Bando 367.485 RIC",
     "Link_bando": "https://www.urp.cnr.it/node/27295",
-    "Criteri_presenti": "✗",
-    "Link_Criteri": "",
-    "Data_pubbl_Criteri": "",
-    "Criteri_accessibile": "",
-    "Criteri_note": "",
-    "Criteri_link_doc": "",
-    "Tracce_presenti": "✗",
-    "Link_Tracce": "",
-    "Data_pubbl_Tracce": "",
-    "Tracce_accessibile": "",
-    "Tracce_note": "",
-    "Tracce_link_doc": "",
-    "Fonte": "urp_nuovo"
-  },
-  {
-    "Titolo_bando": "Codice Bando 367.483 RIC",
-    "Link_bando": "https://www.urp.cnr.it/node/27288",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -3978,6 +3944,23 @@
     "Fonte": "urp_nuovo"
   },
   {
+    "Titolo_bando": "Codice Bando 331.4 RIC IPCB SS Lecco",
+    "Link_bando": "https://www.urp.cnr.it/node/22966",
+    "Criteri_presenti": "✓",
+    "Link_Criteri": "https://www.urp.cnr.it/system/files?file=2025-04/Pubblicazione-Scheda-Criteri-di-valutazione-Bando-331.4-RIC-IPCB-SS-Lecco-Firme-Oscurate.pdf",
+    "Data_pubbl_Criteri": "2025-04-10",
+    "Criteri_accessibile": "✗",
+    "Criteri_note": "Sembra scansione (nessun testo estraibile)",
+    "Criteri_link_doc": "https://www.urp.cnr.it/system/files?file=2025-04/Pubblicazione-Scheda-Criteri-di-valutazione-Bando-331.4-RIC-IPCB-SS-Lecco-Firme-Oscurate.pdf",
+    "Tracce_presenti": "✗",
+    "Link_Tracce": "",
+    "Data_pubbl_Tracce": "",
+    "Tracce_accessibile": "",
+    "Tracce_note": "",
+    "Tracce_link_doc": "",
+    "Fonte": "urp_nuovo"
+  },
+  {
     "Titolo_bando": "Codice Bando 331.1 TEC IFAC",
     "Link_bando": "https://www.urp.cnr.it/node/23487",
     "Criteri_presenti": "✓",
@@ -3986,6 +3969,23 @@
     "Criteri_accessibile": "✗",
     "Criteri_note": "Testo presente ma mancano tag/struttura/lingua",
     "Criteri_link_doc": "https://www.urp.cnr.it/system/files?file=2025-04/1.9-modello-per-la-pubblicazione-dei-criteri-bandi-t.d_signed.pdf",
+    "Tracce_presenti": "✗",
+    "Link_Tracce": "",
+    "Data_pubbl_Tracce": "",
+    "Tracce_accessibile": "",
+    "Tracce_note": "",
+    "Tracce_link_doc": "",
+    "Fonte": "urp_nuovo"
+  },
+  {
+    "Titolo_bando": "Codice Bando 367.473 OTP IN",
+    "Link_bando": "https://www.urp.cnr.it/node/25502",
+    "Criteri_presenti": "✗",
+    "Link_Criteri": "",
+    "Data_pubbl_Criteri": "",
+    "Criteri_accessibile": "",
+    "Criteri_note": "",
+    "Criteri_link_doc": "",
     "Tracce_presenti": "✗",
     "Link_Tracce": "",
     "Data_pubbl_Tracce": "",
@@ -4896,6 +4896,23 @@
     "Fonte": "urp_nuovo"
   },
   {
+    "Titolo_bando": "Codice Bando 331.3 RIC ISSMC",
+    "Link_bando": "https://www.urp.cnr.it/node/16688",
+    "Criteri_presenti": "✓",
+    "Link_Criteri": "https://www.urp.cnr.it/system/files?file=2024-11/Stralcio-Verbale-11-11-firmato-PDF_firme-oscurate.pdf",
+    "Data_pubbl_Criteri": "2024-11-11",
+    "Criteri_accessibile": "✗",
+    "Criteri_note": "Sembra scansione (nessun testo estraibile)",
+    "Criteri_link_doc": "https://www.urp.cnr.it/system/files?file=2024-11/Stralcio-Verbale-11-11-firmato-PDF_firme-oscurate.pdf",
+    "Tracce_presenti": "✓",
+    "Link_Tracce": "https://www.urp.cnr.it/system/files?file=2024-12/TRASMISSIONE-DOMANDE-BANDO-331.3-INTEGRANO_signed.pdf",
+    "Data_pubbl_Tracce": "2024-12-03",
+    "Tracce_accessibile": "✗",
+    "Tracce_note": "Sembra scansione (nessun testo estraibile)",
+    "Tracce_link_doc": "https://www.urp.cnr.it/system/files?file=2024-12/TRASMISSIONE-DOMANDE-BANDO-331.3-INTEGRANO_signed.pdf",
+    "Fonte": "urp_nuovo"
+  },
+  {
     "Titolo_bando": "Codice Bando 331.1 RIC ICCOM",
     "Link_bando": "https://www.urp.cnr.it/node/17521",
     "Criteri_presenti": "✓",
@@ -5083,23 +5100,6 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 331.2 RIC ISM",
-    "Link_bando": "https://www.urp.cnr.it/node/14882",
-    "Criteri_presenti": "✓",
-    "Link_Criteri": "https://www.urp.cnr.it/system/files?file=2024-11/Estratto-citeri-di-valutazione-331-2-ISM-RIC-1-signed.pdf",
-    "Data_pubbl_Criteri": "2024-11-12",
-    "Criteri_accessibile": "✗",
-    "Criteri_note": "Testo presente ma mancano tag/struttura/lingua",
-    "Criteri_link_doc": "https://www.urp.cnr.it/system/files?file=2024-11/Estratto-citeri-di-valutazione-331-2-ISM-RIC-1-signed.pdf",
-    "Tracce_presenti": "✗",
-    "Link_Tracce": "",
-    "Data_pubbl_Tracce": "",
-    "Tracce_accessibile": "",
-    "Tracce_note": "",
-    "Tracce_link_doc": "",
-    "Fonte": "urp_nuovo"
-  },
-  {
     "Titolo_bando": "Codice Bando 331.3 RIC IFN",
     "Link_bando": "https://www.urp.cnr.it/node/16201",
     "Criteri_presenti": "✓",
@@ -5108,23 +5108,6 @@
     "Criteri_accessibile": "✗",
     "Criteri_note": "Testo presente ma mancano tag/struttura/lingua",
     "Criteri_link_doc": "https://www.urp.cnr.it/system/files?file=2024-11/Estratto_IC_FC_signed.pdf",
-    "Tracce_presenti": "✗",
-    "Link_Tracce": "",
-    "Data_pubbl_Tracce": "",
-    "Tracce_accessibile": "",
-    "Tracce_note": "",
-    "Tracce_link_doc": "",
-    "Fonte": "urp_nuovo"
-  },
-  {
-    "Titolo_bando": "Codice Bando 331.2 RIC ISSMC",
-    "Link_bando": "https://www.urp.cnr.it/node/16707",
-    "Criteri_presenti": "✓",
-    "Link_Criteri": "https://www.urp.cnr.it/system/files?file=2024-11/Stralcio-verbale-1deg-riunione_111124.pdf",
-    "Data_pubbl_Criteri": "2024-11-11",
-    "Criteri_accessibile": "✗",
-    "Criteri_note": "Sembra scansione (nessun testo estraibile)",
-    "Criteri_link_doc": "https://www.urp.cnr.it/system/files?file=2024-11/Stralcio-verbale-1deg-riunione_111124.pdf",
     "Tracce_presenti": "✗",
     "Link_Tracce": "",
     "Data_pubbl_Tracce": "",
@@ -5287,6 +5270,23 @@
     "Fonte": "urp_nuovo"
   },
   {
+    "Titolo_bando": "Codice Bando 331.3 TEC IPSP",
+    "Link_bando": "https://www.urp.cnr.it/node/14854",
+    "Criteri_presenti": "✓",
+    "Link_Criteri": "https://www.urp.cnr.it/system/files?file=2024-10/Pubblicazione-Criteri-Bando-331.3-TEC-IPSP-Tecnologo-firmato.pdf",
+    "Data_pubbl_Criteri": "2024-10-30",
+    "Criteri_accessibile": "✗",
+    "Criteri_note": "Testo presente ma mancano tag/struttura/lingua",
+    "Criteri_link_doc": "https://www.urp.cnr.it/system/files?file=2024-10/Pubblicazione-Criteri-Bando-331.3-TEC-IPSP-Tecnologo-firmato.pdf",
+    "Tracce_presenti": "✗",
+    "Link_Tracce": "",
+    "Data_pubbl_Tracce": "",
+    "Tracce_accessibile": "",
+    "Tracce_note": "",
+    "Tracce_link_doc": "",
+    "Fonte": "urp_nuovo"
+  },
+  {
     "Titolo_bando": "Codice Bando 331.1 TEC IIT",
     "Link_bando": "https://www.urp.cnr.it/node/13214",
     "Criteri_presenti": "✓",
@@ -5440,6 +5440,23 @@
     "Fonte": "urp_nuovo"
   },
   {
+    "Titolo_bando": "Codice Bando 367.455 TEC SAC",
+    "Link_bando": "https://www.urp.cnr.it/node/3960",
+    "Criteri_presenti": "✓",
+    "Link_Criteri": "https://www.urp.cnr.it/system/files?file=2024-10/Bando-n-367.455-TEC-SAC-criteri_Redacted.pdf",
+    "Data_pubbl_Criteri": "2024-10-10",
+    "Criteri_accessibile": "✗",
+    "Criteri_note": "Sembra scansione (nessun testo estraibile)",
+    "Criteri_link_doc": "https://www.urp.cnr.it/system/files?file=2024-10/Bando-n-367.455-TEC-SAC-criteri_Redacted.pdf",
+    "Tracce_presenti": "✗",
+    "Link_Tracce": "",
+    "Data_pubbl_Tracce": "",
+    "Tracce_accessibile": "",
+    "Tracce_note": "",
+    "Tracce_link_doc": "",
+    "Fonte": "urp_nuovo"
+  },
+  {
     "Titolo_bando": "Codice Bando 367.451 CTER SAC",
     "Link_bando": "https://www.urp.cnr.it/node/3176",
     "Criteri_presenti": "✓",
@@ -5556,23 +5573,6 @@
     "Tracce_accessibile": "",
     "Tracce_note": "",
     "Tracce_link_doc": "",
-    "Fonte": "urp_nuovo"
-  },
-  {
-    "Titolo_bando": "Codice Bando 367.457 CTER UPP",
-    "Link_bando": "https://www.urp.cnr.it/node/3962",
-    "Criteri_presenti": "✓",
-    "Link_Criteri": "https://www.urp.cnr.it/system/files?file=2024-07/Bando-367_457-CTER-UPP_pubblicazione-dei-criteri.pdf",
-    "Data_pubbl_Criteri": "2024-07-18",
-    "Criteri_accessibile": "✗",
-    "Criteri_note": "Testo presente ma mancano tag/struttura/lingua",
-    "Criteri_link_doc": "https://www.urp.cnr.it/system/files?file=2024-07/Bando-367_457-CTER-UPP_pubblicazione-dei-criteri.pdf",
-    "Tracce_presenti": "✓",
-    "Link_Tracce": "https://www.urp.cnr.it/system/files?file=2024-10/Avviso-convocazione-367.457-CTER.pdf",
-    "Data_pubbl_Tracce": "2024-10-03",
-    "Tracce_accessibile": "✗",
-    "Tracce_note": "Testo presente ma mancano tag/struttura/lingua",
-    "Tracce_link_doc": "https://www.urp.cnr.it/system/files?file=2024-10/Avviso-convocazione-367.457-CTER.pdf",
     "Fonte": "urp_nuovo"
   },
   {
@@ -6239,8 +6239,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 390.453 ISPC",
-    "Link_bando": "https://www.urp.cnr.it/node/8032",
+    "Titolo_bando": "Codice Bando 390.454 IGB",
+    "Link_bando": "https://www.urp.cnr.it/node/8033",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -6800,8 +6800,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 390.444 IFT",
-    "Link_bando": "https://www.urp.cnr.it/node/1351",
+    "Titolo_bando": "Codice Bando 390.445 DSSTTA",
+    "Link_bando": "https://www.urp.cnr.it/node/1352",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
@@ -6817,8 +6817,8 @@
     "Fonte": "urp_nuovo"
   },
   {
-    "Titolo_bando": "Codice Bando 390.443 IRGB",
-    "Link_bando": "https://www.urp.cnr.it/node/1350",
+    "Titolo_bando": "Codice Bando 390.442 IGG",
+    "Link_bando": "https://www.urp.cnr.it/node/1349",
     "Criteri_presenti": "✗",
     "Link_Criteri": "",
     "Data_pubbl_Criteri": "",
