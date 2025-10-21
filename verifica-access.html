@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <title>Verifica accessibilità PDF</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body{font-family:Arial, sans-serif; margin:20px; color:#222}
+    h1{margin:0 0 6px}
+    .muted{color:#666}
+    .zone{border:2px dashed #b7c0ff; background:#f7f9ff; padding:20px; border-radius:12px; text-align:center; cursor:pointer}
+    .zone.drag{background:#eef2ff}
+    .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:10px 0}
+    button{padding:8px 12px; cursor:pointer}
+    table{width:100%; border-collapse:collapse; margin-top:14px}
+    th,td{border:1px solid #e1e1e1; padding:8px; vertical-align:top; text-align:left}
+    th{background:#f5f5f5}
+    .ok{color:#0f6b3a; font-weight:600}
+    .ko{color:#b00020; font-weight:600}
+    .warn{color:#7a4a00; font-weight:600}
+    .pill{display:inline-block; background:#eef2ff; color:#3f51b5; border-radius:999px; padding:2px 8px; font-size:.85rem; margin-left:8px;}
+  </style>
+</head>
+<body>
+  <nav style="margin-bottom:16px">
+    <a href="index.html">← Torna</a>
+  </nav>
+
+  <nav style="margin-bottom: 20px;">
+    <a href="index.html" style="margin-right: 15px;">Controllo Bandi</a>
+    <a href="access.html" style="margin-right: 15px;">Accessibilità URP</a>
+    <a href="verifica-access.html" style="margin-right: 15px;">Verifica PDF</a>
+
+    <a href="mobilita-urp.html" style="margin-right: 15px;">mobilità</a>
+    <a href="report-mese.html" style="margin-right: 15px;">Report del Mese</a>
+
+  </nav>
+
+  <h1>Verifica accessibilità PDF <span id="cnt" class="pill">0 file</span></h1>
+  <div class="muted small">Carica uno o più documenti per valutarne l’accessibilità (regole: testo estraibile; tag/struttura/lingua → “accessibile”, solo testo → “parziale”).</div>
+
+  <div class="row">
+    <input id="fileIn" type="file" multiple accept=".pdf,.zip,.doc,.docx,.odt,.rtf" />
+    <button id="btnUpload">Verifica</button>
+  </div>
+
+  <div id="drop" class="zone">Trascina qui i file oppure clicca per selezionare</div>
+
+  <table id="tab" style="display:none">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Nome</th>
+        <th>Esito</th>
+        <th>Dettagli</th>
+        <th>Note</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+<script>
+  const inEl = document.getElementById('fileIn');
+  const drop = document.getElementById('drop');
+  const btn = document.getElementById('btnUpload');
+  const tab = document.getElementById('tab').querySelector('tbody');
+  const cnt = document.getElementById('cnt');
+  let queue = [];
+
+  function humanBadge(r){
+    if (!r.is_pdf) return `<span class="warn">non PDF</span>`;
+    if (r.level === 'accessibile') return `<span class="ok">accessibile</span> (${r.score}%)`;
+    if (r.level === 'parziale') return `<span class="warn">parzialmente accessibile</span> (${r.score}%)`;
+    if (!r.has_text) return `<span class="ko">solo immagine</span>`;
+    return `<span class="ko">non accessibile</span>`;
+  }
+
+  function detailGrid(r){
+    return `
+      <div style="display:grid; grid-template-columns:auto auto; gap:2px 10px; font-size:.9rem;">
+        <div>PDF</div><div>${r.is_pdf ? "✓" : "✗"}</div>
+        <div>Testo</div><div>${r.has_text ? "✓" : "✗"}</div>
+        <div>Tag</div><div>${r.is_tagged ? "✓" : "✗"}</div>
+        <div>Struttura</div><div>${r.has_struct_tree ? "✓" : "✗"}</div>
+        <div>Lingua</div><div>${r.lang ? `<code>${r.lang}</code>` : "—"}</div>
+        <div>Titolo</div><div>${r.has_title ? "✓" : "✗"}</div>
+        <div>Livello</div><div>${r.level}</div>
+      </div>`;
+  }
+
+  function render(results){
+    const tbody = tab;
+    document.getElementById('tab').style.display = 'table';
+    tbody.innerHTML = results.map((r,i)=>`
+      <tr>
+        <td>${i+1}</td>
+        <td>${r.filename || ""}</td>
+        <td>${humanBadge(r)}</td>
+        <td>${detailGrid(r)}</td>
+        <td>${r.note || ""}</td>
+      </tr>
+    `).join('');
+  }
+
+  async function upload(files){
+    if (!files || !files.length) return;
+    cnt.textContent = `${files.length} file`;
+    // se 1 file → endpoint singolo, se >1 → batch
+    if (files.length === 1) {
+      const fd = new FormData();
+      fd.append('file', files[0], files[0].name);
+      const res = await fetch('/api/check-access', { method:'POST', body: fd });
+      const js = await res.json();
+      if (!js.ok) { alert('Errore: ' + (js.error||'')); return; }
+      render([js.result]);
+    } else {
+      const fd = new FormData();
+      for (const f of files) fd.append('files', f, f.name);
+      const res = await fetch('/api/check-access-batch', { method:'POST', body: fd });
+      const js = await res.json();
+      if (!js.ok) { alert('Errore: ' + (js.error||'')); return; }
+      render(js.results || []);
+    }
+  }
+
+  btn.addEventListener('click', ()=> upload(inEl.files));
+  drop.addEventListener('click', ()=> inEl.click());
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag'); });
+  drop.addEventListener('dragleave', ()=> drop.classList.remove('drag'));
+  drop.addEventListener('drop', e => {
+    e.preventDefault(); drop.classList.remove('drag');
+    if (e.dataTransfer.files && e.dataTransfer.files.length) {
+      inEl.files = e.dataTransfer.files;
+      upload(inEl.files);
+    }
+  });
+</script>
+</body>
+</html>

@@ -74,6 +74,112 @@ app.register_blueprint(auth_bp)
 
 
 # ========= Utils =========
+
+
+# --- ACCESS CHECK UTILS (riuso leggero dello scraper) ---
+import io
+try:
+    from pdfminer.high_level import extract_text as _pdf_extract_text
+    PDFMINER_AVAILABLE = True
+except Exception:
+    PDFMINER_AVAILABLE = False
+
+try:
+    import pikepdf
+    PIKEPDF_AVAILABLE = True
+except Exception:
+    PIKEPDF_AVAILABLE = False
+
+
+def _pdf_has_text_bytes(pdf_bytes: bytes) -> bool:
+    if not PDFMINER_AVAILABLE:
+        return False
+    try:
+        txt = _pdf_extract_text(io.BytesIO(pdf_bytes)) or ""
+        return len(txt.strip()) >= 200
+    except Exception:
+        return False
+
+def _pdf_tag_info_bytes(pdf_bytes: bytes) -> dict:
+    info = {"is_tagged": False, "has_struct_tree": False, "lang": None, "title": None}
+    if not PIKEPDF_AVAILABLE:
+        return info
+    try:
+        with pikepdf.open(io.BytesIO(pdf_bytes)) as pdf:
+            root = pdf.root
+            markinfo = root.get("/MarkInfo", None)
+            if isinstance(markinfo, pikepdf.Dictionary):
+                info["is_tagged"] = bool(markinfo.get("/Marked", False))
+            info["has_struct_tree"] = "/StructTreeRoot" in root
+            if "/Lang" in root:
+                try:
+                    info["lang"] = str(root["/Lang"])
+                except Exception:
+                    info["lang"] = None
+            try:
+                meta = pdf.open_metadata()
+                t = (meta.get("dc:title") or meta.get("pdf:Title") or "").strip()
+                info["title"] = t or None
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return info
+
+def _level_and_score(has_text: bool, is_tagged: bool, has_struct: bool, lang: str|None) -> tuple[str, int]:
+    # stessa semantica che usi lato UI
+    if not has_text:
+        return "non_accessibile", 0
+    pts = 0
+    if is_tagged:      pts += 40
+    if has_struct:     pts += 40
+    if lang:           pts += 20
+    # accessibile se >=60 e ha_text
+    if pts >= 60:
+        return "accessibile", pts
+    return "parziale", max(40, pts)  # parziale con almeno 40 se c'è testo
+
+def evaluate_uploaded(bytes_data: bytes, filename: str) -> dict:
+    lower = (filename or "").lower()
+    is_pdf = lower.endswith(".pdf")
+    out = {
+        "filename": filename,
+        "checked": False,
+        "is_pdf": is_pdf,
+        "has_text": False,
+        "is_tagged": False,
+        "has_struct_tree": False,
+        "lang": None,
+        "has_title": False,
+        "accessible": False,
+        "level": "non_accessibile",
+        "score": 0,
+        "note": ""
+    }
+    if not is_pdf:
+        out["note"] = "Non PDF – non valutabile"
+        return out
+
+    out["checked"] = True
+    has_text = _pdf_has_text_bytes(bytes_data)
+    tag = _pdf_tag_info_bytes(bytes_data)
+    out["has_text"] = has_text
+    out["is_tagged"] = bool(tag.get("is_tagged"))
+    out["has_struct_tree"] = bool(tag.get("has_struct_tree"))
+    out["lang"] = tag.get("lang")
+    out["has_title"] = bool(tag.get("title"))
+
+    level, score = _level_and_score(out["has_text"], out["is_tagged"], out["has_struct_tree"], out["lang"])
+    out["level"] = level
+    out["score"] = score
+    out["accessible"] = (level == "accessibile")
+    if not out["has_text"]:
+        out["note"] = "Sembra scansione (nessun testo estraibile)"
+    elif level == "parziale":
+        out["note"] = "Testo presente ma mancano tag/struttura/lingua"
+    return out
+
+
 def _ts(path: str) -> str | None:
     p = os.path.join(DIR, path)
     if not os.path.exists(p):
@@ -300,6 +406,35 @@ def api_bandi_rdp():
     return jsonify(enriched)
 
 
+
+
+from werkzeug.utils import secure_filename
+
+@app.post("/api/check-access")
+@login_required
+def api_check_access_single():
+    if "file" not in request.files:
+        return jsonify({"ok": False, "error": "Parametro 'file' assente"}), 400
+    f = request.files["file"]
+    name = secure_filename(f.filename or "documento.pdf")
+    data = f.read()
+    res = evaluate_uploaded(data, name)
+    return jsonify({"ok": True, "result": res})
+
+@app.post("/api/check-access-batch")
+@login_required
+def api_check_access_batch():
+    files = request.files.getlist("files")
+    if not files:
+        return jsonify({"ok": False, "error": "Parametro 'files' assente"}), 400
+    out = []
+    for f in files:
+        name = secure_filename(f.filename or "documento.pdf")
+        data = f.read()
+        out.append(evaluate_uploaded(data, name))
+    return jsonify({"ok": True, "results": out})
+
+
 # ========= Bootstrap =========
 def main():
     t = threading.Thread(target=startup_sequence, daemon=True)
@@ -310,6 +445,8 @@ def main():
 
     print(f"[INFO] Server Flask su http://localhost:{PORT}", flush=True)
     app.run(host="0.0.0.0", port=PORT, debug=False)
+
+
 
 
 

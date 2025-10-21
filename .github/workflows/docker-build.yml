@@ -2,9 +2,7 @@ name: Build and Push to GHCR
 
 on:
   push:
-    branches:
-      - main
-      - test
+    branches: [ main, test ]
   pull_request:
 
 env:
@@ -19,11 +17,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-      # usa fetch-depth 0 se vuoi taggare con versioni/commit
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
+      # GHCR richiede il nome immagine in minuscolo
       - name: Set image name (lowercase)
         run: |
           IMAGE_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
@@ -35,9 +31,7 @@ jobs:
           if [ "$BRANCH_NAME" = "main" ]; then
             echo "IMAGE_TAG=latest" >> $GITHUB_ENV
           else
-            # facoltativo: aggiungi anche lo short sha per evitare collisioni
-            SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
-            echo "IMAGE_TAG=${BRANCH_NAME}-${SHORT_SHA}" >> $GITHUB_ENV
+            echo "IMAGE_TAG=$BRANCH_NAME" >> $GITHUB_ENV
           fi
 
       - name: Build and push Docker image to GHCR
@@ -46,3 +40,6 @@ jobs:
           image_name: ${{ env.IMAGE_NAME }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           tags: ${{ env.IMAGE_TAG }}
+          # (opzionale) se Dockerfile NON è nella root, indica il path:
+          # context: ./urp-sol-report
+          # dockerfile: ./urp-sol-report/Dockerfile
