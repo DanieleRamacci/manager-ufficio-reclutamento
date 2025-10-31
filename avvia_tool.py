@@ -262,6 +262,11 @@ def root():
 def index_html():
     return send_from_directory(DIR, "index.html")
 
+@app.route("/stato-avanzamento.html")
+@login_required
+def stato_avanzamento_html():
+    return send_from_directory(DIR, "stato-avanzamento.html")
+
 
 @app.route("/access.html")
 @login_required

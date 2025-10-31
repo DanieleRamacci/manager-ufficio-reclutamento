@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <title>Stato Avanzamento – Bandi CNR</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    nav a { margin-right: 15px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #f4f4f4; }
+    .row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+    .pill { display:inline-block; background:#eef2ff; color:#3f51b5; border-radius:999px; padding:2px 8px; font-size:.85rem; margin-left:8px; }
+    .small { font-size: 0.9em; color:#666; }
+    .link { color:#0b5ed7; text-decoration:none; } .link:hover { text-decoration:underline; }
+    .tooltip { position: relative; cursor: pointer; color:#0b5ed7; }
+    .tooltip:hover::after { content: attr(data-tip); position: absolute; left: 0; top: 100%; background: #333; color: #fff; padding: 5px; border-radius: 5px; white-space: pre-wrap; width: 320px; z-index: 1; }
+    .ok { color:#09814a; font-weight:600; }     /* spunta verde */
+    .ko { color:#b00020; font-weight:600; }     /* croce rossa */
+    #loading::after { content: ""; display:inline-block; width:14px; height:14px; margin-left:10px; border:2px solid #ccc; border-top:2px solid #333; border-radius:50%; animation: spin .8s linear infinite; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a href="index.html">Controllo Bandi</a>
+    <a href="access.html">Accessibilità URP</a>
+    <a href="verifica-access.html">Verifica PDF</a>
+    <a href="mobilita-urp.html">Mobilità</a>
+    <a href="report-mese.html">Report del Mese</a>
+    <strong>• Stato Avanzamento</strong>
+  </nav>
+
+  <h2>Stato Avanzamento <span class="pill" id="count">0 risultati</span></h2>
+  <div id="loading" class="small" style="display:none;">⏳ Caricamento dati…</div>
+  <div class="small" id="metaURP"></div>
+  <div class="small" id="metaSOL" style="margin-bottom:12px;"></div>
+
+  <!-- FILTRI -->
+  <div class="row small" style="margin-top:8px;">
+    <label for="mese">Filtra per mese:</label>
+    <select id="mese">
+      <option value="">Tutti</option>
+      <option value="01">Gennaio</option><option value="02">Febbraio</option><option value="03">Marzo</option>
+      <option value="04">Aprile</option><option value="05">Maggio</option><option value="06">Giugno</option>
+      <option value="07">Luglio</option><option value="08">Agosto</option><option value="09">Settembre</option>
+      <option value="10">Ottobre</option><option value="11">Novembre</option><option value="12">Dicembre</option>
+    </select>
+
+    <label for="categoria">Categoria:</label>
+    <select id="categoria">
+      <option value="">Tutte</option>
+      <option value="tempo-indeterminato">Tempo Indeterminato</option>
+      <option value="tempo-determinato">Tempo Determinato</option>
+      <option value="categorie-riservatarie">Categorie Riservatarie</option>
+      <option value="direttori-dipartimentiistituti">Direttori Dipartimenti/Istituti</option>
+      <option value="avviamento-numerico-selezione-ans-categorie-riservatarie">Avviamento Numerico</option>
+      <option value="archivio-vecchio">Archivio Vecchio</option>
+    </select>
+
+    <label for="anno">Anno:</label>
+    <input type="text" id="anno" placeholder="es. 2025" size="4" />
+
+    <label for="tipoEvento">Tipo evento:</label>
+    <select id="tipoEvento">
+      <option value="">Tutti</option>
+      <option value="graduatoria_mancante">Graduatoria mancante (URP+SOL)</option>
+      <option value="graduatoria_pubblicata">Graduatoria pubblicata (URP o SOL)</option>
+    </select>
+
+    <label for="fonte">Fonte:</label>
+    <select id="fonte">
+      <option value="">Tutte</option>
+      <option value="urp_nuovo">URP nuovo</option>
+      <option value="urp_archivio">URP archivio</option>
+    </select>
+
+    <label for="ordina">Ordina per:</label>
+    <select id="ordina">
+      <option value="mancante_prima">Graduatoria mancante prima</option>
+      <option value="pubblicata_prima">Graduatoria pubblicata prima</option>
+    </select>
+
+    <button onclick="filtra()">Applica filtro</button>
+  </div>
+
+  <!-- TABELLA -->
+  <table id="tab">
+    <thead>
+      <tr>
+        <th>Categoria</th>
+        <th>Codice Bando</th>
+        <th>Descrizione</th>
+        <th>Link URP</th>
+        <th>Link SOL</th>
+        <th>Data Riferimento</th>
+        <th>URP</th>
+        <th>SOL</th>
+        <th>Esito</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+<script>
+  // ---- util
+  function normalizzaCodice(c) { return (c||"").toUpperCase().replace(/\s+/g,"").replace(/\./g,""); }
+  function parseYMDFlexible(s) {
+    if (!s || typeof s !== "string") return null;
+    const t = s.trim();
+    let m = t.match(/^(\d{2})-(\d{2})-(\d{4})$/); if (m) return { y: +m[3], m: m[2], d: m[1] };
+    m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);    if (m) return { y: +m[1], m: m[2], d: m[3] };
+    return null;
+  }
+  function estraiCodiceBandoUI(item) {
+    const prefer = (item.codice_bando && String(item.codice_bando).trim()) || "";
+    if (prefer) return prefer;
+    const joined = ((item.titolo_bando||"") + " // " + (item.estratto||"")).toLowerCase();
+    let m = joined.match(/\bbando\s*n\.?\s*([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)/i);
+    if (!m) m = joined.match(/\bcodice\s+bando\s+([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)/i);
+    if (!m) m = joined.match(/\b([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)\b/i);
+    return m ? m[1].toUpperCase() : "--";
+  }
+  async function fetchJSONSafe(url) {
+    try { const r = await fetch(url); if (!r.ok) throw new Error(r.status); return await r.json(); }
+    catch(e){ console.error("fetch",url,e); return []; }
+  }
+  async function headLastModified(url, elId) {
+    try { const r = await fetch(url, { method:'HEAD' }); const lm = r.headers.get("Last-Modified");
+      if (lm) document.getElementById(elId).textContent = `Ultimo agg. ${new Date(lm).toLocaleString()}`;
+    } catch(_) {}
+  }
+
+  // ---- dati
+  let urpData = []; // flatten
+  let solData = [];
+
+  function buildMatchSOL(codice) {
+    const norm = normalizzaCodice(codice);
+    if (!norm) return null;
+    return solData.find(s => {
+      const ns = normalizzaCodice(s.codice);
+      return ns && (ns.includes(norm) || norm.includes(ns));
+    }) || null;
+  }
+
+  // flags graduatoria
+  function hasGradURP(item) {
+    return !!item.data_pubblicazione_graduatoria || item.graduatoria_presente === true;
+  }
+  function hasGradSOL(matchSOL) {
+    if (!matchSOL) return false;
+    return Boolean(
+      matchSOL.graduatoria_presente === true ||
+      matchSOL.data_pubblicazione_graduatoria ||
+      matchSOL.graduatoria_allegato === true
+    );
+  }
+
+  // stato numerico per ordinamento: 0 = manca ovunque (in corso), 1 = parziale (solo URP o solo SOL), 2 = pubblicata su entrambi
+  function statoKey(urpOk, solOk) {
+    if (!urpOk && !solOk) return 0;
+    if (urpOk && solOk) return 2;
+    return 1;
+  }
+
+  function filtra() {
+    const mese      = document.getElementById("mese").value;
+    const categoria = document.getElementById("categoria").value;
+    const anno      = (document.getElementById("anno").value || "").trim();
+    const tipoEv    = document.getElementById("tipoEvento").value;
+    const fonte     = document.getElementById("fonte").value;
+    const ordina    = document.getElementById("ordina").value;
+
+    let rows = [];
+
+    // prepara righe
+    urpData.forEach(item => {
+      if (categoria && item.categoria !== categoria) return;
+      if (fonte && (item.fonte || "") !== fonte) return;
+
+      // data rif: graduatoria se c'è, altrimenti data bando
+      const dataRif = item.data_pubblicazione_graduatoria || item.data_pubblicazione_bando || "";
+      const dt = parseYMDFlexible(dataRif);
+      if ((mese || anno) && dt) {
+        if (mese && dt.m !== mese) return;
+        if (anno && String(dt.y) !== anno) return;
+      } else if ((mese || anno) && !dt) {
+        return;
+      }
+
+      const codice = estraiCodiceBandoUI(item);
+      const mSOL   = buildMatchSOL(codice);
+      const urpOk  = hasGradURP(item);
+      const solOk  = hasGradSOL(mSOL);
+
+      // filtro "Tipo evento"
+      if (tipoEv === "graduatoria_mancante" && (urpOk || solOk)) return;
+      if (tipoEv === "graduatoria_pubblicata" && !(urpOk || solOk)) return;
+
+      rows.push({ item, codice, mSOL, urpOk, solOk, dataRif, key: statoKey(urpOk, solOk) });
+    });
+
+    // ordinamento
+    rows.sort((a,b) => {
+      if (ordina === "mancante_prima") {
+        if (a.key !== b.key) return a.key - b.key; // 0,1,2
+      } else { // pubblicata_prima
+        if (a.key !== b.key) return b.key - a.key; // 2,1,0
+      }
+      // tie-break: data disc, poi codice
+      const ad = a.dataRif || "", bd = b.dataRif || "";
+      if (ad !== bd) return (ad < bd ? 1 : -1);
+      return a.codice.localeCompare(b.codice);
+    });
+
+    // render
+    const tbody = document.querySelector("#tab tbody");
+    tbody.innerHTML = "";
+    rows.forEach(({item, codice, mSOL, urpOk, solOk, dataRif}) => {
+      const tr = document.createElement("tr");
+
+      const tdCat = document.createElement("td");
+      tdCat.textContent = item.categoria || "";
+      tr.appendChild(tdCat);
+
+      const tdCod = document.createElement("td");
+      tdCod.innerHTML = item.url ? `<a class="link" href="${item.url}" target="_blank">${codice}</a>` : (codice || "--");
+      tr.appendChild(tdCod);
+
+      const tdDesc = document.createElement("td");
+      tdDesc.innerHTML = `<span class="tooltip" data-tip="${(item.estratto||'').replace(/"/g,'&quot;')}">Mostra</span>`;
+      tr.appendChild(tdDesc);
+
+      const tdURP = document.createElement("td");
+      tdURP.innerHTML = item.url ? `<a class="link" href="${item.url}" target="_blank">Apri</a>` : "—";
+      tr.appendChild(tdURP);
+
+      const tdSOL = document.createElement("td");
+      if (mSOL) {
+        const linkSOL = `https://selezionionline.cnr.it/jconon/call-detail?callCode=${encodeURIComponent(mSOL.codice)}`;
+        tdSOL.innerHTML = `<a class="link" href="${linkSOL}" target="_blank">Vai</a>`;
+      } else { tdSOL.textContent = "—"; }
+      tr.appendChild(tdSOL);
+
+      const tdData = document.createElement("td");
+      tdData.textContent = dataRif || "";
+      tr.appendChild(tdData);
+
+      const tdURPst = document.createElement("td");
+      tdURPst.innerHTML = urpOk ? `<span class="ok">✅</span>` : `<span class="ko">❌</span>`;
+      tr.appendChild(tdURPst);
+
+      const tdSOLst = document.createElement("td");
+      tdSOLst.innerHTML = solOk ? `<span class="ok">✅</span>` : `<span class="ko">❌</span>`;
+      tr.appendChild(tdSOLst);
+
+      const tdEsito = document.createElement("td");
+      tdEsito.textContent = urpOk && solOk ? "OK su URP e SOL"
+                          : (!urpOk && !solOk ? "Manca su URP e SOL (in corso)"
+                          : (urpOk && !solOk ? "Manca su SOL" : "Manca su URP"));
+      tr.appendChild(tdEsito);
+
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById("count").textContent = document.querySelectorAll("#tab tbody tr").length + " risultati";
+  }
+
+  async function init() {
+    document.getElementById("loading").style.display = "block";
+
+    // URP
+    const urpJson = await fetchJSONSafe("/_static/bandi-completi-urp.json");
+    if (Array.isArray(urpJson)) {
+      urpData = urpJson.map(b => ({ ...b, categoria: b.categoria || (b.fonte || "") }));
+    } else {
+      urpData = Object.entries(urpJson).flatMap(([categoria, bandi]) =>
+        (Array.isArray(bandi) ? bandi : []).map(b => ({ ...b, categoria }))
+      );
+    }
+    headLastModified("/_static/bandi-completi-urp.json","metaURP");
+
+    // SOL
+    const solJson = await fetchJSONSafe("/_static/bandi-concorsi-pubblici-sol.json");
+    solData = Array.isArray(solJson) ? solJson : [];
+    headLastModified("/_static/bandi-concorsi-pubblici-sol.json","metaSOL");
+
+    document.getElementById("loading").style.display = "none";
+    filtra();
+  }
+
+  document.addEventListener("DOMContentLoaded", init);
+</script>
+
+</body>
+</html>

@@ -31,7 +31,9 @@ CATEGORIE = {
     "tempo-determinato": f"{BASE_URL}/documenti/tempo-determinato/",
     "categorie-riservatarie": f"{BASE_URL}/documenti/categorie-riservatarie/",
     "direttori-dipartimentiistituti": f"{BASE_URL}/documenti/direttori-dipartimentiistituti/",
-    "avviamento-numerico-selezione-ans-categorie-riservatarie": f"{BASE_URL}/documenti/avviamento-numerico-selezione-ans-categorie-riservatarie/"
+    "avviamento-numerico-selezione-ans-categorie-riservatarie": f"{BASE_URL}/documenti/avviamento-numerico-selezione-ans-categorie-riservatarie/",
+    "borse-ricerca": f"{BASE_URL}/documenti/borse-di-ricerca/" 
+
 }
 OLD_ARCHIVE_URL = "https://archivio.urp.cnr.it/page.php?level=3&pg=157&Org=4&db=1"
 OLD_BASE_URL = "https://archivio.urp.cnr.it/"
