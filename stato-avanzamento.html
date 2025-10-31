@@ -19,6 +19,7 @@
     .ko { color:#b00020; font-weight:600; }     /* croce rossa */
     #loading::after { content: ""; display:inline-block; width:14px; height:14px; margin-left:10px; border:2px solid #ccc; border-top:2px solid #333; border-radius:50%; animation: spin .8s linear infinite; vertical-align: middle; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .actions { display:flex; gap:10px; align-items:center; margin-top:6px; }
   </style>
 </head>
 <body>
@@ -39,15 +40,6 @@
 
   <!-- FILTRI -->
   <div class="row small" style="margin-top:8px;">
-    <label for="mese">Filtra per mese:</label>
-    <select id="mese">
-      <option value="">Tutti</option>
-      <option value="01">Gennaio</option><option value="02">Febbraio</option><option value="03">Marzo</option>
-      <option value="04">Aprile</option><option value="05">Maggio</option><option value="06">Giugno</option>
-      <option value="07">Luglio</option><option value="08">Agosto</option><option value="09">Settembre</option>
-      <option value="10">Ottobre</option><option value="11">Novembre</option><option value="12">Dicembre</option>
-    </select>
-
     <label for="categoria">Categoria:</label>
     <select id="categoria">
       <option value="">Tutte</option>
@@ -58,9 +50,6 @@
       <option value="avviamento-numerico-selezione-ans-categorie-riservatarie">Avviamento Numerico</option>
       <option value="archivio-vecchio">Archivio Vecchio</option>
     </select>
-
-    <label for="anno">Anno:</label>
-    <input type="text" id="anno" placeholder="es. 2025" size="4" />
 
     <label for="tipoEvento">Tipo evento:</label>
     <select id="tipoEvento">
@@ -76,13 +65,22 @@
       <option value="urp_archivio">URP archivio</option>
     </select>
 
-    <label for="ordina">Ordina per:</label>
-    <select id="ordina">
-      <option value="mancante_prima">Graduatoria mancante prima</option>
-      <option value="pubblicata_prima">Graduatoria pubblicata prima</option>
+    <label for="ordinaData">Ordina per data bando:</label>
+    <select id="ordinaData">
+      <option value="desc">Dal più recente</option>
+      <option value="asc">Dal più vecchio</option>
     </select>
 
-    <button onclick="filtra()">Applica filtro</button>
+    <label for="dal">Dal:</label>
+    <input type="date" id="dal" />
+
+    <label for="al">Al:</label>
+    <input type="date" id="al" />
+
+    <div class="actions">
+      <button onclick="filtra()">Applica filtro</button>
+      <button onclick="scaricaExcel()">Scarica Excel</button>
+    </div>
   </div>
 
   <!-- TABELLA -->
@@ -94,7 +92,7 @@
         <th>Descrizione</th>
         <th>Link URP</th>
         <th>Link SOL</th>
-        <th>Data Riferimento</th>
+        <th>Data Pubblicazione</th>
         <th>URP</th>
         <th>SOL</th>
         <th>Esito</th>
@@ -106,13 +104,25 @@
 <script>
   // ---- util
   function normalizzaCodice(c) { return (c||"").toUpperCase().replace(/\s+/g,"").replace(/\./g,""); }
-  function parseYMDFlexible(s) {
+
+  // dd-mm-yyyy / yyyy-mm-dd -> Date (00:00)
+  function parseToDate(s) {
     if (!s || typeof s !== "string") return null;
     const t = s.trim();
-    let m = t.match(/^(\d{2})-(\d{2})-(\d{4})$/); if (m) return { y: +m[3], m: m[2], d: m[1] };
-    m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);    if (m) return { y: +m[1], m: m[2], d: m[3] };
-    return null;
+    let m = t.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (m) return new Date(+m[3], +m[2]-1, +m[1], 0, 0, 0);
+    m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return new Date(+m[1], +m[2]-1, +m[3], 0, 0, 0);
+    const d = new Date(t);
+    return isNaN(d.getTime()) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
   }
+  function dateKey(s) { const d = parseToDate(s); return d ? d.getTime() : 0; }
+
+  // SOLO data di pubblicazione del bando (richiesto)
+  function getDataPubblicazioneBando(item) {
+    return item.data_pubblicazione_bando || "";
+  }
+
   function estraiCodiceBandoUI(item) {
     const prefer = (item.codice_bando && String(item.codice_bando).trim()) || "";
     if (prefer) return prefer;
@@ -122,6 +132,7 @@
     if (!m) m = joined.match(/\b([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)\b/i);
     return m ? m[1].toUpperCase() : "--";
   }
+
   async function fetchJSONSafe(url) {
     try { const r = await fetch(url); if (!r.ok) throw new Error(r.status); return await r.json(); }
     catch(e){ console.error("fetch",url,e); return []; }
@@ -135,6 +146,7 @@
   // ---- dati
   let urpData = []; // flatten
   let solData = [];
+  let ultimiRows = []; // cache dell'ultima tabella renderizzata (per export)
 
   function buildMatchSOL(codice) {
     const norm = normalizzaCodice(codice);
@@ -158,37 +170,29 @@
     );
   }
 
-  // stato numerico per ordinamento: 0 = manca ovunque (in corso), 1 = parziale (solo URP o solo SOL), 2 = pubblicata su entrambi
-  function statoKey(urpOk, solOk) {
-    if (!urpOk && !solOk) return 0;
-    if (urpOk && solOk) return 2;
-    return 1;
-  }
-
   function filtra() {
-    const mese      = document.getElementById("mese").value;
     const categoria = document.getElementById("categoria").value;
-    const anno      = (document.getElementById("anno").value || "").trim();
     const tipoEv    = document.getElementById("tipoEvento").value;
     const fonte     = document.getElementById("fonte").value;
-    const ordina    = document.getElementById("ordina").value;
+    const ordData   = document.getElementById("ordinaData").value; // 'desc' | 'asc'
+    const dalVal    = document.getElementById("dal").value; // yyyy-mm-dd (input date)
+    const alVal     = document.getElementById("al").value;
+
+    // normalizza range [dal..al] a Date (00:00)
+    const dal = dalVal ? new Date(dalVal + "T00:00:00") : null;
+    const al  = alVal  ? new Date(alVal  + "T00:00:00") : null;
 
     let rows = [];
 
-    // prepara righe
     urpData.forEach(item => {
       if (categoria && item.categoria !== categoria) return;
       if (fonte && (item.fonte || "") !== fonte) return;
 
-      // data rif: graduatoria se c'è, altrimenti data bando
-      const dataRif = item.data_pubblicazione_graduatoria || item.data_pubblicazione_bando || "";
-      const dt = parseYMDFlexible(dataRif);
-      if ((mese || anno) && dt) {
-        if (mese && dt.m !== mese) return;
-        if (anno && String(dt.y) !== anno) return;
-      } else if ((mese || anno) && !dt) {
-        return;
-      }
+      // data: SOLO pubblicazione del bando
+      const dataPub = getDataPubblicazioneBando(item);
+      const d = parseToDate(dataPub);
+      if (dal && (!d || d < dal)) return;
+      if (al  && (!d || d > al))  return;
 
       const codice = estraiCodiceBandoUI(item);
       const mSOL   = buildMatchSOL(codice);
@@ -196,29 +200,26 @@
       const solOk  = hasGradSOL(mSOL);
 
       // filtro "Tipo evento"
-      if (tipoEv === "graduatoria_mancante" && (urpOk || solOk)) return;
-      if (tipoEv === "graduatoria_pubblicata" && !(urpOk || solOk)) return;
+      if (tipoEv === "graduatoria_mancante" && (urpOk || solOk)) return;      // vuoi solo i mancanti ovunque
+      if (tipoEv === "graduatoria_pubblicata" && !(urpOk || solOk)) return;   // vuoi chi ha almeno una graduatoria
 
-      rows.push({ item, codice, mSOL, urpOk, solOk, dataRif, key: statoKey(urpOk, solOk) });
+      rows.push({
+        item, codice, mSOL, urpOk, solOk,
+        dataPub,             // stringa
+        dateKey: dateKey(dataPub) // numero per sort
+      });
     });
 
-    // ordinamento
+    // ordinamento per data pubblicazione bando
     rows.sort((a,b) => {
-      if (ordina === "mancante_prima") {
-        if (a.key !== b.key) return a.key - b.key; // 0,1,2
-      } else { // pubblicata_prima
-        if (a.key !== b.key) return b.key - a.key; // 2,1,0
-      }
-      // tie-break: data disc, poi codice
-      const ad = a.dataRif || "", bd = b.dataRif || "";
-      if (ad !== bd) return (ad < bd ? 1 : -1);
-      return a.codice.localeCompare(b.codice);
+      if (ordData === "asc")  return a.dateKey - b.dateKey;
+      else                    return b.dateKey - a.dateKey;
     });
 
     // render
     const tbody = document.querySelector("#tab tbody");
     tbody.innerHTML = "";
-    rows.forEach(({item, codice, mSOL, urpOk, solOk, dataRif}) => {
+    rows.forEach(({item, codice, mSOL, urpOk, solOk, dataPub}) => {
       const tr = document.createElement("tr");
 
       const tdCat = document.createElement("td");
@@ -245,7 +246,7 @@
       tr.appendChild(tdSOL);
 
       const tdData = document.createElement("td");
-      tdData.textContent = dataRif || "";
+      tdData.textContent = dataPub || "";
       tr.appendChild(tdData);
 
       const tdURPst = document.createElement("td");
@@ -265,7 +266,59 @@
       tbody.appendChild(tr);
     });
 
-    document.getElementById("count").textContent = document.querySelectorAll("#tab tbody tr").length + " risultati";
+    // salva per export
+    ultimiRows = rows;
+
+    document.getElementById("count").textContent =
+      document.querySelectorAll("#tab tbody tr").length + " risultati";
+  }
+
+  function csvEscape(s) {
+    if (s == null) return "";
+    const str = String(s);
+    return /[",\n;]/.test(str) ? `"${str.replace(/"/g,'""')}"` : str;
+  }
+
+  function scaricaExcel() {
+    // Export CSV (compatibile Excel). Se vuoi .xlsx, serve una libreria (es. SheetJS).
+    const headers = [
+      "Categoria","Codice Bando","Descrizione","Link URP","Link SOL",
+      "Data Pubblicazione","URP","SOL","Esito"
+    ];
+    const rows = [headers];
+
+    ultimiRows.forEach(({item, codice, mSOL, urpOk, solOk, dataPub}) => {
+      const linkURP = item.url || "";
+      const linkSOL = mSOL ? `https://selezionionline.cnr.it/jconon/call-detail?callCode=${encodeURIComponent(mSOL.codice)}` : "";
+      const descr = (item.estratto || "").replace(/\s+/g," ").trim();
+
+      const esito = urpOk && solOk ? "OK su URP e SOL"
+                  : (!urpOk && !solOk ? "Manca su URP e SOL (in corso)"
+                  : (urpOk && !solOk ? "Manca su SOL" : "Manca su URP"));
+
+      rows.push([
+        item.categoria || "",
+        codice || "",
+        descr,
+        linkURP,
+        linkSOL,
+        dataPub || "",
+        urpOk ? "✅" : "❌",
+        solOk ? "✅" : "❌",
+        esito
+      ]);
+    });
+
+    const csv = rows.map(r => r.map(csvEscape).join(";")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `stato-avanzamento_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   async function init() {
