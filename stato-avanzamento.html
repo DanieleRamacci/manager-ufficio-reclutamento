@@ -78,8 +78,9 @@
     <input type="date" id="al" />
 
     <div class="actions">
-      <button onclick="filtra()">Applica filtro</button>
-      <button onclick="scaricaExcel()">Scarica Excel</button>
+      <button onclick="filtra(false)">Applica filtro</button>
+      <button onclick="scaricaXLS()">Scarica Excel (.xls)</button>
+      <button onclick="scaricaCSV()">Scarica CSV</button>
     </div>
   </div>
 
@@ -102,7 +103,7 @@
   </table>
 
 <script>
-  // ---- util
+  // ---- util base
   function normalizzaCodice(c) { return (c||"").toUpperCase().replace(/\s+/g,"").replace(/\./g,""); }
 
   // dd-mm-yyyy / yyyy-mm-dd -> Date (00:00)
@@ -118,10 +119,8 @@
   }
   function dateKey(s) { const d = parseToDate(s); return d ? d.getTime() : 0; }
 
-  // SOLO data di pubblicazione del bando (richiesto)
-  function getDataPubblicazioneBando(item) {
-    return item.data_pubblicazione_bando || "";
-  }
+  // SOLO data di pubblicazione del bando
+  function getDataPubblicazioneBando(item) { return item.data_pubblicazione_bando || ""; }
 
   function estraiCodiceBandoUI(item) {
     const prefer = (item.codice_bando && String(item.codice_bando).trim()) || "";
@@ -143,10 +142,55 @@
     } catch(_) {}
   }
 
+  // ---- URL <-> UI sync
+  function readFiltersFromURL() {
+    const p = new URLSearchParams(location.search);
+    return {
+      categoria: p.get("categoria") || "",
+      tipoEvento: p.get("tipo") || "",
+      fonte: p.get("fonte") || "",
+      ordinaData: p.get("ord") || "desc",
+      dal: p.get("dal") || "",
+      al: p.get("al") || ""
+    };
+  }
+  function applyFiltersToUI(f) {
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+    set("categoria",  f.categoria);
+    set("tipoEvento", f.tipoEvento);
+    set("fonte",      f.fonte);
+    set("ordinaData", f.ordinaData);
+    set("dal",        f.dal);
+    set("al",         f.al);
+  }
+  function collectFiltersFromUI() {
+    return {
+      categoria: document.getElementById("categoria").value || "",
+      tipoEvento: document.getElementById("tipoEvento").value || "",
+      fonte: document.getElementById("fonte").value || "",
+      ordinaData: document.getElementById("ordinaData").value || "desc",
+      dal: document.getElementById("dal").value || "",
+      al: document.getElementById("al").value || ""
+    };
+  }
+  function updateURLFromFilters(f, replace = true) {
+    const p = new URLSearchParams();
+    if (f.categoria)  p.set("categoria", f.categoria);
+    if (f.tipoEvento) p.set("tipo", f.tipoEvento);
+    if (f.fonte)      p.set("fonte", f.fonte);
+    if (f.ordinaData && f.ordinaData !== "desc") p.set("ord", f.ordinaData);
+    if (f.dal)        p.set("dal", f.dal);
+    if (f.al)         p.set("al", f.al);
+    const qs = p.toString();
+    const url = qs ? `?${qs}` : location.pathname;
+    if (replace) history.replaceState(null, "", url);
+    else history.pushState(null, "", url);
+  }
+
   // ---- dati
   let urpData = []; // flatten
   let solData = [];
-  let ultimiRows = []; // cache dell'ultima tabella renderizzata (per export)
+  let ultimiRows = []; // cache tabella renderizzata (per export)
 
   function buildMatchSOL(codice) {
     const norm = normalizzaCodice(codice);
@@ -170,13 +214,19 @@
     );
   }
 
-  function filtra() {
+  function filtra(pushState = true) {
+    // raccogli filtri
     const categoria = document.getElementById("categoria").value;
     const tipoEv    = document.getElementById("tipoEvento").value;
     const fonte     = document.getElementById("fonte").value;
     const ordData   = document.getElementById("ordinaData").value; // 'desc' | 'asc'
-    const dalVal    = document.getElementById("dal").value; // yyyy-mm-dd (input date)
+    const dalVal    = document.getElementById("dal").value; // yyyy-mm-dd
     const alVal     = document.getElementById("al").value;
+
+    // aggiorna URL
+    if (pushState) {
+      updateURLFromFilters({ categoria, tipoEvento: tipoEv, fonte, ordinaData: ordData, dal: dalVal, al: alVal }, false);
+    }
 
     // normalizza range [dal..al] a Date (00:00)
     const dal = dalVal ? new Date(dalVal + "T00:00:00") : null;
@@ -200,21 +250,18 @@
       const solOk  = hasGradSOL(mSOL);
 
       // filtro "Tipo evento"
-      if (tipoEv === "graduatoria_mancante" && (urpOk || solOk)) return;      // vuoi solo i mancanti ovunque
-      if (tipoEv === "graduatoria_pubblicata" && !(urpOk || solOk)) return;   // vuoi chi ha almeno una graduatoria
+      if (tipoEv === "graduatoria_mancante"   && (urpOk || solOk)) return; // vuoi solo mancanti ovunque
+      if (tipoEv === "graduatoria_pubblicata" && !(urpOk || solOk)) return; // almeno una pubblicata
 
       rows.push({
         item, codice, mSOL, urpOk, solOk,
-        dataPub,             // stringa
-        dateKey: dateKey(dataPub) // numero per sort
+        dataPub,
+        dateKey: dateKey(dataPub)
       });
     });
 
     // ordinamento per data pubblicazione bando
-    rows.sort((a,b) => {
-      if (ordData === "asc")  return a.dateKey - b.dateKey;
-      else                    return b.dateKey - a.dateKey;
-    });
+    rows.sort((a,b) => (ordData === "asc" ? a.dateKey - b.dateKey : b.dateKey - a.dateKey));
 
     // render
     const tbody = document.querySelector("#tab tbody");
@@ -273,29 +320,27 @@
       document.querySelectorAll("#tab tbody tr").length + " risultati";
   }
 
+  // ===== EXPORT =====
   function csvEscape(s) {
     if (s == null) return "";
     const str = String(s);
     return /[",\n;]/.test(str) ? `"${str.replace(/"/g,'""')}"` : str;
   }
 
-  function scaricaExcel() {
-    // Export CSV (compatibile Excel). Se vuoi .xlsx, serve una libreria (es. SheetJS).
+  function scaricaCSV() {
+    // CSV UTF-8 con BOM e ; come separatore
     const headers = [
       "Categoria","Codice Bando","Descrizione","Link URP","Link SOL",
       "Data Pubblicazione","URP","SOL","Esito"
     ];
     const rows = [headers];
-
     ultimiRows.forEach(({item, codice, mSOL, urpOk, solOk, dataPub}) => {
       const linkURP = item.url || "";
       const linkSOL = mSOL ? `https://selezionionline.cnr.it/jconon/call-detail?callCode=${encodeURIComponent(mSOL.codice)}` : "";
       const descr = (item.estratto || "").replace(/\s+/g," ").trim();
-
       const esito = urpOk && solOk ? "OK su URP e SOL"
                   : (!urpOk && !solOk ? "Manca su URP e SOL (in corso)"
                   : (urpOk && !solOk ? "Manca su SOL" : "Manca su URP"));
-
       rows.push([
         item.categoria || "",
         codice || "",
@@ -308,23 +353,90 @@
         esito
       ]);
     });
-
-    const csv = rows.map(r => r.map(csvEscape).join(";")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const csvBody = rows.map(r => r.map(csvEscape).join(";")).join("\n");
+    const BOM = "\uFEFF";
+    const blob = new Blob([BOM + csvBody], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `stato-avanzamento_${new Date().toISOString().slice(0,10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const a = Object.assign(document.createElement("a"), {
+      href: url,
+      download: `stato-avanzamento_${new Date().toISOString().slice(0,10)}.csv`
+    });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
 
+  function htmlEscape(s) {
+    return String(s ?? "")
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+  }
+
+  function scaricaXLS() {
+    // XLS "compatibile" tramite HTML table (aperto correttamente da Excel)
+    // NB: preserva i link cliccabili
+    let html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office"
+            xmlns:x="urn:schemas-microsoft-com:office:excel"
+            xmlns="http://www.w3.org/TR/REC-html40">
+      <head><meta charset="UTF-8"><title>Stato Avanzamento</title></head>
+      <body>
+      <table border="1">
+        <thead>
+          <tr>
+            <th>Categoria</th>
+            <th>Codice Bando</th>
+            <th>Descrizione</th>
+            <th>Link URP</th>
+            <th>Link SOL</th>
+            <th>Data Pubblicazione</th>
+            <th>URP</th>
+            <th>SOL</th>
+            <th>Esito</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+    ultimiRows.forEach(({item, codice, mSOL, urpOk, solOk, dataPub}) => {
+      const linkURP = item.url || "";
+      const linkSOL = mSOL ? `https://selezionionline.cnr.it/jconon/call-detail?callCode=${encodeURIComponent(mSOL.codice)}` : "";
+      const descr = (item.estratto || "").replace(/\s+/g," ").trim();
+      const esito = urpOk && solOk ? "OK su URP e SOL"
+                  : (!urpOk && !solOk ? "Manca su URP e SOL (in corso)"
+                  : (urpOk && !solOk ? "Manca su SOL" : "Manca su URP"));
+
+      html += `
+        <tr>
+          <td>${htmlEscape(item.categoria || "")}</td>
+          <td>${htmlEscape(codice || "")}</td>
+          <td>${htmlEscape(descr)}</td>
+          <td>${linkURP ? `<a href="${htmlEscape(linkURP)}">Apri</a>` : ""}</td>
+          <td>${linkSOL ? `<a href="${htmlEscape(linkSOL)}">Vai</a>` : ""}</td>
+          <td>${htmlEscape(dataPub || "")}</td>
+          <td>${urpOk ? "✅" : "❌"}</td>
+          <td>${solOk ? "✅" : "❌"}</td>
+          <td>${htmlEscape(esito)}</td>
+        </tr>`;
+    });
+    html += `</tbody></table></body></html>`;
+
+    const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement("a"), {
+      href: url,
+      download: `stato-avanzamento_${new Date().toISOString().slice(0,10)}.xls`
+    });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // ---- init
   async function init() {
     document.getElementById("loading").style.display = "block";
 
-    // URP
+    // 1) leggi filtri da URL e applica UI
+    applyFiltersToUI(readFiltersFromURL());
+
+    // 2) carica dati
     const urpJson = await fetchJSONSafe("/_static/bandi-completi-urp.json");
     if (Array.isArray(urpJson)) {
       urpData = urpJson.map(b => ({ ...b, categoria: b.categoria || (b.fonte || "") }));
@@ -335,13 +447,26 @@
     }
     headLastModified("/_static/bandi-completi-urp.json","metaURP");
 
-    // SOL
     const solJson = await fetchJSONSafe("/_static/bandi-concorsi-pubblici-sol.json");
     solData = Array.isArray(solJson) ? solJson : [];
     headLastModified("/_static/bandi-concorsi-pubblici-sol.json","metaSOL");
 
     document.getElementById("loading").style.display = "none";
-    filtra();
+
+    // 3) prima render coerente con URL
+    filtra(true);
+
+    // 4) back/forward browser: rilegge dai parametri
+    window.addEventListener("popstate", () => {
+      applyFiltersToUI(readFiltersFromURL());
+      filtra(false);
+    });
+
+    // 5) cambi immediati → pushState della URL
+    ["categoria","tipoEvento","fonte","ordinaData","dal","al"].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener("change", () => filtra(true));
+    });
   }
 
   document.addEventListener("DOMContentLoaded", init);
