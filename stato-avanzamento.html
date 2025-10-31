@@ -15,11 +15,14 @@
     .link { color:#0b5ed7; text-decoration:none; } .link:hover { text-decoration:underline; }
     .tooltip { position: relative; cursor: pointer; color:#0b5ed7; }
     .tooltip:hover::after { content: attr(data-tip); position: absolute; left: 0; top: 100%; background: #333; color: #fff; padding: 5px; border-radius: 5px; white-space: pre-wrap; width: 320px; z-index: 1; }
-    .ok { color:#09814a; font-weight:600; }     /* spunta verde */
-    .ko { color:#b00020; font-weight:600; }     /* croce rossa */
+    .ok { color:#09814a; font-weight:600; }
+    .ko { color:#b00020; font-weight:600; }
     #loading::after { content: ""; display:inline-block; width:14px; height:14px; margin-left:10px; border:2px solid #ccc; border-top:2px solid #333; border-radius:50%; animation: spin .8s linear infinite; vertical-align: middle; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .actions { display:flex; gap:10px; align-items:center; margin-top:6px; }
+    .box { border:1px solid #e5e5e5; border-radius:8px; padding:12px; background:#fff; margin:16px 0; }
+    .box h3 { margin:0 0 8px 0; font-size:1.05rem; }
+    .right { margin-left:auto; }
   </style>
 </head>
 <body>
@@ -84,7 +87,29 @@
     </div>
   </div>
 
-  <!-- TABELLA -->
+  <!-- RIEPILOGO FILTRATO: BANDI IN CORSO PER PROFILO (SIGLA) -->
+  <div class="box">
+    <div class="row">
+      <h3>Riepilogo bandi in corso per profilo (dal Codice Bando)</h3>
+      <div class="right actions small">
+        <button onclick="scaricaRiepilogoXLS()">Export riepilogo (.xls)</button>
+        <button onclick="scaricaRiepilogoCSV()">Export riepilogo (.csv)</button>
+      </div>
+    </div>
+    <table id="tabRiep">
+      <thead>
+        <tr>
+          <th>Profilo (sigla)</th>
+          <th>Totale in corso</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="small" colspan="2">Nessun dato (applica i filtri o attendi il caricamento).</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- TABELLA PRINCIPALE -->
   <table id="tab">
     <thead>
       <tr>
@@ -132,6 +157,19 @@
     return m ? m[1].toUpperCase() : "--";
   }
 
+  // Estrai SIGLA profilo dal Codice Bando (es. "367.443 CTER" -> "CTER")
+  function extractSiglaFromCodice(codice) {
+    if (!codice) return "ND";
+    const parts = String(codice).trim().split(/\s+/);
+    // prendi l'ultimo token che sia tutto lettere (>=2)
+    for (let i = parts.length - 1; i >= 0; i--) {
+      if (/^[A-ZÀ-Ù]{2,}$/.test(parts[i].toUpperCase())) return parts[i].toUpperCase();
+    }
+    // fallback: cerca pattern finale di lettere
+    const m = String(codice).toUpperCase().match(/[A-ZÀ-Ù]{2,}$/);
+    return m ? m[0] : "ND";
+  }
+
   async function fetchJSONSafe(url) {
     try { const r = await fetch(url); if (!r.ok) throw new Error(r.status); return await r.json(); }
     catch(e){ console.error("fetch",url,e); return []; }
@@ -163,16 +201,6 @@
     set("dal",        f.dal);
     set("al",         f.al);
   }
-  function collectFiltersFromUI() {
-    return {
-      categoria: document.getElementById("categoria").value || "",
-      tipoEvento: document.getElementById("tipoEvento").value || "",
-      fonte: document.getElementById("fonte").value || "",
-      ordinaData: document.getElementById("ordinaData").value || "desc",
-      dal: document.getElementById("dal").value || "",
-      al: document.getElementById("al").value || ""
-    };
-  }
   function updateURLFromFilters(f, replace = true) {
     const p = new URLSearchParams();
     if (f.categoria)  p.set("categoria", f.categoria);
@@ -190,7 +218,8 @@
   // ---- dati
   let urpData = []; // flatten
   let solData = [];
-  let ultimiRows = []; // cache tabella renderizzata (per export)
+  let ultimiRows = []; // cache tabella principale renderizzata
+  let ultimoRiepilogo = []; // [{sigla, count}] per export
 
   function buildMatchSOL(codice) {
     const norm = normalizzaCodice(codice);
@@ -228,7 +257,7 @@
       updateURLFromFilters({ categoria, tipoEvento: tipoEv, fonte, ordinaData: ordData, dal: dalVal, al: alVal }, false);
     }
 
-    // normalizza range [dal..al] a Date (00:00)
+    // normalizza range [dal..al]
     const dal = dalVal ? new Date(dalVal + "T00:00:00") : null;
     const al  = alVal  ? new Date(alVal  + "T00:00:00") : null;
 
@@ -250,8 +279,8 @@
       const solOk  = hasGradSOL(mSOL);
 
       // filtro "Tipo evento"
-      if (tipoEv === "graduatoria_mancante"   && (urpOk || solOk)) return; // vuoi solo mancanti ovunque
-      if (tipoEv === "graduatoria_pubblicata" && !(urpOk || solOk)) return; // almeno una pubblicata
+      if (tipoEv === "graduatoria_mancante"   && (urpOk || solOk)) return;
+      if (tipoEv === "graduatoria_pubblicata" && !(urpOk || solOk)) return;
 
       rows.push({
         item, codice, mSOL, urpOk, solOk,
@@ -263,7 +292,7 @@
     // ordinamento per data pubblicazione bando
     rows.sort((a,b) => (ordData === "asc" ? a.dateKey - b.dateKey : b.dateKey - a.dateKey));
 
-    // render
+    // render tabella principale
     const tbody = document.querySelector("#tab tbody");
     tbody.innerHTML = "";
     rows.forEach(({item, codice, mSOL, urpOk, solOk, dataPub}) => {
@@ -313,22 +342,60 @@
       tbody.appendChild(tr);
     });
 
-    // salva per export
+    // cache per export tabella
     ultimiRows = rows;
 
     document.getElementById("count").textContent =
       document.querySelectorAll("#tab tbody tr").length + " risultati";
+
+    // ---- RIEPILOGO (solo bandi in corso) ----
+    const riepilogo = buildRiepilogo(rows);  // [{sigla, count}]
+    ultimoRiepilogo = riepilogo;
+    renderRiepilogo(riepilogo);
   }
 
-  // ===== EXPORT =====
+  // Costruisce riepilogo per profilo (sigla) limitato ai bandi in corso (graduatoria mancante ovunque)
+  function buildRiepilogo(rows) {
+    const counter = {};
+    rows.forEach(r => {
+      if (!(r.urpOk === false && r.solOk === false)) return; // solo "in corso"
+      const sigla = extractSiglaFromCodice(r.codice) || "ND";
+      counter[sigla] = (counter[sigla] || 0) + 1;
+    });
+    // ordina per count desc poi sigla asc
+    const out = Object.entries(counter).map(([sigla, count]) => ({ sigla, count }));
+    out.sort((a,b) => b.count - a.count || a.sigla.localeCompare(b.sigla));
+    return out;
+  }
+
+  function renderRiepilogo(riep) {
+    const tbody = document.querySelector("#tabRiep tbody");
+    tbody.innerHTML = "";
+    if (!riep.length) {
+      tbody.innerHTML = `<tr><td class="small" colspan="2">Nessun bando in corso con i filtri attuali.</td></tr>`;
+      return;
+    }
+    riep.forEach(({sigla, count}) => {
+      const tr = document.createElement("tr");
+      const td1 = document.createElement("td"); td1.textContent = sigla; tr.appendChild(td1);
+      const td2 = document.createElement("td"); td2.textContent = count; tr.appendChild(td2);
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ===== EXPORT TABELLA PRINCIPALE =====
   function csvEscape(s) {
     if (s == null) return "";
     const str = String(s);
     return /[",\n;]/.test(str) ? `"${str.replace(/"/g,'""')}"` : str;
   }
+  function htmlEscape(s) {
+    return String(s ?? "")
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+  }
 
   function scaricaCSV() {
-    // CSV UTF-8 con BOM e ; come separatore
     const headers = [
       "Categoria","Codice Bando","Descrizione","Link URP","Link SOL",
       "Data Pubblicazione","URP","SOL","Esito"
@@ -365,15 +432,7 @@
     URL.revokeObjectURL(url);
   }
 
-  function htmlEscape(s) {
-    return String(s ?? "")
-      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
-      .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
-  }
-
   function scaricaXLS() {
-    // XLS "compatibile" tramite HTML table (aperto correttamente da Excel)
-    // NB: preserva i link cliccabili
     let html = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office"
             xmlns:x="urn:schemas-microsoft-com:office:excel"
@@ -403,7 +462,6 @@
       const esito = urpOk && solOk ? "OK su URP e SOL"
                   : (!urpOk && !solOk ? "Manca su URP e SOL (in corso)"
                   : (urpOk && !solOk ? "Manca su SOL" : "Manca su URP"));
-
       html += `
         <tr>
           <td>${htmlEscape(item.categoria || "")}</td>
@@ -424,6 +482,50 @@
     const a = Object.assign(document.createElement("a"), {
       href: url,
       download: `stato-avanzamento_${new Date().toISOString().slice(0,10)}.xls`
+    });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // ===== EXPORT RIEPILOGO =====
+  function scaricaRiepilogoCSV() {
+    const rows = [["Profilo (sigla)","Totale in corso"]];
+    ultimoRiepilogo.forEach(r => rows.push([r.sigla, r.count]));
+    const body = rows.map(r => r.map(csvEscape).join(";")).join("\n");
+    const BOM = "\uFEFF";
+    const blob = new Blob([BOM + body], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement("a"), {
+      href: url,
+      download: `riepilogo_in_corso_${new Date().toISOString().slice(0,10)}.csv`
+    });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function scaricaRiepilogoXLS() {
+    let html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office"
+            xmlns:x="urn:schemas-microsoft-com:office:excel"
+            xmlns="http://www.w3.org/TR/REC-html40">
+      <head><meta charset="UTF-8"><title>Riepilogo in corso</title></head>
+      <body>
+      <table border="1">
+        <thead>
+          <tr><th>Profilo (sigla)</th><th>Totale in corso</th></tr>
+        </thead>
+        <tbody>
+    `;
+    ultimoRiepilogo.forEach(r => {
+      html += `<tr><td>${htmlEscape(r.sigla)}</td><td>${htmlEscape(r.count)}</td></tr>`;
+    });
+    html += `</tbody></table></body></html>`;
+
+    const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement("a"), {
+      href: url,
+      download: `riepilogo_in_corso_${new Date().toISOString().slice(0,10)}.xls`
     });
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
