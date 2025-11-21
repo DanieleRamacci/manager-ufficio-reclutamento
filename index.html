@@ -65,7 +65,9 @@
     <a href="report-mese.html" style="margin-right: 15px;">Report del Mese</a>
     <a href="stato-avanzamento.html" style="margin-right: 15px;">Stato avanzamento</a>
 
-
+ <!-- 🔹 Badge di stato globale -->
+  <span id="statusBadge" style="margin-left: 16px; font-size: 0.9em;"></span>
+</nav>
   </nav>
 
     <div class="update-buttons">
@@ -108,6 +110,7 @@
         <option value="categorie-riservatarie">Categorie Riservatarie</option>
         <option value="direttori-dipartimentiistituti">Direttori Dipartimenti/Istituti</option>
         <option value="avviamento-numerico-selezione-ans-categorie-riservatarie">Avviamento Numerico</option>
+        <option value="borse-ricerca">Borse di Ricerca</option>
         <option value="archivio-vecchio">Archivio Vecchio</option>
       </select>
 
@@ -185,8 +188,10 @@
         <option value="categorie-riservatarie">Categorie Riservatarie</option>
         <option value="direttori-dipartimentiistituti">Direttori Dipartimenti/Istituti</option>
         <option value="avviamento-numerico-selezione-ans-categorie-riservatarie">Avviamento Numerico</option>
+        <option value="borse-ricerca">Borse di Ricerca</option>
         <option value="archivio-vecchio">Archivio Vecchio</option>
       </select>
+
 
       <label for="ctrlFonte">Fonte:</label>
       <select id="ctrlFonte">
@@ -426,17 +431,6 @@ function pickTracceDoc(allegati) {
 }
 
 // ===== codice bando da campo strutturato o da testo; link alla pagina URP =====
-function estraiCodiceBandoUI(item) {
-  const prefer = (item.codice_bando && String(item.codice_bando).trim()) || "";
-  if (prefer) return prefer;
-  const joined = ((item.titolo_bando||"") + " // " + (item.estratto||"")).toLowerCase();
-  let m = joined.match(/\bbando\s*n\.?\s*([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)/i);
-  if (!m) m = joined.match(/\bcodice\s+bando\s+([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)/i);
-  if (!m) m = joined.match(/\b([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)\b/i);
-  return m ? m[1].toUpperCase() : "--";
-}
-
-    // --- estrae codice bando per la UI (usa anche item.codice_bando se presente)
 function estraiCodiceBandoTestuale(...texts) {
   const joined = (texts.filter(Boolean).join(" // ").toLowerCase());
   let m = joined.match(/\bbando\s*n\.?\s*([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)/i);
@@ -446,6 +440,37 @@ function estraiCodiceBandoTestuale(...texts) {
   m = joined.match(/\b([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)\b/i);
   return m ? m[1].toUpperCase() : "--";
 }
+
+
+    // --- estrae codice bando per la UI (usa anche item.codice_bando se presente)
+function estraiCodiceBandoTestuale(...texts) {
+  const joined = (texts.filter(Boolean).join(" // "));
+  const norm = joined.replace(/\s+/g, " ").trim();
+
+  // 0) "BANDO N. ISAC-BR-07-2025-BO" / "BANDO N. IREA BR-009-2025- BA"
+  let m = norm.match(/\bbando\s*n\.?\s*([A-Za-z0-9][A-Za-z0-9\-\s\/\.]{3,40})/i);
+  if (m) {
+    let code = m[1].trim().replace(/\s+/g, " ");
+    if (/[0-9]/.test(code) && /[A-Za-z]/.test(code)) {
+      return code.toUpperCase();
+    }
+  }
+
+  const low = norm.toLowerCase();
+
+  // 1) "bando n. 380.1 TEC ..."
+  m = low.match(/\bbando\s*n\.?\s*([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)/i);
+  if (m) return m[1].toUpperCase();
+
+  // 2) "codice bando 367.443 CTER ..."
+  m = low.match(/\bcodice\s+bando\s+([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)/i);
+  if (m) return m[1].toUpperCase();
+
+  // 3) fallback "000.000 SIGLA"
+  m = low.match(/\b([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)\b/i);
+  return m ? m[1].toUpperCase() : "--";
+}
+
 
 function codiceBandoUI(item) {
   // preferisci il campo strutturato se presente (lo abbiamo messo nello scraper)
@@ -487,13 +512,18 @@ function codiceBandoUI(item) {
 
     async function caricaDati() {
       persistDetailsState("sec-main");
-      persistDetailsState("sec-ctrl");
+        persistDetailsState("sec-ctrl");
 
-      const loading = document.getElementById("loading");
-      loading.style.display = "block";
-      loading.textContent = "⏳ Caricamento dati URP...";
+        // 🔹 prima cosa: controlla stato globale (mostra se c'è una run in corso)
+        await checkGlobalStatus();
 
-      const urpJson = await fetchJSONSafe("/_static/bandi-completi-urp.json");
+        const loading = document.getElementById("loading");
+        if (!loading.style.display || loading.style.display === "none") {
+          loading.style.display = "block";
+          loading.textContent = "⏳ Caricamento dati URP...";
+        }
+
+        const urpJson = await fetchJSONSafe("/_static/bandi-completi-urp.json");
       if (Array.isArray(urpJson)) {
         urpData = urpJson.map(b => ({ ...b, categoria: b.categoria || (b.fonte || "") }));
       } else {
@@ -532,16 +562,31 @@ function codiceBandoUI(item) {
       }
     }
 
-    // ===== codice bando da campo strutturato o da testo; link alla pagina URP =====
-function estraiCodiceBandoUI(item) {
-  const prefer = (item.codice_bando && String(item.codice_bando).trim()) || "";
-  if (prefer) return prefer;
-  const joined = ((item.titolo_bando||"") + " // " + (item.estratto||"")).toLowerCase();
-  let m = joined.match(/\bbando\s*n\.?\s*([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)/i);
-  if (!m) m = joined.match(/\bcodice\s+bando\s+([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)/i);
-  if (!m) m = joined.match(/\b([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)\b/i);
-  return m ? m[1].toUpperCase() : "--";
-}
+        // ===== codice bando per la UI =====
+        function estraiCodiceBandoUI(item) {
+          // 1) Se il titolo_bando contiene "Codice Bando ..." lo uso SEMPRE
+          //    es: "Codice Bando BR.03.2025 ISAFOM.NA" -> "BR.03.2025 ISAFOM.NA"
+          if (item.titolo_bando) {
+            const m = item.titolo_bando.match(/Codice\s+Bando\s+(.+)$/i);
+            if (m && m[1].trim()) {
+              return m[1].trim();   // se vuoi tutto maiuscolo: .trim().toUpperCase()
+            }
+          }
+
+          // 2) Se esiste già un codice_bando strutturato, lo preferisco
+          const prefer = (item.codice_bando && String(item.codice_bando).trim()) || "";
+          if (prefer) return prefer;
+
+          // 3) Fallback: vecchia logica su titolo_bando + estratto
+          const joined = ((item.titolo_bando || "") + " // " + (item.estratto || "")).toLowerCase();
+
+          let m = joined.match(/\bbando\s*n\.?\s*([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)/i);
+          if (!m) m = joined.match(/\bcodice\s+bando\s+([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)/i);
+          if (!m) m = joined.match(/\b([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)\b/i);
+
+          return m ? m[1].toUpperCase() : "--";
+        }
+
 
 // ===== filtraBandi (VERSIONE AGGIORNATA) =====
 function filtraBandi() {
@@ -738,7 +783,7 @@ function filtraBandi() {
         const tdCod = document.createElement("td");
         tdCod.innerHTML = item.url ? `<a class="link" href="${item.url}" target="_blank">${codice}</a>` : codice;
         tr.appendChild(tdCod);
-
+        
         const tdDesc = document.createElement("td");
         tdDesc.innerHTML = `<span class="tooltip" data-tip="${(item.estratto||'').replace(/"/g, '&quot;')}">Mostra</span>`;
         tr.appendChild(tdDesc);
@@ -769,42 +814,142 @@ function filtraBandi() {
       updateCounts();
     }
 
-    async function aggiornaURP() {
-      const loading = document.getElementById("loading");
-      loading.style.display = "block";
-      loading.textContent = "⏳ Aggiornamento dati URP in corso...";
-      try {
-        await fetch("/api/run", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ urp: true, sol: false, mob: false })
-        });
-        setTimeout(() => location.reload(), 1500);
-      } catch (e) {
-        alert("Errore nell'aggiornamento URP");
+  async function checkGlobalStatus() {
+  const loading = document.getElementById("loading");
+  const badge = document.getElementById("statusBadge");
+  try {
+    const res = await fetch("/api/status");
+    if (!res.ok) return;
+    const st = await res.json();
+
+    if (st.running) {
+      // 🔄 C'È UNA RUN IN CORSO
+      if (badge) {
+        badge.textContent = "🔄 Aggiornamento bandi in corso…";
+        badge.style.color = "#b26b00";
       }
+
+      // Mostra anche il messaggio nel box loading (senza toccare se già usato per altro)
+      loading.style.display = "block";
+      loading.textContent = "⏳ Aggiornamento bandi in corso (URP/SOL/Mobilità)...";
+
+      // disabilita i bottoni di aggiornamento per evitare il 409 “a vuoto”
+      document.querySelectorAll(".update-buttons button").forEach(btn => {
+        btn.disabled = true;
+        btn.title = "Aggiornamento in corso, attendi il termine.";
+      });
+    } else {
+      // ✅ NESSUNA RUN IN CORSO
+      if (badge) {
+        badge.textContent = "✅ Sistema pronto";
+        badge.style.color = "#09814a";
+      }
+
+      document.querySelectorAll(".update-buttons button").forEach(btn => {
+        btn.disabled = false;
+        btn.title = "";
+      });
+
+      // Non nascondo per forza il loading, perché magari lo stai usando per altro
+      // (caricamento URP, messaggi SOL, ecc.)
     }
-    async function aggiornaSOL() {
-      const loading = document.getElementById("loading");
-      loading.style.display = "block";
-      loading.textContent = "⏳ Aggiornamento dati Selezioni Online in corso...";
-      try {
-        await fetch("/api/run", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ urp: false, sol: true, mob: false })
-        });
-        solData = await fetchJSONWithRetry("/_static/bandi-concorsi-pubblici-sol.json");
-        getLastModified("/_static/bandi-concorsi-pubblici-sol.json", "lastUpdateSOL");
-        loading.style.display = "none";
-        filtraBandi();
-      } catch (e) {
-        loading.textContent = "❌ Errore aggiornamento SOL";
-        console.error(e);
-      }
+  } catch (e) {
+    console.warn("Impossibile leggere /api/status", e);
+    if (badge) {
+      badge.textContent = "⚠️ Stato non disponibile";
+      badge.style.color = "#b00020";
+    }
+  }
+}
+
+
+
+async function aggiornaURP() {
+  const loading = document.getElementById("loading");
+  loading.style.display = "block";
+  loading.textContent = "⏳ Avvio aggiornamento dati URP...";
+
+  try {
+    const res = await fetch("/api/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urp: true, sol: false, mob: false })
+    });
+
+    // 🔹 Caso: c'è già una run in corso → 409
+    if (res.status === 409) {
+      loading.textContent = "⏳ Un aggiornamento è già in corso (URP/SOL/Mobilità)...";
+      // aggiorno lo stato globale (disabilita bottoni ecc.)
+      await checkGlobalStatus();
+      return;
     }
 
-    document.addEventListener("DOMContentLoaded", caricaDati);
+    if (!res.ok) {
+      loading.textContent = `❌ Errore avvio aggiornamento URP (HTTP ${res.status})`;
+      console.error("Errore /api/run URP:", res.status);
+      return;
+    }
+
+    // Se ok, comunico che la run è partita
+    loading.textContent = "⏳ Aggiornamento URP avviato, ricarico la pagina tra poco...";
+    setTimeout(() => location.reload(), 1500);
+  } catch (e) {
+    loading.textContent = "❌ Errore di rete durante l'aggiornamento URP";
+    console.error(e);
+  }
+}
+
+
+
+async function aggiornaSOL() {
+  const loading = document.getElementById("loading");
+  loading.style.display = "block";
+  loading.textContent = "⏳ Avvio aggiornamento dati Selezioni Online...";
+
+  try {
+    const res = await fetch("/api/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urp: false, sol: true, mob: false })
+    });
+
+    // 🔹 Caso: c'è già una run (URP/SOL/MOB) in corso → 409
+    if (res.status === 409) {
+      loading.textContent = "⏳ Un aggiornamento è già in corso (URP/SOL/Mobilità)...";
+      await checkGlobalStatus();  // aggiorna bottoni e stato globale
+      return;
+    }
+
+    if (!res.ok) {
+      loading.textContent = `❌ Errore avvio aggiornamento Selezioni Online (HTTP ${res.status})`;
+      console.error("Errore /api/run SOL:", res.status);
+      return;
+    }
+
+    // 🔹 Qui sappiamo che lo script SOL è stato avviato (in background).
+    // Ora aspettiamo che il JSON sia pronto/aggiornato usando la tua fetchJSONWithRetry.
+    loading.textContent = "⏳ Aggiornamento SOL in corso, attendo i nuovi dati...";
+
+    solData = await fetchJSONWithRetry("/_static/bandi-concorsi-pubblici-sol.json");
+    getLastModified("/_static/bandi-concorsi-pubblici-sol.json", "lastUpdateSOL");
+
+    loading.style.display = "none";
+    filtraBandi();
+    await checkGlobalStatus();  // rimetti a posto eventuali stati/bottoni
+  } catch (e) {
+    loading.textContent = "❌ Errore durante l'aggiornamento di Selezioni Online";
+    console.error(e);
+  }
+}
+
+
+    document.addEventListener("DOMContentLoaded", () => {
+  caricaDati();
+
+  // 🔁 ogni 10 secondi aggiorna lo stato globale (badge + bottoni)
+  setInterval(checkGlobalStatus, 10000);
+});
+
   </script>
 </body>
 </html>

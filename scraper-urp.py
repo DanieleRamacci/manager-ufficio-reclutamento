@@ -92,29 +92,42 @@ def estrai_prot_e_date(testo: str) -> tuple[str | None, str | None, str | None]:
 
     return protocollo, data_protocollo_iso, data_pubblicazione_iso
 
-
 def estrai_codice_bando(*texts: str) -> str | None:
     """
     Prova a catturare un 'codice bando' dal titolo/estratti.
-    Gestisce:
-      - 'BANDO N. 380.1 TEC ...'  ->  '380.1 TEC'
-      - 'Codice Bando 367.443 CTER ...' -> '367.443 CTER'
-    Ritorna solo la parte di codice (es. '367.443 CTER'), se trovata.
-    """
-    joined = " // ".join([t for t in texts if t])[:2000]
-    t = norm_space(joined).lower()
 
-    # 1) "bando n. XXX ..." => cattura fino a fine parola codice (comprende segmento alfabetico successivo)
+    Gestisce:
+      - 'BANDO N. ISAC-BR-07-2025-BO'
+      - 'BANDO N. IREA BR-009-2025- BA'
+      - 'BANDO N. 380.1 TEC ...'
+      - 'Codice Bando 367.443 CTER ...'
+      - pattern generico '000.000 SIGLA'
+    """
+    joined = " // ".join([t for t in texts if t])[:4000]
+    txt = norm_space(joined)
+
+    # 0) Pattern generico per "BANDO N. ISAC-BR-07-2025-BO" o "BANDO N. IREA BR-009-2025- BA"
+    #    → prendiamo quello che viene dopo "BANDO N." fino a ~40 caratteri, composto da lettere/numeri/-/./spazi
+    m = re.search(r"\bbando\s*n\.?\s*([A-Za-z0-9][A-Za-z0-9\-\s\/\.]{3,40})", txt, flags=re.I)
+    if m:
+        code = m.group(1).strip(" -")
+        # Evita frasi tipo "1 BORSA DI RICERCA": richiedi almeno una lettera e un numero
+        if re.search(r"[0-9]", code) and re.search(r"[A-Za-z]", code):
+            return code.upper()
+
+    t = txt.lower()
+
+    # 1) "bando n. 380.1 TEC ..." => cattura fino a fine parola codice (comprende segmento alfabetico successivo)
     m = re.search(r"\bbando\s*n\.?\s*([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)", t, flags=re.I)
     if m:
         return m.group(1).upper()
 
-    # 2) "codice bando XXX ..." simile
+    # 2) "codice bando 367.443 CTER ..." simile
     m = re.search(r"\bcodice\s+bando\s+([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)", t, flags=re.I)
     if m:
         return m.group(1).upper()
 
-    # 3) fallback: cerca pattern 000.000 + eventuale sigla
+    # 3) fallback: cerca pattern 000.000 + eventuale sigla (es. '556.001 AUTOFINANZIATO')
     m = re.search(r"\b([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)\b", t, flags=re.I)
     if m:
         return m.group(1).upper()
