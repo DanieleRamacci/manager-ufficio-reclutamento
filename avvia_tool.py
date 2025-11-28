@@ -404,6 +404,7 @@ def api_firme_analyze():
             print(f"[FIRME][ERR] PDF->immagini (doc_id={doc_id}): {e}", flush=True)
             return jsonify({"error": f"Errore nella conversione PDF->immagini (PyMuPDF): {e}"}), 500
 
+
         pages_info = []
         for i, img in enumerate(pages):
             image_filename = f"page_{i}.png"
@@ -440,7 +441,7 @@ def api_firme_analyze():
     print(f"[FIRME] Analizzati {len(documents)} documenti per la redazione firme", flush=True)
     return jsonify({"documents": documents})
 
-
+#aggiunto log
 
 @app.post("/api/firme/confirm")
 @login_required
