@@ -384,36 +384,6 @@
     "codice": "BANDO N. 365.192 CTER ISTI"
   },
   {
-    "url": "https://www.urp.cnr.it/node/16989",
-    "data_pubblicazione_bando": "14-10-2024",
-    "numero_protocollo": "379748",
-    "graduatoria_presente": true,
-    "data_pubblicazione_graduatoria": "05-05-2025",
-    "estratto": "Tipologia:\nConcorsi e Selezioni\n-\nBandi Pubblici - Mobilità\nProtocollo 379748\ndel  14-10-2024\nBANDO DI MOBILITÀ ESTERNA VOLONTARIA, PER TITOLI E COLLOQUIO, AI SENSI\nDELL’ART. 30 D.LGS N. 165/2001, PER LA COPERTURA DI N. 1 POSIZIONE, CON\nCONTRATTO DI LAVORO A TEMPO PIENO E INDETERMINATO PROFILO DI\nFUNZIONARIO DI AMMINISTRAZIONE - V LIVELLO PROFESSIONALE – PRESSO IL\nCENTRO INTERDIPARTIMENTALE PER L’ETICA E L’INTEGRITA’ NELLA RICERCA DEL\nCONSIGLIO NAZIONALE DELLE RICERCHE - ROMA\nBANDO N. 365.189 FA CID ETHICS\nAllegati\nCommissione\n- Protocollo 19099\ndel 23-01-2025\nCriteri di valutazione\n- Protocollo 72608\ndel 11-03-2025\nGraduatoria\n- Protocollo 149827\ndel 05-05-2025\nPagina aggiornata il 06-05-2025 08:05:55\nQuesta pagina ti è stata utile?\nSì\nNo\nSelect one\nIl contenuto della pagina non è chiaro\nLe informazioni sono incomplete",
-    "allegati": [
-      {
-        "titolo": "Commissione",
-        "link": "https://www.urp.cnr.it/system/files?file=2025-01/365.189-nomina-commissione-e-segretario-Mobilita-Funzionario_signed.pdf",
-        "protocollo": "19099",
-        "data": "23-01-2025"
-      },
-      {
-        "titolo": "Criteri di valutazione",
-        "link": "https://www.urp.cnr.it/system/files?file=2025-03/365.189-FA-CID-ETHICS-Stralcio-criteri_signed.pdf",
-        "protocollo": "72608",
-        "data": "11-03-2025"
-      },
-      {
-        "titolo": "Graduatoria",
-        "link": "https://www.urp.cnr.it/system/files?file=2025-05/Bando-365.189-FA-CID-ETHICS-Accertamento-e-nomina-vincitore_signed.pdf",
-        "protocollo": "149827",
-        "data": "05-05-2025"
-      }
-    ],
-    "tipologia": "mobilità",
-    "codice": "BANDO N. 365.189 FA CID ETHICS"
-  },
-  {
     "url": "https://www.urp.cnr.it/node/16990",
     "data_pubblicazione_bando": "14-10-2024",
     "numero_protocollo": "379753",
@@ -442,6 +412,36 @@
     ],
     "tipologia": "mobilità",
     "codice": "BANDO N. 365.190 CA"
+  },
+  {
+    "url": "https://www.urp.cnr.it/node/16989",
+    "data_pubblicazione_bando": "14-10-2024",
+    "numero_protocollo": "379748",
+    "graduatoria_presente": true,
+    "data_pubblicazione_graduatoria": "05-05-2025",
+    "estratto": "Tipologia:\nConcorsi e Selezioni\n-\nBandi Pubblici - Mobilità\nProtocollo 379748\ndel  14-10-2024\nBANDO DI MOBILITÀ ESTERNA VOLONTARIA, PER TITOLI E COLLOQUIO, AI SENSI\nDELL’ART. 30 D.LGS N. 165/2001, PER LA COPERTURA DI N. 1 POSIZIONE, CON\nCONTRATTO DI LAVORO A TEMPO PIENO E INDETERMINATO PROFILO DI\nFUNZIONARIO DI AMMINISTRAZIONE - V LIVELLO PROFESSIONALE – PRESSO IL\nCENTRO INTERDIPARTIMENTALE PER L’ETICA E L’INTEGRITA’ NELLA RICERCA DEL\nCONSIGLIO NAZIONALE DELLE RICERCHE - ROMA\nBANDO N. 365.189 FA CID ETHICS\nAllegati\nCommissione\n- Protocollo 19099\ndel 23-01-2025\nCriteri di valutazione\n- Protocollo 72608\ndel 11-03-2025\nGraduatoria\n- Protocollo 149827\ndel 05-05-2025\nPagina aggiornata il 06-05-2025 08:05:55\nQuesta pagina ti è stata utile?\nSì\nNo\nSelect one\nIl contenuto della pagina non è chiaro\nLe informazioni sono incomplete",
+    "allegati": [
+      {
+        "titolo": "Commissione",
+        "link": "https://www.urp.cnr.it/system/files?file=2025-01/365.189-nomina-commissione-e-segretario-Mobilita-Funzionario_signed.pdf",
+        "protocollo": "19099",
+        "data": "23-01-2025"
+      },
+      {
+        "titolo": "Criteri di valutazione",
+        "link": "https://www.urp.cnr.it/system/files?file=2025-03/365.189-FA-CID-ETHICS-Stralcio-criteri_signed.pdf",
+        "protocollo": "72608",
+        "data": "11-03-2025"
+      },
+      {
+        "titolo": "Graduatoria",
+        "link": "https://www.urp.cnr.it/system/files?file=2025-05/Bando-365.189-FA-CID-ETHICS-Accertamento-e-nomina-vincitore_signed.pdf",
+        "protocollo": "149827",
+        "data": "05-05-2025"
+      }
+    ],
+    "tipologia": "mobilità",
+    "codice": "BANDO N. 365.189 FA CID ETHICS"
   },
   {
     "url": "https://www.urp.cnr.it/node/13775",
