@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Redazione firme documenti</title>
+  
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 20px;
+    }
+    .document-block {
+      border: 2px solid #444;
+      padding: 10px;
+      margin-bottom: 30px;
+    }
+    .document-block h2 {
+      margin-top: 0;
+      font-size: 18px;
+    }
+    .page-container {
+      position: relative;
+      margin-bottom: 20px;
+      border: 1px solid #ccc;
+      display: inline-block;
+    }
+    .page-image {
+      display: block;
+      max-width: 800px;
+    }
+    .page-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    .controls {
+      margin: 20px 0;
+    }
+    .status {
+      margin-top: 10px;
+      color: #555;
+    }
+    #result ul {
+      padding-left: 20px;
+    }
+    .dropzone {
+  border: 2px dashed #888;
+  border-radius: 6px;
+  padding: 20px;
+  margin-top: 10px;
+  text-align: center;
+  color: #555;
+}
+.dropzone.dragover {
+  border-color: #0b7dda;
+  background: #eef7ff;
+  color: #000;
+}
+    .sidebar-nav {
+      position: fixed;
+      right: 20px;
+      top: 80px;
+      width: 220px;
+      max-height: 80vh;
+      overflow-y: auto;
+      background: #f9f9f9;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 13px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    .sidebar-doc {
+      margin-bottom: 10px;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 6px;
+    }
+    .sidebar-doc:last-child {
+      border-bottom: none;
+    }
+    .sidebar-doc-title {
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+    .sidebar-pages-label {
+      display: block;
+      margin: 4px 0 2px;
+      font-size: 12px;
+    }
+    .sidebar-page-link {
+      display: inline-block;
+      margin: 2px 4px 2px 0;
+      padding: 2px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+      text-decoration: none;
+      font-size: 12px;
+    }
+    .sidebar-page-link.high {
+      background-color: #e0ffe0;
+      border: 1px solid #4caf50;
+      color: #225522;
+    }
+    .sidebar-page-link.low {
+      background-color: #fff4d6;
+      border: 1px solid #ff9800;
+      color: #775300;
+    }
+
+    /* evidenziazione della pagina quando ci arrivi da un click in sidebar */
+    .page-container.highlight-page {
+      box-shadow: 0 0 0 3px #0b7dda;
+      transition: box-shadow 0.4s ease;
+    }
+
+    /* per evitare che la sidebar copra il contenuto */
+    body {
+      margin-right: 260px;
+    }
+
+
+  </style>
+</head>
+<body>
+      <nav style="margin-bottom: 20px;">
+    <a href="index.html" style="margin-right: 15px;">Controllo Bandi</a>
+    <a href="access.html" style="margin-right: 15px;">Accessibilità URP</a>
+    <a href="verifica-access.html" style="margin-right: 15px;">Verifica PDF</a>
+
+    <a href="mobilita-urp.html" style="margin-right: 15px;">mobilità</a>
+    <a href="report-mese.html" style="margin-right: 15px;">Report del Mese</a>
+    <a href="stato-avanzamento.html" style="margin-right: 15px;">Stato avanzamento</a>
+    <a href="redazione-firme.html" style="margin-right: 15px;">Redazione Firme AI</a>
+
+
+ <!-- 🔹 Badge di stato globale -->
+  <span id="statusBadge" style="margin-left: 16px; font-size: 0.9em;"></span>
+</nav>
+  <h1>Redazione firme documenti</h1>
+    <div id="sidebar-nav" class="sidebar-nav"></div>
+
+
+<form id="upload-form">
+  <label for="pdf-input">Carica uno o più PDF:</label>
+  <input type="file" id="pdf-input" name="pdf" accept="application/pdf" multiple required>
+  <button type="submit">Analizza</button>
+</form>
+
+<div id="dropzone" class="dropzone">
+  Trascina qui i PDF oppure usa il pulsante "Analizza".
+</div>
+
+
+  <div class="status" id="status"></div>
+
+  <div id="pages-wrapper"></div>
+
+  <div class="controls">
+    <button id="confirm-btn" disabled>Conferma e genera PDF oscurati</button>
+  </div>
+
+  <div id="result"></div>
+
+  <script>
+    
+    let documentsState = [];
+    const uploadForm = document.getElementById('upload-form');
+    const statusEl = document.getElementById('status');
+    const pagesWrapper = document.getElementById('pages-wrapper');
+    const confirmBtn = document.getElementById('confirm-btn');
+    const resultEl = document.getElementById('result');
+    const fileInput = document.getElementById('pdf-input');
+    const dropzone = document.getElementById('dropzone');
+    const sidebarNav = document.getElementById('sidebar-nav');
+
+    // Drag & drop
+dropzone.addEventListener('dragover', function (e) {
+  e.preventDefault();
+  dropzone.classList.add('dragover');
+});
+
+dropzone.addEventListener('dragleave', function (e) {
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+});
+
+dropzone.addEventListener('drop', function (e) {
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+
+  const files = Array.from(e.dataTransfer.files)
+    .filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+
+  if (!files.length) {
+    statusEl.textContent = 'Nessun PDF valido rilevato nel drop.';
+    return;
+  }
+
+  // Mettiamo i file anche nell’input, così il submit li vede
+  const dt = new DataTransfer();
+  files.forEach(f => dt.items.add(f));
+  fileInput.files = dt.files;
+
+  statusEl.textContent = files.length + ' file pronti per l\'analisi.';
+});
+
+
+    uploadForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      const fileInput = document.getElementById('pdf-input');
+      const files = fileInput.files;
+      if (!files.length) {
+        alert('Seleziona almeno un PDF');
+        return;
+      }
+
+      const formData = new FormData();
+      for (const f of files) {
+        formData.append('pdf', f);
+      }
+
+      statusEl.textContent = 'Analisi in corso...';
+      pagesWrapper.innerHTML = '';
+      resultEl.innerHTML = '';
+      confirmBtn.disabled = true;
+      documentsState = [];
+
+      fetch('/api/firme/analyze', {
+        method: 'POST',
+        body: formData
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) {
+          statusEl.textContent = 'Errore: ' + data.error;
+          return;
+        }
+        if (!data.documents || !data.documents.length) {
+          statusEl.textContent = 'Nessun documento analizzato.';
+          return;
+        }
+        statusEl.textContent = 'Analisi completata. Puoi controllare e aggiungere box per ogni documento.';
+        renderDocuments(data.documents);
+        confirmBtn.disabled = false;
+      })
+      .catch(err => {
+        console.error(err);
+        statusEl.textContent = 'Errore durante l\'analisi.';
+      });
+    });
+
+        function createSidebarPageLink(docId, pageIndex, type) {
+      const span = document.createElement('span');
+      span.className = 'sidebar-page-link ' + (type === 'high' ? 'high' : 'low');
+      span.textContent = 'P' + (pageIndex + 1);
+
+      span.addEventListener('click', () => {
+        const targetId = `doc-${docId}-page-${pageIndex}`;
+        const target = document.getElementById(targetId);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          target.classList.add('highlight-page');
+          setTimeout(() => {
+            target.classList.remove('highlight-page');
+          }, 800);
+        }
+      });
+
+      return span;
+    }
+
+    function renderDocuments(documents) {
+      pagesWrapper.innerHTML = '';
+      sidebarNav.innerHTML = '';
+      documentsState = [];
+
+      documents.forEach((doc, docIdx) => {
+        const docState = {
+          doc_id: doc.doc_id,
+          filename: doc.filename || '',
+          pages: []
+        };
+        documentsState.push(docState);
+
+        // --- blocco principale documento ---
+        const docDiv = document.createElement('div');
+        docDiv.className = 'document-block';
+
+        const title = document.createElement('h2');
+        title.textContent = doc.filename ? `Documento: ${doc.filename}` : `Documento ${docIdx + 1} (ID: ${doc.doc_id})`;
+        docDiv.appendChild(title);
+
+        // --- NAV laterale per questo documento ---
+        const docNav = document.createElement('div');
+        docNav.className = 'sidebar-doc';
+
+        const navTitle = document.createElement('div');
+        navTitle.className = 'sidebar-doc-title';
+        navTitle.textContent = doc.filename || `Documento ${docIdx + 1}`;
+        docNav.appendChild(navTitle);
+
+        const pagesHigh = [];
+        const pagesLow = [];
+
+        // analizziamo i box auto per capire quali pagine sono “high”/“low”
+        doc.pages.forEach(page => {
+          if (!page.auto_boxes || !page.auto_boxes.length) {
+            return;
+          }
+          const scores = page.auto_boxes.map(b => b.score || 1);
+          const maxScore = Math.max.apply(null, scores);
+
+          // soglie: >= 0.8 alta, < 0.8 bassa
+          if (maxScore >= 0.8) {
+            pagesHigh.push(page.index);
+          } else {
+            pagesLow.push(page.index);
+          }
+        });
+
+        if (pagesHigh.length) {
+          const labelHigh = document.createElement('span');
+          labelHigh.className = 'sidebar-pages-label';
+          labelHigh.textContent = 'Firme rilevate:';
+          docNav.appendChild(labelHigh);
+
+          pagesHigh.forEach(idx => {
+            const link = createSidebarPageLink(doc.doc_id, idx, 'high');
+            docNav.appendChild(link);
+          });
+        }
+
+        if (pagesLow.length) {
+          const labelLow = document.createElement('span');
+          labelLow.className = 'sidebar-pages-label';
+          labelLow.textContent = 'Pagine sospette:';
+          docNav.appendChild(labelLow);
+
+          pagesLow.forEach(idx => {
+            const link = createSidebarPageLink(doc.doc_id, idx, 'low');
+            docNav.appendChild(link);
+          });
+        }
+
+        if (pagesHigh.length || pagesLow.length) {
+          sidebarNav.appendChild(docNav);
+        }
+
+        // --- rendering delle pagine ---
+        doc.pages.forEach(page => {
+          const container = document.createElement('div');
+          container.className = 'page-container';
+          container.dataset.pageIndex = page.index;
+          container.id = `doc-${doc.doc_id}-page-${page.index}`;
+
+          const img = document.createElement('img');
+          img.src = page.image_url;
+          img.className = 'page-image';
+          img.alt = `Pagina ${page.index} (${doc.filename})`;
+
+          const canvas = document.createElement('canvas');
+          canvas.className = 'page-canvas';
+
+          container.appendChild(img);
+          container.appendChild(canvas);
+          docDiv.appendChild(container);
+
+          const pageState = {
+            page_index: page.index,
+            boxes: [],
+            canvasWidth: null,
+            canvasHeight: null
+          };
+          docState.pages.push(pageState);
+img.onload = function () {
+  canvas.width = img.clientWidth;
+  canvas.height = img.clientHeight;
+  pageState.canvasWidth = canvas.width;
+  pageState.canvasHeight = canvas.height;
+
+  page.auto_boxes.forEach(b => {
+    pageState.boxes.push({
+      x: b.x,
+      y: b.y,
+      w: b.w,
+      h: b.h,
+      auto: true,
+      score: b.score
+    });
+  });
+
+  setupCanvasDrawing(canvas, pageState);
+  redrawPageBoxes(canvas, pageState);
+};
+
+        });
+
+        pagesWrapper.appendChild(docDiv);
+      });
+    }
+
+    
+
+    function setupCanvasDrawing(canvas, pageState) {
+      let drawing = false;
+      let startX = 0;
+      let startY = 0;
+
+      canvas.addEventListener('mousedown', function (e) {
+        const rect = canvas.getBoundingClientRect();
+        startX = e.clientX - rect.left;
+        startY = e.clientY - rect.top;
+        drawing = true;
+      });
+
+      canvas.addEventListener('mousemove', function (e) {
+        if (!drawing) return;
+        const rect = canvas.getBoundingClientRect();
+        const currentX = e.clientX - rect.left;
+        const currentY = e.clientY - rect.top;
+
+        redrawPageBoxes(canvas, pageState);
+
+        const ctx = canvas.getContext('2d');
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'lime';
+        ctx.strokeRect(startX, startY, currentX - startX, currentY - startY);
+      });
+
+      canvas.addEventListener('mouseup', function (e) {
+        if (!drawing) return;
+        drawing = false;
+
+        const rect = canvas.getBoundingClientRect();
+        const endX = e.clientX - rect.left;
+        const endY = e.clientY - rect.top;
+
+        const x = Math.min(startX, endX);
+        const y = Math.min(startY, endY);
+        const w = Math.abs(endX - startX);
+        const h = Math.abs(endY - startY);
+
+        if (w < 5 || h < 5) {
+          redrawPageBoxes(canvas, pageState);
+          return;
+        }
+
+        const x_norm = x / pageState.canvasWidth;
+        const y_norm = y / pageState.canvasHeight;
+        const w_norm = w / pageState.canvasWidth;
+        const h_norm = h / pageState.canvasHeight;
+
+        pageState.boxes.push({
+          x: x_norm,
+          y: y_norm,
+          w: w_norm,
+          h: h_norm,
+          auto: false
+        });
+
+        redrawPageBoxes(canvas, pageState);
+      });
+    }
+
+ function redrawPageBoxes(canvas, pageState) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.lineWidth = 2;
+
+  pageState.boxes.forEach(b => {
+    const x = b.x * canvas.width;
+    const y = b.y * canvas.height;
+    const w = b.w * canvas.width;
+    const h = b.h * canvas.height;
+
+    if (b.auto) {
+      // auto-detect: rosso se alta confidenza, arancione se bassa
+      if (b.score !== undefined && b.score < 0.8) {
+        ctx.strokeStyle = 'orange';
+      } else {
+        ctx.strokeStyle = 'red';
+      }
+    } else {
+      // box aggiunte dall'utente
+      ctx.strokeStyle = 'lime';
+    }
+
+    ctx.strokeRect(x, y, w, h);
+  });
+}
+
+
+  confirmBtn.addEventListener('click', function () {
+  if (!documentsState.length) {
+    alert('Nessun documento in memoria.');
+    return;
+  }
+
+  statusEl.textContent = 'Generazione PDF oscurati e preparazione ZIP...';
+  resultEl.innerHTML = '';
+
+  // riepilogo locale (non dal server)
+  const riepilogo = document.createElement('ul');
+  documentsState.forEach(doc => {
+    const li = document.createElement('li');
+    li.textContent = doc.filename || ('Documento ID: ' + doc.doc_id);
+    riepilogo.appendChild(li);
+  });
+  resultEl.innerHTML = '<h2>Documenti elaborati:</h2>';
+  resultEl.appendChild(riepilogo);
+
+  const payload = {
+    documents: documentsState.map(doc => ({
+      doc_id: doc.doc_id,
+      filename: doc.filename,
+      pages: doc.pages.map(p => ({
+        page_index: p.page_index,
+        boxes: p.boxes.map(b => ({
+          x: b.x,
+          y: b.y,
+          w: b.w,
+          h: b.h
+        }))
+      }))
+    }))
+  };
+
+  fetch('/api/firme/confirm', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  })
+  .then(async response => {
+    if (!response.ok) {
+      // Provo a leggere JSON di errore dal server
+      let msg = 'Errore HTTP ' + response.status;
+      try {
+        const text = await response.text();
+        if (text) {
+          try {
+            const j = JSON.parse(text);
+            if (j.error) msg = j.error;
+          } catch (_) {
+            msg = text;
+          }
+        }
+      } catch (e) {
+        console.error('Errore leggendo il body di errore:', e);
+      }
+      throw new Error(msg);
+    }
+    return response.blob();
+  })
+  .then(blob => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'pdf_oscurati.zip';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+
+    statusEl.textContent = 'ZIP scaricato correttamente. I dati non sono più presenti sul server.';
+  })
+  .catch(err => {
+    console.error(err);
+    statusEl.textContent = 'Errore durante la generazione/scaricamento dello ZIP: ' + err.message;
+  });
+});
+
+
+
+
+  </script>
+</body>
+</html>

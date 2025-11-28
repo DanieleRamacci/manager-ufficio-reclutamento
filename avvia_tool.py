@@ -9,11 +9,24 @@ import subprocess
 from datetime import datetime
 from flask import Flask
 from flask_session import Session
+import uuid
+
+import fitz  # PyMuPDF
+from PIL import Image, ImageDraw
+import img2pdf
+
+import cv2
+import numpy as np
+from huggingface_hub import login, hf_hub_download
+from ultralytics import YOLO
+import io
+import shutil
+import zipfile
 
 
 from flask import (
     Flask, jsonify, send_from_directory, abort, request,
-    redirect, url_for, session
+    redirect, url_for, session, send_file
 )
 from dotenv import load_dotenv
 
@@ -74,7 +87,104 @@ app.register_blueprint(auth_bp)
 
 
 # ========= Utils =========
+# ========= Config firme / modello YOLO =========
 
+# cartella dove salvare PDF e immagini per la redazione firme
+DOCS_FIRME_ROOT = os.path.join(DIR, "docs_firme")
+os.makedirs(DOCS_FIRME_ROOT, exist_ok=True)
+
+# Token Hugging Face (meglio in .env: HUGGINGFACE_TOKEN=hf_...)
+HUGGINGFACE_TOKEN = os.environ.get("HUGGINGFACE_TOKEN")
+
+if not HUGGINGFACE_TOKEN:
+    raise RuntimeError("Imposta HUGGINGFACE_TOKEN nel file .env con il tuo token Hugging Face")
+
+print("[FIRME] Login a Hugging Face e caricamento modello YOLO...", flush=True)
+login(HUGGINGFACE_TOKEN)
+
+MODEL_FIRME_REPO = "tech4humans/yolov8s-signature-detector"
+MODEL_FIRME_FILENAME = "yolov8s.pt"
+
+model_firme_path = hf_hub_download(
+    repo_id=MODEL_FIRME_REPO,
+    filename=MODEL_FIRME_FILENAME
+)
+yolo_firme = YOLO(model_firme_path)
+print("[FIRME] Modello YOLO firme caricato.", flush=True)
+
+
+def pdf_to_pil_images(pdf_path: str, dpi: int = 200) -> list[Image.Image]:
+    """
+    Converte un PDF in una lista di immagini PIL usando PyMuPDF (fitz),
+    senza dipendenze esterne tipo poppler.
+    """
+    doc = fitz.open(pdf_path)
+    images = []
+    zoom = dpi / 72  # 72 dpi è la base di fitz
+    mat = fitz.Matrix(zoom, zoom)
+
+    for page in doc:
+        pix = page.get_pixmap(matrix=mat)
+        mode = "RGB"
+        if pix.alpha:
+            mode = "RGBA"
+        img = Image.frombytes(mode, [pix.width, pix.height], pix.samples)
+        if mode == "RGBA":
+            img = img.convert("RGB")
+        images.append(img)
+
+    doc.close()
+    return images
+
+
+def detect_signatures(image_path: str) -> list[dict]:
+    """
+    Usa il modello YOLO 'yolo_firme' per rilevare firme su una immagine.
+
+    Restituisce box NORMALIZZATE:
+    [
+      {"x": x_norm, "y": y_norm, "w": w_norm, "h": h_norm, "score": conf},
+      ...
+    ]
+    dove x,y sono top-left, w,h dimensioni, tutto in [0,1].
+    """
+    img = cv2.imread(image_path)
+    if img is None:
+        print(f"[FIRME][WARN] Impossibile leggere immagine: {image_path}", flush=True)
+        return []
+
+    h, w = img.shape[:2]
+
+    results = yolo_firme.predict(source=img, save=False)[0]
+
+    boxes_out: list[dict] = []
+    for box in results.boxes:
+        x1, y1, x2, y2 = map(float, box.xyxy[0])
+        conf = float(box.conf[0])
+
+        box_w = x2 - x1
+        box_h = y2 - y1
+
+        x_norm = x1 / w
+        y_norm = y1 / h
+        w_norm = box_w / w
+        h_norm = box_h / h
+
+        # clamp per sicurezza
+        x_norm = max(0.0, min(1.0, x_norm))
+        y_norm = max(0.0, min(1.0, y_norm))
+        w_norm = max(0.0, min(1.0 - x_norm, w_norm))
+        h_norm = max(0.0, min(1.0 - y_norm, h_norm))
+
+        boxes_out.append({
+            "x": x_norm,
+            "y": y_norm,
+            "w": w_norm,
+            "h": h_norm,
+            "score": conf
+        })
+
+    return boxes_out
 
 # --- ACCESS CHECK UTILS (riuso leggero dello scraper) ---
 import io
@@ -240,6 +350,250 @@ def kick_monitors():
 
 
 # ========= Routes protette (HTML/JSON/static) =========
+@app.route("/redazione-firme.html")
+@login_required
+def redazione_firme_html():
+    return send_from_directory(DIR, "redazione-firme.html")
+
+@app.route("/api/firme/analyze", methods=["POST"])
+@login_required
+def api_firme_analyze():
+    """
+    Accetta uno o più PDF (campo 'pdf') e restituisce:
+    {
+      "documents": [
+        {
+          "doc_id": "...",
+          "filename": "nome.pdf",
+          "pages": [
+            {
+              "index": 0,
+              "image_url": "...",
+              "width": ...,
+              "height": ...,
+              "auto_boxes": [ {x,y,w,h,score}, ... ]
+            },
+            ...
+          ]
+        },
+        ...
+      ]
+    }
+    """
+    files = request.files.getlist("pdf")
+    if not files:
+        return jsonify({"error": "Nessun file PDF inviato"}), 400
+
+    documents = []
+
+    for pdf_file in files:
+        if not pdf_file.filename:
+            continue
+
+        # ID univoco per questo documento
+        doc_id = str(uuid.uuid4())
+        doc_dir = os.path.join(DOCS_FIRME_ROOT, doc_id)
+        os.makedirs(doc_dir, exist_ok=True)
+
+        pdf_path = os.path.join(doc_dir, "original.pdf")
+        pdf_file.save(pdf_path)
+
+        try:
+            pages = pdf_to_pil_images(pdf_path, dpi=200)
+        except Exception as e:
+            print(f"[FIRME][ERR] PDF->immagini (doc_id={doc_id}): {e}", flush=True)
+            return jsonify({"error": f"Errore nella conversione PDF->immagini (PyMuPDF): {e}"}), 500
+
+        pages_info = []
+        for i, img in enumerate(pages):
+            image_filename = f"page_{i}.png"
+            image_path = os.path.join(doc_dir, image_filename)
+            img.save(image_path, "PNG")
+
+            width, height = img.size
+
+            # rilevazione firme con YOLO
+            auto_boxes = detect_signatures(image_path)
+            norm_boxes = [{
+                "x": float(b["x"]),
+                "y": float(b["y"]),
+                "w": float(b["w"]),
+                "h": float(b["h"]),
+                "score": float(b.get("score", 1.0))
+            } for b in auto_boxes]
+
+            pages_info.append({
+                "index": i,
+                # usiamo /_static/... che passa da protected_static (login_required)
+                "image_url": url_for("protected_static", fname=f"docs_firme/{doc_id}/{image_filename}"),
+                "width": width,
+                "height": height,
+                "auto_boxes": norm_boxes
+            })
+
+        documents.append({
+            "doc_id": doc_id,
+            "filename": pdf_file.filename,
+            "pages": pages_info
+        })
+
+    print(f"[FIRME] Analizzati {len(documents)} documenti per la redazione firme", flush=True)
+    return jsonify({"documents": documents})
+
+
+
+@app.post("/api/firme/confirm")
+@login_required
+def api_firme_confirm():
+    """
+    Riceve:
+    {
+      "documents": [
+        {
+          "doc_id": "...",
+          "filename": "nome.pdf",
+          "pages": [
+            {
+              "page_index": 0,
+              "boxes": [ {"x":..,"y":..,"w":..,"h":..}, ... ]
+            },
+            ...
+          ]
+        },
+        ...
+      ]
+    }
+
+    Per ogni documento:
+      - legge le immagini page_X.png
+      - applica i rettangoli neri (irreversibili)
+      - crea un PDF oscurato in memoria
+    Poi:
+      - crea un unico ZIP in memoria con tutti i PDF oscurati
+      - cancella TUTTE le cartelle docs_firme/<doc_id>
+      - restituisce lo ZIP come download
+
+    Nessun file PDF o immagine rimane sul server dopo la risposta.
+    """
+    try:
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({"error": "JSON mancante in /api/firme/confirm"}), 400
+
+        docs_data = data.get("documents", [])
+        if not docs_data:
+            return jsonify({"error": "Nessun documento da elaborare"}), 400
+
+        print(f"[FIRME] Conferma redazione per {len(docs_data)} documenti", flush=True)
+
+        doc_dirs = []  # cartelle da cancellare alla fine
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for doc_entry in docs_data:
+                doc_id = doc_entry.get("doc_id")
+                pages_data = doc_entry.get("pages", [])
+                filename = (doc_entry.get("filename") or f"documento_{doc_id}.pdf").strip()
+
+                if not doc_id:
+                    print("[FIRME][WARN] doc_id mancante in una voce di documents", flush=True)
+                    continue
+
+                doc_dir = os.path.join(DOCS_FIRME_ROOT, doc_id)
+                if not os.path.isdir(doc_dir):
+                    print(f"[FIRME][WARN] Cartella documento non trovata: {doc_dir}", flush=True)
+                    continue
+
+                doc_dirs.append(doc_dir)
+
+                redacted_image_paths = []
+
+                for page_info in pages_data:
+                    page_index = page_info.get("page_index")
+                    boxes = page_info.get("boxes", [])
+
+                    if page_index is None:
+                        print(f"[FIRME][WARN] page_index mancante per doc_id={doc_id}", flush=True)
+                        continue
+
+                    image_path = os.path.join(doc_dir, f"page_{page_index}.png")
+                    if not os.path.exists(image_path):
+                        print(f"[FIRME][WARN] Immagine pagina non trovata: {image_path}", flush=True)
+                        continue
+
+                    img = Image.open(image_path)
+                    width, height = img.size
+                    draw = ImageDraw.Draw(img)
+
+                    # Oscuriamo tutte le box (se presenti)
+                    for b in boxes:
+                        x_norm = float(b["x"])
+                        y_norm = float(b["y"])
+                        w_norm = float(b["w"])
+                        h_norm = float(b["h"])
+
+                        x1 = int(x_norm * width)
+                        y1 = int(y_norm * height)
+                        x2 = int((x_norm + w_norm) * width)
+                        y2 = int((y_norm + h_norm) * height)
+
+                        draw.rectangle([x1, y1, x2, y2], fill="black")
+
+                    redacted_image_path = os.path.join(doc_dir, f"redacted_page_{page_index}.png")
+                    img.save(redacted_image_path, "PNG")
+                    redacted_image_paths.append(redacted_image_path)
+
+                if not redacted_image_paths:
+                    print(f"[FIRME][WARN] Nessuna pagina redatta per doc_id={doc_id}", flush=True)
+                    continue
+
+                # Ordina le pagine per index numerico
+                redacted_image_paths.sort(
+                    key=lambda p: int(os.path.basename(p).split("_")[-1].split(".")[0])
+                )
+
+                try:
+                    pdf_buffer = io.BytesIO()
+                    pdf_buffer.write(img2pdf.convert(redacted_image_paths))
+                    pdf_buffer.seek(0)
+                except Exception as e:
+                    print(f"[FIRME][ERR] Errore in img2pdf.convert per doc_id={doc_id}: {e}", flush=True)
+                    continue
+
+                safe_name = os.path.basename(filename)
+                if not safe_name.lower().endswith(".pdf"):
+                    safe_name += ".pdf"
+
+                print(f"[FIRME] Aggiungo al ZIP: {safe_name} ({len(redacted_image_paths)} pagine)", flush=True)
+                zipf.writestr(safe_name, pdf_buffer.read())
+
+        zip_buffer.seek(0)
+
+        # Cancella tutte le cartelle temporanee
+        for d in doc_dirs:
+            try:
+                shutil.rmtree(d, ignore_errors=True)
+                print(f"[FIRME] Eliminata cartella temporanea: {d}", flush=True)
+            except Exception as e:
+                print(f"[FIRME][WARN] Impossibile eliminare {d}: {e}", flush=True)
+
+        # Se non abbiamo scritto niente nello ZIP -> errore esplicito
+        if zip_buffer.getbuffer().nbytes == 0:
+            print("[FIRME][ERR] ZIP vuoto: nessun PDF oscurato generato", flush=True)
+            return jsonify({"error": "Nessun PDF oscurato generato (nessuna pagina utile)."}), 400
+
+        return send_file(
+            zip_buffer,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name="pdf_oscurati.zip"
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Errore interno durante la generazione ZIP: {e}"}), 500
+
 
 @app.route("/dashboard/")
 @login_required

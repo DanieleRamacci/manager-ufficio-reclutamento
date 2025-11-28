@@ -1,5 +1,41 @@
 [
   {
+    "codice": "367.600 FA ICMATE",
+    "titolo": "BANDO 367.600 FA ICMATE - ISTITUTO DI CHIMICA DELLA MATERIA CONDENSATA E DI TECNOLOGIE PER L'ENERGIA",
+    "data_pubblicazione_inpa": "2025-11-27T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.601 FA ISTC",
+    "titolo": "BANDO 367.601 FA ISTC - ISTITUTO DI SCIENZE E TECNOLOGIE DELLA COGNIZIONE",
+    "data_pubblicazione_inpa": "2025-11-27T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.578 RIC NANOTEC",
+    "titolo": "BANDO 367.578 RIC NANOTEC",
+    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.599 RIC IGM",
+    "titolo": "BANDO 367.599 RIC - ISTITUTO DI GENETICA MOLECOLARE 'LUIGI LUCA CAVALLI SFORZA'",
+    "data_pubblicazione_inpa": "2025-11-17T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
     "codice": "367.598 PT UGARE",
     "titolo": "BANDO 367.598 PT UGARE - UFFICIO GARE, BENI, SERVIZI E LAVORI - DCSR",
     "data_pubblicazione_inpa": "2025-11-17T12:00:00Z",
@@ -36,15 +72,6 @@
     "tipologia": "concorsi_pubblici"
   },
   {
-    "codice": "367.599 RIC IGM",
-    "titolo": "BANDO 367.599 RIC - ISTITUTO DI GENETICA MOLECOLARE 'LUIGI LUCA CAVALLI SFORZA'",
-    "data_pubblicazione_inpa": "2025-11-17T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
     "codice": "367.585 PR STIIMA",
     "titolo": "BANDO 367.585 PR STIIMA",
     "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
@@ -54,107 +81,8 @@
     "tipologia": "concorsi_pubblici"
   },
   {
-    "codice": "367.576 RIC ISASI",
-    "titolo": "BANDO 367.576 RIC - ISTITUTO DI SCIENZE APPLICATE E SISTEMI INTELLIGENTI 'EDUARDO CAIANIELLO'",
-    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.590 PR IGG",
-    "titolo": "BANDO 367.590 PR IGG - ISTITUTO DI GEOSCIENZE E GEORISORSE",
-    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.593 PR ISPF",
-    "titolo": "BANDO 367.593 PR ISPF - ISTITUTO PER LA STORIA DEL PENSIERO FILOSOFICO E SCIENTIFICO MODERNO",
-    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.587 PR IPCB",
-    "titolo": "BANDO 367.587 PR IPCB - ISTITUTO PER I POLIMERI COMPOSITI E BIOMATERIALI",
-    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.583 RIC NANO",
-    "titolo": "BANDO 367.583 RIC NANO - ISTITUTO DI NANOSCIENZE",
-    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.592 PR ISTC",
-    "titolo": "BANDO 367.592 PR ISTC - ISTITUTO DI SCIENZE E TECNOLOGIE DELLA COGNIZIONE",
-    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.591 PR ISMAR",
-    "titolo": "BANDO 367.591 PR ISMAR - ISTITUTO DI SCIENZE MARINE",
-    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.577 RIC IFN",
-    "titolo": "BANDO 367.577 RIC IFN",
-    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.579 RIC IMM",
-    "titolo": "BANDO 367.579 RIC IMM - ISTITUTO PER LA MICROELETTRONICA E MICROSISTEMI",
-    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.588 PR INO",
-    "titolo": "BANDO 367.588 PR INO - ISTITUTO NAZIONALE DI OTTICA",
-    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.586 PR IBBR",
-    "titolo": "BANDO 367.586 PR IBBR - ISTITUTO DI BIOSCIENZE E BIORISORSE",
-    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.589 PR SPIN",
-    "titolo": "BANDO null",
+    "codice": "367.575 RIC IBF",
+    "titolo": "BANDO 367.575 RIC IBF - ISTITUTO DI BIOFISICA",
     "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -164,15 +92,6 @@
   {
     "codice": "367.594 PR IBBC",
     "titolo": "BANDO 367.594 PR IBBC - ISTITUTO DI BIOCHIMICA E BIOLOGIA CELLULARE",
-    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.575 RIC IBF",
-    "titolo": "BANDO 367.575 RIC IBF - ISTITUTO DI BIOFISICA",
     "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -198,8 +117,62 @@
     "tipologia": "concorsi_pubblici"
   },
   {
-    "codice": "367.578 RIC NANOTEC",
-    "titolo": "BANDO 367.578 RIC NANOTEC",
+    "codice": "367.588 PR INO",
+    "titolo": "BANDO 367.588 PR INO - ISTITUTO NAZIONALE DI OTTICA",
+    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.576 RIC ISASI",
+    "titolo": "BANDO 367.576 RIC - ISTITUTO DI SCIENZE APPLICATE E SISTEMI INTELLIGENTI 'EDUARDO CAIANIELLO'",
+    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.582 RIC IOM",
+    "titolo": "BANDO 367.582 RIC IOM - ISTITUTO OFFICINA DEI MATERIALI",
+    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.579 RIC IMM",
+    "titolo": "BANDO 367.579 RIC IMM - ISTITUTO PER LA MICROELETTRONICA E MICROSISTEMI",
+    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.587 PR IPCB",
+    "titolo": "BANDO 367.587 PR IPCB - ISTITUTO PER I POLIMERI COMPOSITI E BIOMATERIALI",
+    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.586 PR IBBR",
+    "titolo": "BANDO 367.586 PR IBBR - ISTITUTO DI BIOSCIENZE E BIORISORSE",
+    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.590 PR IGG",
+    "titolo": "BANDO 367.590 PR IGG - ISTITUTO DI GEOSCIENZE E GEORISORSE",
     "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -216,8 +189,53 @@
     "tipologia": "concorsi_pubblici"
   },
   {
-    "codice": "367.582 RIC IOM",
-    "titolo": "BANDO 367.582 RIC IOM - ISTITUTO OFFICINA DEI MATERIALI",
+    "codice": "367.592 PR ISTC",
+    "titolo": "BANDO 367.592 PR ISTC - ISTITUTO DI SCIENZE E TECNOLOGIE DELLA COGNIZIONE",
+    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.577 RIC IFN",
+    "titolo": "BANDO 367.577 RIC IFN",
+    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.591 PR ISMAR",
+    "titolo": "BANDO 367.591 PR ISMAR - ISTITUTO DI SCIENZE MARINE",
+    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.589 PR SPIN",
+    "titolo": "BANDO null",
+    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.593 PR ISPF",
+    "titolo": "BANDO 367.593 PR ISPF - ISTITUTO PER LA STORIA DEL PENSIERO FILOSOFICO E SCIENTIFICO MODERNO",
+    "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.583 RIC NANO",
+    "titolo": "BANDO 367.583 RIC NANO - ISTITUTO DI NANOSCIENZE",
     "data_pubblicazione_inpa": "2025-11-03T12:00:00Z",
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -810,8 +828,8 @@
     "tipologia": "concorsi_pubblici"
   },
   {
-    "codice": "367.525 FA IBF",
-    "titolo": "BANDO 367.525 FA IBF - ISTITUTO DI BIOFISICA",
+    "codice": "367.527 FA IGM",
+    "titolo": "BANDO 367.527 FA IGM - ISTITUTO DI GENETICA MOLECOLARE 'LUIGI LUCA CAVALLI SFORZA'",
     "data_pubblicazione_inpa": "2025-08-11T12:00:00Z",
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -819,8 +837,8 @@
     "tipologia": "concorsi_pubblici"
   },
   {
-    "codice": "367.527 FA IGM",
-    "titolo": "BANDO 367.527 FA IGM - ISTITUTO DI GENETICA MOLECOLARE 'LUIGI LUCA CAVALLI SFORZA'",
+    "codice": "367.525 FA IBF",
+    "titolo": "BANDO 367.525 FA IBF - ISTITUTO DI BIOFISICA",
     "data_pubblicazione_inpa": "2025-08-11T12:00:00Z",
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -846,15 +864,6 @@
     "tipologia": "concorsi_pubblici"
   },
   {
-    "codice": "367.526 FA IBSBC",
-    "titolo": "BANDO 367.526 FA IBSBC - ISTITUTO DI BIOIMMAGINI E SISTEMI BIOLOGICI COMPLESSI",
-    "data_pubblicazione_inpa": "2025-08-11T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
     "codice": "367.530 FA IPSP",
     "titolo": "BANDO 367.530 IPSP - ISTITUTO PER LA PROTEZIONE SOSTENIBILE DELLE PIANTE - SESTO FIORENTINO (FI)",
     "data_pubblicazione_inpa": "2025-08-11T12:00:00Z",
@@ -866,6 +875,15 @@
   {
     "codice": "367.531 FA IN",
     "titolo": "BANDO 367.531 FA IN - ISTITUTO DI NEUROSCIENZE",
+    "data_pubblicazione_inpa": "2025-08-11T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.526 FA IBSBC",
+    "titolo": "BANDO 367.526 FA IBSBC - ISTITUTO DI BIOIMMAGINI E SISTEMI BIOLOGICI COMPLESSI",
     "data_pubblicazione_inpa": "2025-08-11T12:00:00Z",
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -1017,15 +1035,6 @@
     "tipologia": "concorsi_pubblici"
   },
   {
-    "codice": "367.513 RIC ILC PI",
-    "titolo": "BANDO 367.513 RIC ILC PI",
-    "data_pubblicazione_inpa": "2025-08-05T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
     "codice": "367.514 RIC IRCRES TO",
     "titolo": "BANDO 367.514 RIC IRCRES TO - ISTITUTO DI RICERCA SULLA CRESCITA ECONOMICA SOSTENIBILE",
     "data_pubblicazione_inpa": "2025-08-05T12:00:00Z",
@@ -1134,24 +1143,6 @@
     "tipologia": "concorsi_pubblici"
   },
   {
-    "codice": "367.508 RIC ISAC BO",
-    "titolo": "BANDO 367.508 RIC ISAC BO",
-    "data_pubblicazione_inpa": "2025-08-05T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.511 RIC IRET PORANO",
-    "titolo": "BANDO 367.511 RIC IRET PORANO",
-    "data_pubblicazione_inpa": "2025-08-05T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
     "codice": "367.506 RIC IRPI BA",
     "titolo": "BANDO 367.506 RIC IRPI BA",
     "data_pubblicazione_inpa": "2025-08-05T12:00:00Z",
@@ -1170,9 +1161,27 @@
     "tipologia": "concorsi_pubblici"
   },
   {
-    "codice": "367.501 CTER - Gestione di gare e contratti pubblici",
-    "titolo": "BANDO 367.501 CTER - Gestione di gare e contratti pubblici - STRUTTURE_ ISTITUTI DEL CONSIGLIO NAZIONALE DELLE RICERCHE",
-    "data_pubblicazione_inpa": "2025-07-23T12:00:00Z",
+    "codice": "367.511 RIC IRET PORANO",
+    "titolo": "BANDO 367.511 RIC IRET PORANO",
+    "data_pubblicazione_inpa": "2025-08-05T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.513 RIC ILC PI",
+    "titolo": "BANDO 367.513 RIC ILC PI",
+    "data_pubblicazione_inpa": "2025-08-05T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.508 RIC ISAC BO",
+    "titolo": "BANDO 367.508 RIC ISAC BO",
+    "data_pubblicazione_inpa": "2025-08-05T12:00:00Z",
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
     "graduatoria_presente": false,
@@ -1359,6 +1368,15 @@
     "tipologia": "concorsi_pubblici"
   },
   {
+    "codice": "367.501 CTER - Gestione di gare e contratti pubblici",
+    "titolo": "BANDO 367.501 CTER - Gestione di gare e contratti pubblici - STRUTTURE_ ISTITUTI DEL CONSIGLIO NAZIONALE DELLE RICERCHE",
+    "data_pubblicazione_inpa": "2025-07-23T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
     "codice": "367.502 CTER IRET",
     "titolo": "BANDO 367.502 CTER IRET",
     "data_pubblicazione_inpa": "2025-07-23T12:00:00Z",
@@ -1422,15 +1440,6 @@
     "tipologia": "concorsi_pubblici"
   },
   {
-    "codice": "367.487 RIC IREA NA",
-    "titolo": "BANDO 367.487 RIC IREA NA - ISTITUTO PER IL RILEVAMENTO ELETTROMAGNETICO DELL'AMBIENTE",
-    "data_pubblicazione_inpa": "2025-05-12T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
     "codice": "367.486 RIC IMEM PR",
     "titolo": "BANDO 367.486 RIC IMEM PR",
     "data_pubblicazione_inpa": "2025-05-12T12:00:00Z",
@@ -1451,33 +1460,6 @@
   {
     "codice": "367.481 RIC IAC RM",
     "titolo": "BANDO 367.481 RIC IAC RM - ISTITUTO PER LE APPLICAZIONI DEL CALCOLO 'MAURO PICONE'",
-    "data_pubblicazione_inpa": "2025-05-12T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.483 RIC IEIIT PD",
-    "titolo": "BANDO 367.483 RIC IEIIT PD - ISTITUTO DI ELETTRONICA E DI INGEGNERIA DELL'INFORMAZIONE E DELLE TELECOMUNICAZIONI",
-    "data_pubblicazione_inpa": "2025-05-12T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.490 RIC ICAR PA",
-    "titolo": "BANDO 367.490 RIC ICAR PA - ISTITUTO DI CALCOLO E RETI AD ALTE PRESTAZIONI",
-    "data_pubblicazione_inpa": "2025-05-12T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.485 RIC IMATI GE",
-    "titolo": "BANDO 367.485 RIC IMATI GE",
     "data_pubblicazione_inpa": "2025-05-12T12:00:00Z",
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -1512,15 +1494,6 @@
     "tipologia": "concorsi_pubblici"
   },
   {
-    "codice": "367.493 RIC IBE GR",
-    "titolo": "BANDO 367.493 RIC IBE - ISTITUTO PER LA BIOECONOMIA",
-    "data_pubblicazione_inpa": "2025-05-12T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
     "codice": "367.495 RIC IPSP TO",
     "titolo": "BANDO 367.495 RIC IPSP TO - ISTITUTO PER LA PROTEZIONE SOSTENIBILE DELLE PIANTE - TORINO",
     "data_pubblicazione_inpa": "2025-05-12T12:00:00Z",
@@ -1539,15 +1512,6 @@
     "tipologia": "concorsi_pubblici"
   },
   {
-    "codice": "367.482 RIC IASI RM",
-    "titolo": "BANDO 367.482 RIC IASI RM",
-    "data_pubblicazione_inpa": "2025-05-12T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
     "codice": "367.488 RIC ISTI PI",
     "titolo": "BANDO 367.488 RIC ISTI PI - ISTITUTO DI SCIENZA E TECNOLOGIE DELL'INFORMAZIONE",
     "data_pubblicazione_inpa": "2025-05-12T12:00:00Z",
@@ -1557,26 +1521,62 @@
     "tipologia": "concorsi_pubblici"
   },
   {
+    "codice": "367.493 RIC IBE GR",
+    "titolo": "BANDO 367.493 RIC IBE - ISTITUTO PER LA BIOECONOMIA",
+    "data_pubblicazione_inpa": "2025-05-12T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.482 RIC IASI RM",
+    "titolo": "BANDO 367.482 RIC IASI RM",
+    "data_pubblicazione_inpa": "2025-05-12T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.483 RIC IEIIT PD",
+    "titolo": "BANDO 367.483 RIC IEIIT PD - ISTITUTO DI ELETTRONICA E DI INGEGNERIA DELL'INFORMAZIONE E DELLE TELECOMUNICAZIONI",
+    "data_pubblicazione_inpa": "2025-05-12T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.485 RIC IMATI GE",
+    "titolo": "BANDO 367.485 RIC IMATI GE",
+    "data_pubblicazione_inpa": "2025-05-12T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.490 RIC ICAR PA",
+    "titolo": "BANDO 367.490 RIC ICAR PA - ISTITUTO DI CALCOLO E RETI AD ALTE PRESTAZIONI",
+    "data_pubblicazione_inpa": "2025-05-12T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.487 RIC IREA NA",
+    "titolo": "BANDO 367.487 RIC IREA NA - ISTITUTO PER IL RILEVAMENTO ELETTROMAGNETICO DELL'AMBIENTE",
+    "data_pubblicazione_inpa": "2025-05-12T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
     "codice": "367.500 CTER SAC",
     "titolo": "BANDO 367.500 CTER SAC - AMMINISTRAZIONE CENTRALE",
-    "data_pubblicazione_inpa": "2025-05-19T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.500 CTER SAC - Tematica B - Gestione di gare e contratti pubblici",
-    "titolo": "BANDO 367.500 CTER SAC - Tematica B - Gestione di gare e contratti pubblici - AMMINISTRAZIONE CENTRALE",
-    "data_pubblicazione_inpa": "2025-05-19T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.500 CTER SAC - Tematica D - Sostenibilita' ambientale",
-    "titolo": "BANDO 367.500 CTER SAC - Tematica D - Sostenibilita' ambientale - AMMINISTRAZIONE CENTRALE",
     "data_pubblicazione_inpa": "2025-05-19T12:00:00Z",
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -1595,6 +1595,24 @@
   {
     "codice": "367.500 CTER SAC - Tematica C - Supporto progetti di ricerca e analisi dati",
     "titolo": "BANDO 367.500 CTER SAC - Tematica C - Supporto progetti di ricerca e analisi dati - AMMINISTRAZIONE CENTRALE",
+    "data_pubblicazione_inpa": "2025-05-19T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.500 CTER SAC - Tematica D - Sostenibilita' ambientale",
+    "titolo": "BANDO 367.500 CTER SAC - Tematica D - Sostenibilita' ambientale - AMMINISTRAZIONE CENTRALE",
+    "data_pubblicazione_inpa": "2025-05-19T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.500 CTER SAC - Tematica B - Gestione di gare e contratti pubblici",
+    "titolo": "BANDO 367.500 CTER SAC - Tematica B - Gestione di gare e contratti pubblici - AMMINISTRAZIONE CENTRALE",
     "data_pubblicazione_inpa": "2025-05-19T12:00:00Z",
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -1638,24 +1656,6 @@
     "tipologia": "concorsi_pubblici"
   },
   {
-    "codice": "367.474 OTP IN",
-    "titolo": "BANDO 367.474 OTP IN - ISTITUTO DI RICERCA GENETICA E BIOMEDICA",
-    "data_pubblicazione_inpa": "2025-04-08T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.473 OTP IN",
-    "titolo": "BANDO 367.473 OTP IN - ISTITUTO DI NEUROSCIENZE",
-    "data_pubblicazione_inpa": "2025-04-08T12:00:00Z",
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
     "codice": "367.475 FA COMPLIANCE",
     "titolo": "BANDO 367.475 FA COMPLIANCE - DG - UNITA' GESTIONE E COMPLIANCE AMMINISTRATIVA",
     "data_pubblicazione_inpa": "2025-04-08T12:00:00Z",
@@ -1671,6 +1671,24 @@
     "data_pubblicazione_graduatoria": "2025-10-13T12:00:00Z",
     "graduatoria_allegato": true,
     "graduatoria_presente": true,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.474 OTP IN",
+    "titolo": "BANDO 367.474 OTP IN - ISTITUTO DI RICERCA GENETICA E BIOMEDICA",
+    "data_pubblicazione_inpa": "2025-04-08T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "concorsi_pubblici"
+  },
+  {
+    "codice": "367.473 OTP IN",
+    "titolo": "BANDO 367.473 OTP IN - ISTITUTO DI NEUROSCIENZE",
+    "data_pubblicazione_inpa": "2025-04-08T12:00:00Z",
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
     "tipologia": "concorsi_pubblici"
   },
   {
@@ -1782,22 +1800,247 @@
     "tipologia": "concorsi_pubblici"
   },
   {
-    "codice": "367.459 FA SAC",
-    "titolo": "BANDO 367.459 FA SAC",
-    "data_pubblicazione_inpa": "2024-05-29T12:00:00Z",
-    "data_pubblicazione_graduatoria": "2024-12-05T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "concorsi_pubblici"
-  },
-  {
-    "codice": "367.460 TEC SAC",
-    "titolo": "BANDO 367.460 TEC SAC",
-    "data_pubblicazione_inpa": "2024-05-29T12:00:00Z",
+    "codice": "Bando IGG.PI.BR.03.25",
+    "titolo": "BANDO Bando IGG.PI.BR.03.25 - ISTITUTO DI GEOSCIENZE E GEORISORSE",
+    "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
     "graduatoria_presente": false,
-    "tipologia": "concorsi_pubblici"
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BR IST.ICMATE 04 2025 LC",
+    "titolo": "BANDO BR IST.ICMATE 04 2025 LC - ISTITUTO DI CHIMICA DELLA MATERIA CONDENSATA E DI TECNOLOGIE PER L'ENERGIA",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "ITAE - BR.08.2025.ME",
+    "titolo": "BANDO ITAE BR.08.2025.ME",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "ITAE - BR.07.2025.ME",
+    "titolo": "BANDO ITAE BR.07.2025.ME",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "ITAE - BR.06.2025.ME",
+    "titolo": "BANDO ITAE BR.06.2025.ME - ISTITUTO DI TECNOLOGIE AVANZATE PER L'ENERGIA 'NICOLA GIORDANO'",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "ITAE - BR.09.2025.ME",
+    "titolo": "BANDO ITAE - BR.09.2025.ME",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BR-ISTP2025-5-MI",
+    "titolo": "BANDO BR-ISTP2025-2-MI - ISTITUTO PER LA SCIENZA E TECNOLOGIA DEI PLASMI",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BR IMM 15-2025-LE",
+    "titolo": "BANDO BR IMM 15-2025-LE",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "IRSA BR 15-2025 RM",
+    "titolo": "BANDO IRSA BR 15-2025 RM - ISTITUTO DI RICERCA SULLE ACQUE",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BR IMM 12-2025-CT",
+    "titolo": "BANDO BR IMM 12-2025-CT - ISTITUTO PER LA MICROELETTRONICA E MICROSISTEMI",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BANDO B.R. N ISMAR 04-2025-NA",
+    "titolo": "BANDO BANDO B.R. N ISMAR 04-2025-NA - ISTITUTO DI SCIENZE MARINE",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "Bando BR 008 IIT 2025",
+    "titolo": "BANDO Bando BR 008 IIT 2025 - ISTITUTO DI INFORMATICA E TELEMATICA",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BR IMM 13-2025-LE",
+    "titolo": "BANDO BR IMM 13-2025-LE - ISTITUTO PER LA MICROELETTRONICA E MICROSISTEMI",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BANDO IEOMI BR 17-2025",
+    "titolo": "BANDO BANDO IEOMI BR 17-2025 - ISTITUTO DEGLI ENDOTIPI IN ONCOLOGIA,METABOLISMO E IMMUNOLOGIA 'G. SALVATORE' - NAPOLI",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BR-IFC-019-2025-PI",
+    "titolo": "BANDO BR-IFC-019-2025-PI",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BR-IFC-017-2025-PI",
+    "titolo": "BANDO BR-IFC-017-2025-PI - ISTITUTO DI FISIOLOGIA CLINICA",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BdR SCITEC-009-2025-PG",
+    "titolo": "BANDO BdR SCITEC-009-2025-PG - ISTITUTO DI SCIENZE E TECNOLOGIE CHIMICHE 'GIULIO NATTA'",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "ISA-BR-004-2025-AV",
+    "titolo": "BANDO ISA-BR-004-2025-AV - ISTITUTO DI SCIENZE DELL'ALIMENTAZIONE",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BR IMM 14-2025-LE",
+    "titolo": "BANDO BR IMM 14-2025-LE",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BR N. 04-2025-IRIB-ME",
+    "titolo": "BANDO BR N. 04-2025-IRIB-ME - ISTITUTO PER LA RICERCA E L'INNOVAZIONE BIOMEDICA",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BANDO B.R. N ISMAR 05-2025-BO",
+    "titolo": "BANDO BANDO B.R. N ISMAR 05-2025-BO - ISTITUTO DI SCIENZE MARINE",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BANDO N ISMAR 06-2025-VE",
+    "titolo": "BANDO BANDO N ISMAR 06-2025-VE - ISTITUTO DI SCIENZE MARINE",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BANDO ISP-BR-02-2025-BO",
+    "titolo": "BANDO BANDO ISP-BR-02-2025-BO - ISTITUTO DI SCIENZE POLARI",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BANDO N. IREA BR-009-2025- BA",
+    "titolo": "BANDO BANDO N. IREA BR-009-2025- BA - ISTITUTO PER IL RILEVAMENTO ELETTROMAGNETICO DELL'AMBIENTE",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "INM-BR-002-2025-PA",
+    "titolo": "BANDO INM-BR-002-2025-PA",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "NANO BR 014-2025 PI",
+    "titolo": "BANDO NANO BR 014-2025 PI - ISTITUTO DI NANOSCIENZE",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "IEOMI BR 14-2025",
+    "titolo": "BANDO IEOMI BR 14-2025 - ISTITUTO DEGLI ENDOTIPI IN ONCOLOGIA,METABOLISMO E IMMUNOLOGIA 'G. SALVATORE' - NAPOLI",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
   },
   {
     "codice": "BANDO N. ILC-BR-005-2025-GE",
@@ -1836,17 +2079,8 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "ITAE - BR.04.2025.ME",
-    "titolo": "BANDO N. ITAE - BR.04.2025.ME",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
     "codice": "ITAE - BR.05.2025.ME",
-    "titolo": "BANDO ITAE - BR.05.2025 - ISTITUTO DI TECNOLOGIE AVANZATE PER L'ENERGIA 'NICOLA GIORDANO'",
+    "titolo": "BANDO ITAE - BR.05.2025.ME - ISTITUTO DI TECNOLOGIE AVANZATE PER L'ENERGIA 'NICOLA GIORDANO'",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -1854,53 +2088,8 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "BR.INO.008.2025.FI",
-    "titolo": "BANDO BR.INO.008.2025.FI - ISTITUTO NAZIONALE DI OTTICA",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "IGMBR0082025PV",
-    "titolo": "BANDO IGMBR0082025PV - ISTITUTO DI GENETICA MOLECOLARE 'LUIGI LUCA CAVALLI SFORZA'",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR ICAR 003 2025 NA",
-    "titolo": "BANDO BR ICAR 003 2025 NA - ISTITUTO DI CALCOLO E RETI AD ALTE PRESTAZIONI",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BANDO N. IRSA BR 14-2025 VB",
-    "titolo": "BANDO BANDO N. IRSA BR 14-2025 VB",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR-003-2025 IN PI",
-    "titolo": "BANDO BR-003-2025 IN PI",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "IGMBR0072025BO",
-    "titolo": "BANDO IGMBR0072025BO - ISTITUTO DI GENETICA MOLECOLARE 'LUIGI LUCA CAVALLI SFORZA'",
+    "codice": "ITAE - BR.04.2025.ME",
+    "titolo": "BANDO ITAE - BR.04.2025.ME - ISTITUTO DI TECNOLOGIE AVANZATE PER L'ENERGIA 'NICOLA GIORDANO'",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -1926,6 +2115,60 @@
     "tipologia": "borse_ricerca"
   },
   {
+    "codice": "IGMBR0082025PV",
+    "titolo": "BANDO IGMBR0082025PV - ISTITUTO DI GENETICA MOLECOLARE 'LUIGI LUCA CAVALLI SFORZA'",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "IGMBR0072025BO",
+    "titolo": "BANDO IGMBR0072025BO - ISTITUTO DI GENETICA MOLECOLARE 'LUIGI LUCA CAVALLI SFORZA'",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BR.INO.008.2025.FI",
+    "titolo": "BANDO BR.INO.008.2025.FI - ISTITUTO NAZIONALE DI OTTICA",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BR-003-2025 IN PI",
+    "titolo": "BANDO BR-003-2025 IN PI",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BR ICAR 003 2025 NA",
+    "titolo": "BANDO BR ICAR 003 2025 NA - ISTITUTO DI CALCOLO E RETI AD ALTE PRESTAZIONI",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BANDO N. IRSA BR 14-2025 VB",
+    "titolo": "BANDO BANDO N. IRSA BR 14-2025 VB",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
     "codice": "BR-007-2025 IN PD",
     "titolo": "BANDO BR-007-2025 IN PD - ISTITUTO DI NEUROSCIENZE",
     "data_pubblicazione_inpa": null,
@@ -1944,8 +2187,8 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "IBB-BR-006-2025-SSNA",
-    "titolo": "BANDO IBB-BR-006-2025-SSNA",
+    "codice": "IBB-BR-005-2025-SSNA",
+    "titolo": "BANDO IBB-BR-005-2025-SSNA - ISTITUTO DI BIOSTRUTTURE E BIOIMMAGINI",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -1953,8 +2196,8 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "IBB-BR-005-2025-SSNA",
-    "titolo": "BANDO IBB-BR-005-2025-SSNA - ISTITUTO DI BIOSTRUTTURE E BIOIMMAGINI",
+    "codice": "IBB-BR-006-2025-SSNA",
+    "titolo": "BANDO IBB-BR-006-2025-SSNA",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -1980,26 +2223,17 @@
     "tipologia": "borse_ricerca"
   },
   {
+    "codice": "ISM BR 004 2025 TS",
+    "titolo": "BANDO ISM BR 004 2025 TS",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
     "codice": "ISM BR 003 2025 TS",
     "titolo": "BANDO ISM BR 003 2025 TS - ISTITUTO DI STRUTTURA DELLA MATERIA",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BANDO N. ISM BR 002 2025 TS",
-    "titolo": "BANDO BANDO N. ISM BR 002 2025 TS - ISTITUTO DI STRUTTURA DELLA MATERIA",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "ISA-BR-003-2025-AV",
-    "titolo": "BANDO ISA-BR-003-2025-AV",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -2025,15 +2259,6 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "IBBA-008-2025-PI",
-    "titolo": "BANDO IBBA-008-2025-PI - ISTITUTO DI BIOLOGIA E BIOTECNOLOGIA AGRARIA",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
     "codice": "INM-BR-002-2025-RM",
     "titolo": "BANDO INM-BR-002-2025-RM",
     "data_pubblicazione_inpa": null,
@@ -2043,8 +2268,35 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "ISM BR 004 2025 TS",
-    "titolo": "BANDO ISM BR 004 2025 TS",
+    "codice": "BANDO N. ISM BR 002 2025 TS",
+    "titolo": "BANDO BANDO N. ISM BR 002 2025 TS - ISTITUTO DI STRUTTURA DELLA MATERIA",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "ISA-BR-003-2025-AV",
+    "titolo": "BANDO ISA-BR-003-2025-AV",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "IBBA-008-2025-PI",
+    "titolo": "BANDO IBBA-008-2025-PI - ISTITUTO DI BIOLOGIA E BIOTECNOLOGIA AGRARIA",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "ISOF-10-2025-BO",
+    "titolo": "BANDO ISOF-10-2025-BO - ISTITUTO PER LA SINTESI ORGANICA E LA FOTOREATTIVITA'",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -2088,8 +2340,8 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "BR-IFC-016-2025-PI",
-    "titolo": "BANDO BR-IFC-016-2025-PI - ISTITUTO DI FISIOLOGIA CLINICA",
+    "codice": "IEOMI BR 15-2025",
+    "titolo": "BANDO IEOMI BR 15-2025",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -2097,8 +2349,8 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "IEOMI BR 15-2025",
-    "titolo": "BANDO IEOMI BR 15-2025",
+    "codice": "BR-IFC-016-2025-PI",
+    "titolo": "BANDO BR-IFC-016-2025-PI - ISTITUTO DI FISIOLOGIA CLINICA",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -2115,8 +2367,17 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "Bando BR 007 2025",
-    "titolo": "BANDO Bando BR 007 2025 - ISTITUTO DI INFORMATICA E TELEMATICA",
+    "codice": "BR.01.2025 ISAFOM.PG",
+    "titolo": "BANDO BR.01.2025 ISAFOM.PG",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BR.02.2025 ISAFOM.NA",
+    "titolo": "BANDO BR.02.2025 ISAFOM.NA - ISTITUTO PER I SISTEMI AGRICOLI E FORESTALI DEL MEDITERRANEO",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -2142,89 +2403,8 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "BR.02.2025 ISAFOM.NA",
-    "titolo": "BANDO BR.02.2025 ISAFOM.NA - ISTITUTO PER I SISTEMI AGRICOLI E FORESTALI DEL MEDITERRANEO",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR.01.2025 ISAFOM.PG",
-    "titolo": "BANDO BR.01.2025 ISAFOM.PG",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
     "codice": "BdR SCITEC 007 2025 MIg",
     "titolo": "BANDO BdR SCITEC 007 2025 MIg - ISTITUTO DI SCIENZE E TECNOLOGIE CHIMICHE 'GIULIO NATTA'",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "STIIMA-BR-08-2025-BI",
-    "titolo": "BANDO STIIMA-BR-08-2025-BI - ISTITUTO DI SISTEMI E TECNOLOGIE INDUSTRIALI INTELLIGENTI PER IL MANIFATTURIERO AVANZATO",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR-IFC-013-2025-PI",
-    "titolo": "BANDO BR-IFC-013-2025-PI",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "IIA-12-2025-MLIB",
-    "titolo": "BANDO IIA-12-2025-MLIB - ISTITUTO SULL'INQUINAMENTO ATMOSFERICO",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR-IFC-011-2025-PI",
-    "titolo": "BANDO BR-IFC-011-2025-PI",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR-IFC-010-2025-PI",
-    "titolo": "BANDO BR-IFC-010-2025-PI - ISTITUTO DI FISIOLOGIA CLINICA",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "ICB BR 002 2025 NA",
-    "titolo": "BANDO ICB BR 002 2025 NA - ISTITUTO DI CHIMICA BIOMOLECOLARE",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "ICB BR 001 2025 NA",
-    "titolo": "BANDO ICB BR 001 2025 NA - ISTITUTO DI CHIMICA BIOMOLECOLARE",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -2241,8 +2421,8 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "SPIN BR 001-2025 NA",
-    "titolo": "BANDO SPIN BR 001-2025 NA - ISTITUTO SUPERCONDUTTORI, MATERIALI INNOVATIVI E DISPOSITIVI",
+    "codice": "BR-IFC-013-2025-PI",
+    "titolo": "BANDO BR-IFC-013-2025-PI",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -2250,8 +2430,62 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "BANDO IEOMI BR 13-2025",
-    "titolo": "BANDO BANDO IEOMI BR 13-2025 - ISTITUTO PER L'ENDOCRINOLOGIA E L'ONCOLOGIA SPERIMENTALE 'G. SALVATORE'",
+    "codice": "ICB BR 001 2025 NA",
+    "titolo": "BANDO ICB BR 001 2025 NA - ISTITUTO DI CHIMICA BIOMOLECOLARE",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "ICB BR 002 2025 NA",
+    "titolo": "BANDO ICB BR 002 2025 NA - ISTITUTO DI CHIMICA BIOMOLECOLARE",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BR-IFC-010-2025-PI",
+    "titolo": "BANDO BR-IFC-010-2025-PI - ISTITUTO DI FISIOLOGIA CLINICA",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "STIIMA-BR-08-2025-BI",
+    "titolo": "BANDO STIIMA-BR-08-2025-BI - ISTITUTO DI SISTEMI E TECNOLOGIE INDUSTRIALI INTELLIGENTI PER IL MANIFATTURIERO AVANZATO",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BR-IFC-011-2025-PI",
+    "titolo": "BANDO BR-IFC-011-2025-PI",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "SPIN BR 001-2025 NA",
+    "titolo": "BANDO SPIN BR 001-2025 NA - ISTITUTO SUPERCONDUTTORI, MATERIALI INNOVATIVI E DISPOSITIVI",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": "2025-11-28T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "IIA-12-2025-MLIB",
+    "titolo": "BANDO IIA-12-2025-MLIB - ISTITUTO SULL'INQUINAMENTO ATMOSFERICO",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -2268,8 +2502,8 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "ISMN-BR-2025-007-MLIB",
-    "titolo": "BANDO ISMN-BR-2025-007-MLIB - ISTITUTO PER LO STUDIO DEI MATERIALI NANOSTRUTTURATI",
+    "codice": "BANDO IEOMI BR 13-2025",
+    "titolo": "BANDO BANDO IEOMI BR 13-2025 - ISTITUTO PER L'ENDOCRINOLOGIA E L'ONCOLOGIA SPERIMENTALE 'G. SALVATORE'",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -2279,6 +2513,15 @@
   {
     "codice": "BANDO N. ISAC-BR-01-2025-LE",
     "titolo": "BANDO BANDO N. ISAC-BR-01-2025-LE - ISTITUTO DI SCIENZE DELL'ATMOSFERA E DEL CLIMA",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "ISMN-BR-2025-007-MLIB",
+    "titolo": "BANDO ISMN-BR-2025-007-MLIB - ISTITUTO PER LO STUDIO DEI MATERIALI NANOSTRUTTURATI",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -2313,8 +2556,35 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "STIIMA-BR-07-2025-BA",
-    "titolo": "BANDO STIIMA-BR-07-2025-BA",
+    "codice": "IRSA BR 12-2025 BA",
+    "titolo": "BANDO IRSA BR 07-2025 BA - ISTITUTO DI RICERCA SULLE ACQUE",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BANDO N. BR ISTI 010-2025 PI",
+    "titolo": "BANDO BANDO N. BR ISTI 010-2025 PI - ISTITUTO DI SCIENZA E TECNOLOGIE DELL'INFORMAZIONE",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "IGB BS 14-2025",
+    "titolo": "BANDO IGB BS 14-2025",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BdR SCITEC 006 2025 MI",
+    "titolo": "BANDO BdR SCITEC 006 2025 MI",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -2334,41 +2604,32 @@
     "codice": "INM-BR-001-2025-GE",
     "titolo": "BANDO INM-BR-001-2024-GE - ISTITUTO DI INGEGNERIA DEL MARE",
     "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
+    "data_pubblicazione_graduatoria": "2025-11-25T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "IRSA BR 12-2025 BA",
-    "titolo": "BANDO IRSA BR 07-2025 BA - ISTITUTO DI RICERCA SULLE ACQUE",
+    "codice": "BANDO N. BR ISTI 012-2025 PI",
+    "titolo": "BANDO BANDO N. BR ISTI 012-2025 PI",
     "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
+    "data_pubblicazione_graduatoria": "2025-11-24T12:00:00Z",
     "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BANDO N. BR ISTI 011-2025 PI",
-    "titolo": "BANDO BANDO N. BR ISTI 011-2025 PI",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
+    "graduatoria_presente": true,
     "tipologia": "borse_ricerca"
   },
   {
     "codice": "BR IFN-05-2025-MI",
     "titolo": "BANDO BR IFN-05-2025-MI - ISTITUTO DI FOTONICA E NANOTECNOLOGIE",
     "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
+    "data_pubblicazione_graduatoria": "2025-11-26T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "BANDO N. BR ISTI 010-2025 PI",
-    "titolo": "BANDO BANDO N. BR ISTI 010-2025 PI - ISTITUTO DI SCIENZA E TECNOLOGIE DELL'INFORMAZIONE",
+    "codice": "BANDO N. BR ISTI 011-2025 PI",
+    "titolo": "BANDO BANDO N. BR ISTI 011-2025 PI",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -2394,35 +2655,17 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "BANDO N. BR ISTI 012-2025 PI",
-    "titolo": "BANDO BANDO N. BR ISTI 012-2025 PI",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BdR SCITEC 006 2025 MI",
-    "titolo": "BANDO BdR SCITEC 006 2025 MI",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "IGB BS 14-2025",
-    "titolo": "BANDO IGB BS 14-2025",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
     "codice": "ISAC-BR-05-2025-BO",
     "titolo": "BANDO ISAC-BR-05-2025-BO - ISTITUTO DI SCIENZE DELL'ATMOSFERA E DEL CLIMA",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": "2025-11-27T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "STIIMA-BR-07-2025-BA",
+    "titolo": "BANDO STIIMA-BR-07-2025-BA",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -2433,9 +2676,9 @@
     "codice": "IAS-BS-003-2025-OR",
     "titolo": "BANDO IAS-BS-003-2025-OR - ISTITUTO PER LO STUDIO DEGLI IMPATTI ANTROPICI E SOSTENIBILITA' IN AMBIENTE MARINO",
     "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
+    "data_pubblicazione_graduatoria": "2025-11-25T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
     "tipologia": "borse_ricerca"
   },
   {
@@ -2484,15 +2727,6 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "Bando IGG.PI.BR.02.25",
-    "titolo": "BANDO Bando IGG.PI.BR.02.25 - ISTITUTO DI GEOSCIENZE E GEORISORSE",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
     "codice": "BR.INO.006.2025.TS CODICE 1",
     "titolo": "BANDO BR.INO.006.2025.TS Codice 1 - ISTITUTO NAZIONALE DI OTTICA",
     "data_pubblicazione_inpa": null,
@@ -2504,6 +2738,15 @@
   {
     "codice": "BR.INO.006.2025.TS CODICE 3",
     "titolo": "BANDO BR.INO.006.2025.TS CODICE 3 - ISTITUTO NAZIONALE DI OTTICA",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "Bando IGG.PI.BR.02.25",
+    "titolo": "BANDO Bando IGG.PI.BR.02.25 - ISTITUTO DI GEOSCIENZE E GEORISORSE",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -2523,9 +2766,9 @@
     "codice": "IMATI-BR-003-2025-MI",
     "titolo": "BANDO IMATI-BR-003-2025-MI",
     "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
+    "data_pubblicazione_graduatoria": "2025-11-24T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
     "tipologia": "borse_ricerca"
   },
   {
@@ -2592,15 +2835,6 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "004-2025-IEIIT-BO",
-    "titolo": "BANDO 004-2025-IEIIT-BO - ISTITUTO DI ELETTRONICA E DI INGEGNERIA DELL'INFORMAZIONE E DELLE TELECOMUNICAZIONI",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
     "codice": "N. 003-2025-IEIIT-MI",
     "titolo": "BANDO N. 003-2025-IEIIT-MI - ISTITUTO DI ELETTRONICA E DI INGEGNERIA DELL'INFORMAZIONE E DELLE TELECOMUNICAZIONI",
     "data_pubblicazione_inpa": null,
@@ -2610,26 +2844,8 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "IBBA-007-2025-PI",
-    "titolo": "BANDO IBBA-007-2025-PI - ISTITUTO DI BIOLOGIA E BIOTECNOLOGIA AGRARIA",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BANDO BR STEMS N. 02 2025 NA",
-    "titolo": "BANDO BANDO BR STEMS N. 02 2025 NA - ISTITUTO DI SCIENZE E TECNOLOGIE PER L'ENERGIA E LA MOBILITA' SOSTENIBILI",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BANDO N. IRSA BR 11-2025 VB",
-    "titolo": "BANDO BANDO N. IRSA BR 11-2025 VB",
+    "codice": "004-2025-IEIIT-BO",
+    "titolo": "BANDO 004-2025-IEIIT-BO - ISTITUTO DI ELETTRONICA E DI INGEGNERIA DELL'INFORMAZIONE E DELLE TELECOMUNICAZIONI",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -2664,8 +2880,35 @@
     "tipologia": "borse_ricerca"
   },
   {
+    "codice": "IBBA-007-2025-PI",
+    "titolo": "BANDO IBBA-007-2025-PI - ISTITUTO DI BIOLOGIA E BIOTECNOLOGIA AGRARIA",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BANDO BR STEMS N. 02 2025 NA",
+    "titolo": "BANDO BANDO BR STEMS N. 02 2025 NA - ISTITUTO DI SCIENZE E TECNOLOGIE PER L'ENERGIA E LA MOBILITA' SOSTENIBILI",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": null,
+    "graduatoria_allegato": false,
+    "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
     "codice": "BR IFN-04-2025-MI",
     "titolo": "BANDO BR IFN-04-2025-MI - ISTITUTO DI FOTONICA E NANOTECNOLOGIE",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": "2025-11-24T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BANDO N. IRSA BR 11-2025 VB",
+    "titolo": "BANDO BANDO N. IRSA BR 11-2025 VB",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -2685,9 +2928,9 @@
     "codice": "BANDO N. BR ISTI 008-2025 PI",
     "titolo": "BANDO BANDO N. BR ISTI 008-2025 PI",
     "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
+    "data_pubblicazione_graduatoria": "2025-11-24T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
     "tipologia": "borse_ricerca"
   },
   {
@@ -2703,9 +2946,9 @@
     "codice": "BANDO n. 3 2025 ITB MI Borsa di Ricerca Segrate",
     "titolo": "BANDO BANDO n. 3 2025 ITB MI Borsa di Ricerca Segrate - ISTITUTO DI TECNOLOGIE BIOMEDICHE",
     "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
+    "data_pubblicazione_graduatoria": "2025-11-26T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
     "tipologia": "borse_ricerca"
   },
   {
@@ -2720,15 +2963,6 @@
   {
     "codice": "ITC-BR-006-2025-SG",
     "titolo": "BANDO ITC-BR-006-2025-SG",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR IAC-02-2025 NA",
-    "titolo": "BANDO BR IAC-02-2025 NA - ISTITUTO PER LE APPLICAZIONI DEL CALCOLO 'MAURO PICONE'",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -2754,6 +2988,15 @@
     "tipologia": "borse_ricerca"
   },
   {
+    "codice": "BR IAC-02-2025 NA",
+    "titolo": "BANDO BR IAC-02-2025 NA - ISTITUTO PER LE APPLICAZIONI DEL CALCOLO 'MAURO PICONE'",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": "2025-11-26T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
+    "tipologia": "borse_ricerca"
+  },
+  {
     "codice": "BANDO IBSBC 05-2025 CZ",
     "titolo": "BANDO BANDO IBSBC 05-2025CZ - ISTITUTO DI BIOIMMAGINI E SISTEMI BIOLOGICI COMPLESSI",
     "data_pubblicazione_inpa": null,
@@ -2775,9 +3018,9 @@
     "codice": "BR 072025 IBBC NA",
     "titolo": "BANDO BR 072025 IBBCNA - ISTITUTO DI BIOCHIMICA E BIOLOGIA CELLULARE",
     "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
+    "data_pubblicazione_graduatoria": "2025-11-26T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
     "tipologia": "borse_ricerca"
   },
   {
@@ -2838,23 +3081,14 @@
     "codice": "BANDO ISP-BR-04-2025-VE",
     "titolo": "BANDO BANDO ISP-BR-04-2025-VE - ISTITUTO DI SCIENZE POLARI",
     "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
+    "data_pubblicazione_graduatoria": "2025-11-27T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
     "tipologia": "borse_ricerca"
   },
   {
     "codice": "BR-IFC-008-2025-PI",
     "titolo": "BANDO BR-IFC-008-2025-PI",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "IGMBR0062025PV",
-    "titolo": "BANDO IGMBR0062025PV - ISTITUTO DI GENETICA MOLECOLARE 'LUIGI LUCA CAVALLI SFORZA'",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -2880,6 +3114,15 @@
     "tipologia": "borse_ricerca"
   },
   {
+    "codice": "IGMBR0062025PV",
+    "titolo": "BANDO IGMBR0062025PV - ISTITUTO DI GENETICA MOLECOLARE 'LUIGI LUCA CAVALLI SFORZA'",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": "2025-11-20T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
+    "tipologia": "borse_ricerca"
+  },
+  {
     "codice": "Bando BR 006 IIT 2025",
     "titolo": "BANDO Bando BR 006 IIT 2025 - ISTITUTO DI INFORMATICA E TELEMATICA",
     "data_pubblicazione_inpa": null,
@@ -2900,15 +3143,6 @@
   {
     "codice": "BR-IFC-007-2025-PI",
     "titolo": "BANDO BR-IFC-007-2025-PI - ISTITUTO DI FISIOLOGIA CLINICA",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "ILC-BR-004-2025-PI",
-    "titolo": "BANDO ILC-BR-004-2025-PI - ISTITUTO DI LINGUISTICA COMPUTAZIONALE 'ANTONIO ZAMPOLLI'",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -2943,30 +3177,21 @@
     "tipologia": "borse_ricerca"
   },
   {
+    "codice": "ILC-BR-004-2025-PI",
+    "titolo": "BANDO ILC-BR-004-2025-PI - ISTITUTO DI LINGUISTICA COMPUTAZIONALE 'ANTONIO ZAMPOLLI'",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": "2025-11-25T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
+    "tipologia": "borse_ricerca"
+  },
+  {
     "codice": "BANDO n. 2 2025 ITB MI Borsa di Ricerca Segrate",
     "titolo": "BANDO BANDO n. 2 2025 ITB MI Borsa di Ricerca Segrate - ISTITUTO DI TECNOLOGIE BIOMEDICHE",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": "2025-11-12T12:00:00Z",
     "graduatoria_allegato": true,
     "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "IBBR BR 002 2025 PG",
-    "titolo": "BANDO IBBR BR 002 2025 PG - ISTITUTO DI BIOSCIENZE E BIORISORSE",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "IBBR BR 001 2025 PG",
-    "titolo": "BANDO IBBR BR 001 2025 PG",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
     "tipologia": "borse_ricerca"
   },
   {
@@ -2988,12 +3213,30 @@
     "tipologia": "borse_ricerca"
   },
   {
+    "codice": "IBBR BR 001 2025 PG",
+    "titolo": "BANDO IBBR BR 001 2025 PG",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": "2025-11-20T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "IBBR BR 002 2025 PG",
+    "titolo": "BANDO IBBR BR 002 2025 PG - ISTITUTO DI BIOSCIENZE E BIORISORSE",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": "2025-11-20T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
+    "tipologia": "borse_ricerca"
+  },
+  {
     "codice": "BR.013.2025 NANOTEC LE",
     "titolo": "BANDO BR.013.2025 NANOTEC LE - ISTITUTO DI NANOTECNOLOGIA",
     "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
+    "data_pubblicazione_graduatoria": "2025-11-19T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
     "tipologia": "borse_ricerca"
   },
   {
@@ -3024,33 +3267,6 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "BR-IRBIM-010-2025-MZ",
-    "titolo": "BANDO BR-IRBIM-010-2025-MZ - ISTITUTO PER LE RISORSE BIOLOGICHE E LE BIOTECNOLOGIE MARINE",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR-IRBIM-011-2025-MZ",
-    "titolo": "BANDO BR-IRBIM-011-2025-MZ - ISTITUTO PER LE RISORSE BIOLOGICHE E LE BIOTECNOLOGIE MARINE",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "NANO BR 011-2025 MO",
-    "titolo": "BANDO NANO BR 011-2025 MO",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
     "codice": "BR STEMS N 012025 NA",
     "titolo": "BANDO BR STEMS N 012025 NA - Istituto di Scienze e Tecnologie per l'Energia e la Mobilità Sostenibili",
     "data_pubblicazione_inpa": null,
@@ -3060,17 +3276,35 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "IOM BR 04-2025 TS",
-    "titolo": "BANDO IOM BR 04-2025 TS - ISTITUTO OFFICINA DEI MATERIALI",
+    "codice": "BR-IRBIM-010-2025-MZ",
+    "titolo": "BANDO BR-IRBIM-010-2025-MZ - ISTITUTO PER LE RISORSE BIOLOGICHE E LE BIOTECNOLOGIE MARINE",
     "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
+    "data_pubblicazione_graduatoria": "2025-11-19T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "BR 002 2025 IN PI",
-    "titolo": "BANDO BR 002 2025 IN PI - ISTITUTO DI NEUROSCIENZE",
+    "codice": "BR-IRBIM-011-2025-MZ",
+    "titolo": "BANDO BR-IRBIM-011-2025-MZ - ISTITUTO PER LE RISORSE BIOLOGICHE E LE BIOTECNOLOGIE MARINE",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": "2025-11-17T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "NANO BR 011-2025 MO",
+    "titolo": "BANDO NANO BR 011-2025 MO",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": "2025-11-26T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "IOM BR 04-2025 TS",
+    "titolo": "BANDO IOM BR 04-2025 TS - ISTITUTO OFFICINA DEI MATERIALI",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -3084,6 +3318,15 @@
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
     "graduatoria_presente": false,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BR 002 2025 IN PI",
+    "titolo": "BANDO BR 002 2025 IN PI - ISTITUTO DI NEUROSCIENZE",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": "2025-11-21T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
     "tipologia": "borse_ricerca"
   },
   {
@@ -3123,8 +3366,8 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "BANDO CNR ISSIRFA BR N.2 2025",
-    "titolo": "BANDO BANDO CNR ISSIRFA BR N.2 2025",
+    "codice": "BR IBPM 008 2025 RM",
+    "titolo": "BANDO BR IBPM 008 2025 RM",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -3135,9 +3378,18 @@
     "codice": "BR N. 02-2025-IRIB-PA",
     "titolo": "BANDO BR N. 02-2025-IRIB-PA - ISTITUTO PER LA RICERCA E L'INNOVAZIONE BIOMEDICA",
     "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
+    "data_pubblicazione_graduatoria": "2025-11-19T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
+    "tipologia": "borse_ricerca"
+  },
+  {
+    "codice": "BANDO CNR ISSIRFA BR N.2 2025",
+    "titolo": "BANDO BANDO CNR ISSIRFA BR N.2 2025",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": "2025-11-21T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
     "tipologia": "borse_ricerca"
   },
   {
@@ -3150,21 +3402,12 @@
     "tipologia": "borse_ricerca"
   },
   {
-    "codice": "BR IBPM 008 2025 RM",
-    "titolo": "BANDO BR IBPM 008 2025 RM",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
     "codice": "BR-08-IIA-CS-2025",
     "titolo": "BANDO BR-08-IIA-CS-2025 - ISTITUTO SULL'INQUINAMENTO ATMOSFERICO",
     "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
+    "data_pubblicazione_graduatoria": "2025-11-28T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
     "tipologia": "borse_ricerca"
   },
   {
@@ -3225,9 +3468,9 @@
     "codice": "BANDO n. ISP-BR-02-2025-VE",
     "titolo": "BANDO BANDO n. ISP-BR-02-2025-VE - ISTITUTO DI SCIENZE POLARI",
     "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
+    "data_pubblicazione_graduatoria": "2025-11-20T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
     "tipologia": "borse_ricerca"
   },
   {
@@ -3251,15 +3494,6 @@
   {
     "codice": "ISOF-6-2025-BO",
     "titolo": "BANDO ISOF-6-2025-BO - ISTITUTO PER LA SINTESI ORGANICA E LA FOTOREATTIVITA'",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BANDO n. ISP-BR-01-2025-VE",
-    "titolo": "BANDO BANDO n. ISP-BR-01-2025-VE - ISTITUTO DI SCIENZE POLARI",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": null,
     "graduatoria_allegato": false,
@@ -3312,6 +3546,15 @@
     "tipologia": "borse_ricerca"
   },
   {
+    "codice": "BANDO n. ISP-BR-01-2025-VE",
+    "titolo": "BANDO BANDO n. ISP-BR-01-2025-VE - ISTITUTO DI SCIENZE POLARI",
+    "data_pubblicazione_inpa": null,
+    "data_pubblicazione_graduatoria": "2025-11-20T12:00:00Z",
+    "graduatoria_allegato": true,
+    "graduatoria_presente": true,
+    "tipologia": "borse_ricerca"
+  },
+  {
     "codice": "BANDO N. IAS-BS-002-2025-CG",
     "titolo": "BANDO BANDO N. IAS-BS-002-2025-CG",
     "data_pubblicazione_inpa": null,
@@ -3352,249 +3595,6 @@
     "titolo": "BANDO BR 003 2025 IBF TN - ISTITUTO DI BIOFISICA",
     "data_pubblicazione_inpa": null,
     "data_pubblicazione_graduatoria": "2025-11-11T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR 004 - 2025 IBF TN",
-    "titolo": "BANDO BR 004 - 2025 IBF TN",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR 02-2025-IRGB-MI",
-    "titolo": "BANDO null - ISTITUTO DI RICERCA GENETICA E BIOMEDICA",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR 02 2025 IRGB MI",
-    "titolo": "BANDO BR 02 2025 IRGB MI - ISTITUTO DI RICERCA GENETICA E BIOMEDICA",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "NANO BR 010-2025 PI",
-    "titolo": "BANDO NANO BR 010-2025 PI - ISTITUTO DI NANOSCIENZE",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-11-19T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "NANO BR 009-2025 MO",
-    "titolo": "BANDO NANO BR 009-2025 MO",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-11-18T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR.010.2025 NANOTEC-LE",
-    "titolo": "BANDO BR.010.2025 NANOTEC-LE",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-10-29T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR IMM09-2025-MB",
-    "titolo": "BANDO BR IMM09-2025-MB",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "IPSP BR 09 2025 TO",
-    "titolo": "BANDO IPSP BR 09 2025 TO - ISTITUTO PER LA PROTEZIONE SOSTENIBILE DELLE PIANTE - TORINO",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR IMM 10-2025-CT",
-    "titolo": "BANDO BR IMM 10-2025-CT",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-10-23T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR-IBPM-006-2025-RM",
-    "titolo": "BANDO BR-IBPM-006-2025-RM - ISTITUTO DI BIOLOGIA E PATOLOGIA MOLECOLARI",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-10-27T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR-IBPM-007-2025-RM",
-    "titolo": "BANDO BR-IBPM-007-2025-RM - ISTITUTO DI BIOLOGIA E PATOLOGIA MOLECOLARI",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-10-28T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "IGM-BR-005-2025-PV",
-    "titolo": "BANDO IGM-BR-005-2025-PV",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-11-28T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "IGMBR0032025PV",
-    "titolo": "BANDO IGMBR0032025PV - ISTITUTO DI GENETICA MOLECOLARE 'LUIGI LUCA CAVALLI SFORZA'",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": null,
-    "graduatoria_allegato": false,
-    "graduatoria_presente": false,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "ICB-PD-BR-03-2025",
-    "titolo": "BANDO ICB-PD-BR-003-2025",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-11-20T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR-ISTP2025-4-MI",
-    "titolo": "BANDO BR-ISTP2025-4-MI",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-10-13T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "Bando IEOMI n. BR 11-2025",
-    "titolo": "BANDO Bando IEOMI n. BR 11-2025 - ISTITUTO PER L'ENDOCRINOLOGIA E L'ONCOLOGIA SPERIMENTALE 'G. SALVATORE'",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-11-12T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "ISTC-BR-13-2025-RM",
-    "titolo": "BANDO ISTC-BR-13-2025-RM - ISTITUTO DI SCIENZE E TECNOLOGIE DELLA COGNIZIONE",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-11-11T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "IGMBR0042025PV",
-    "titolo": "BANDO IGMBR0042025PV - ISTITUTO DI GENETICA MOLECOLARE 'LUIGI LUCA CAVALLI SFORZA'",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-10-21T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "STIIMA-BR-04-2025-LC",
-    "titolo": "BANDO STIIMA-BR-04-2025-LC - ISTITUTO DI SISTEMI E TECNOLOGIE INDUSTRIALI INTELLIGENTI PER IL MANIFATTURIERO AVANZATO",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-10-27T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR-IBPM-005-2025-RM",
-    "titolo": "BANDO BR-IBPM-005-2025-RM - ISTITUTO DI BIOLOGIA E PATOLOGIA MOLECOLARI",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-10-27T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "IGB BS 8-2025",
-    "titolo": "BANDO IGB BS 8-2025 - ISTITUTO DI GENETICA E BIOFISICA 'ADRIANO BUZZATI TRAVERSO'",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-11-07T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "IRPI 002 2025 PD",
-    "titolo": "BANDO XXX-PD - ISTITUTO DI RICERCA PER LA PROTEZIONE IDROGEOLOGICA",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-10-16T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BANDO N 1 2025 ITB MI",
-    "titolo": "BANDO BANDO N 1 2025 ITB MI - ISTITUTO DI TECNOLOGIE BIOMEDICHE",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-09-30T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR IST.ICMATE 03 2025 PD",
-    "titolo": "BANDO BR IST.ICMATE 03 2025 PD - ISTITUTO DI CHIMICA DELLA MATERIA CONDENSATA E DI TECNOLOGIE PER L'ENERGIA",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-11-04T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BdR SCITEC 003 2025 MI",
-    "titolo": "BANDO BdR SCITEC 003 2025 MI",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-10-22T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "BR-ISTP2025-1-MI",
-    "titolo": "BANDO BR-ISTP2025-1-MI",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-10-10T12:00:00Z",
-    "graduatoria_allegato": true,
-    "graduatoria_presente": true,
-    "tipologia": "borse_ricerca"
-  },
-  {
-    "codice": "ISPA 03-25 TO",
-    "titolo": "BANDO ISPA 03-25 TO - ISTITUTO DI SCIENZE DELLE PRODUZIONI ALIMENTARI",
-    "data_pubblicazione_inpa": null,
-    "data_pubblicazione_graduatoria": "2025-10-14T12:00:00Z",
     "graduatoria_allegato": true,
     "graduatoria_presente": true,
     "tipologia": "borse_ricerca"

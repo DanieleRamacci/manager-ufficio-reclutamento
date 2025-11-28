@@ -41,13 +41,19 @@
     "numero_protocollo": "385552",
     "graduatoria_presente": false,
     "data_pubblicazione_graduatoria": null,
-    "estratto": "Tipologia:\nConcorsi e Selezioni\n-\nBandi Pubblici - Mobilità\nProtocollo 385552\ndel  09-10-2025\nAvviso pubblico per l’acquisizione di manifestazioni di interesse, riservato a dipendenti di\npubbliche amministrazioni di cui all’art. 1, comma 2 del D.lgs. 165/2001, disponibili a prestare\nservizio in posizione di comando presso il Consiglio Nazionale delle Ricerche\nAVVISO “01- COMANDO-2025-IFC”\nAllegati\nPagina aggiornata il 10-10-2025 09:10:54\nQuesta pagina ti è stata utile?\nSì\nNo\nSelect one\nIl contenuto della pagina non è chiaro\nLe informazioni sono incomplete",
+    "estratto": "Tipologia:\nConcorsi e Selezioni\n-\nBandi Pubblici - Mobilità\nProtocollo 385552\ndel  09-10-2025\nAvviso pubblico per l’acquisizione di manifestazioni di interesse, riservato a dipendenti di\npubbliche amministrazioni di cui all’art. 1, comma 2 del D.lgs. 165/2001, disponibili a prestare\nservizio in posizione di comando presso il Consiglio Nazionale delle Ricerche\nAVVISO “01- COMANDO-2025-IFC”\nAllegati\nCommissione\n- Protocollo 464308\ndel 19-11-2025\nCriteri di valutazione\n- Protocollo 477331\ndel 25-11-2025\nPagina aggiornata il 26-11-2025 07:11:26\nQuesta pagina ti è stata utile?\nSì\nNo\nSelect one\nIl contenuto della pagina non è chiaro\nLe informazioni sono incomplete",
     "allegati": [
       {
-        "titolo": "",
-        "link": "",
-        "protocollo": null,
-        "data": null
+        "titolo": "Commissione",
+        "link": "https://www.urp.cnr.it/system/files?file=2025-11/Provv_nomina_commissione_Avviso_01-COMANDO-2025-IFC_signed.pdf",
+        "protocollo": "464308",
+        "data": "19-11-2025"
+      },
+      {
+        "titolo": "Criteri di valutazione",
+        "link": "https://www.urp.cnr.it/system/files?file=2025-11/Criteri_valutazione_titoli_colloquio_Avviso_01-COMANDO-2025-IFC_signed_signed.pdf",
+        "protocollo": "477331",
+        "data": "25-11-2025"
       }
     ],
     "tipologia": "comando",
@@ -72,24 +78,6 @@
     "codice": "BANDO N. 365.197 FA AREA ROMA 1"
   },
   {
-    "url": "https://www.urp.cnr.it/node/30525",
-    "data_pubblicazione_bando": "07-07-2025",
-    "numero_protocollo": "253106",
-    "graduatoria_presente": false,
-    "data_pubblicazione_graduatoria": null,
-    "estratto": "Tipologia:\nConcorsi e Selezioni\n-\nBandi Pubblici - Mobilità\nProtocollo 253106\ndel  07-07-2025\nBANDO DI MOBILITÀ ESTERNA VOLONTARIA, PER TITOLI E COLLOQUIO, AI SENSI DELL’ART. 30 D.LGS N. 165/2001, PER LA COPERTURA DI N. 1 POSIZIONE, CON CONTRATTO DI LAVORO A TEMPO PIENO E INDETERMINATO PROFILO DI COLLABORATORE ENTI DI RICERCA - VI LIVELLO PROFESSIONALE – PRESSO L’UNITA’ PIANIFICAZIONE, PROGRAMMAZIONE E BIBLIOTECA CENTRALE DELLA DIREZIONE CENTRALE SERVIZI ALLA RICERCA – DEL CONSIGLIO NAZIONALE DELLE RICERCHE\nBANDO N. 365.196 CTER UPPBC\nAllegati\nRettifica bando\n- Protocollo 266295\ndel 14-07-2025\nPagina aggiornata il 15-07-2025 09:07:38\nQuesta pagina ti è stata utile?\nSì\nNo\nSelect one\nIl contenuto della pagina non è chiaro\nLe informazioni sono incomplete",
-    "allegati": [
-      {
-        "titolo": "Rettifica bando",
-        "link": "https://www.urp.cnr.it/system/files?file=2025-07/Rettifica-Bando-365.196-CTER-UPPBC_signed.pdf",
-        "protocollo": "266295",
-        "data": "14-07-2025"
-      }
-    ],
-    "tipologia": "mobilità",
-    "codice": "BANDO N. 365.196 CTER UPPBC"
-  },
-  {
     "url": "https://www.urp.cnr.it/node/30523",
     "data_pubblicazione_bando": "07-07-2025",
     "numero_protocollo": "253102",
@@ -112,6 +100,30 @@
     ],
     "tipologia": "mobilità",
     "codice": "BANDO N. 365.195 FA ISMAR"
+  },
+  {
+    "url": "https://www.urp.cnr.it/node/30525",
+    "data_pubblicazione_bando": "07-07-2025",
+    "numero_protocollo": "253106",
+    "graduatoria_presente": false,
+    "data_pubblicazione_graduatoria": null,
+    "estratto": "Tipologia:\nConcorsi e Selezioni\n-\nBandi Pubblici - Mobilità\nProtocollo 253106\ndel  07-07-2025\nBANDO DI MOBILITÀ ESTERNA VOLONTARIA, PER TITOLI E COLLOQUIO, AI SENSI DELL’ART. 30 D.LGS N. 165/2001, PER LA COPERTURA DI N. 1 POSIZIONE, CON CONTRATTO DI LAVORO A TEMPO PIENO E INDETERMINATO PROFILO DI COLLABORATORE ENTI DI RICERCA - VI LIVELLO PROFESSIONALE – PRESSO L’UNITA’ PIANIFICAZIONE, PROGRAMMAZIONE E BIBLIOTECA CENTRALE DELLA DIREZIONE CENTRALE SERVIZI ALLA RICERCA – DEL CONSIGLIO NAZIONALE DELLE RICERCHE\nBANDO N. 365.196 CTER UPPBC\nAllegati\nRettifica bando\n- Protocollo 266295\ndel 14-07-2025\nConclusione procedura\n- Protocollo 475634\ndel 25-11-2025\nPagina aggiornata il 26-11-2025 07:11:59\nQuesta pagina ti è stata utile?\nSì\nNo\nSelect one\nIl contenuto della pagina non è chiaro\nLe informazioni sono incomplete",
+    "allegati": [
+      {
+        "titolo": "Rettifica bando",
+        "link": "https://www.urp.cnr.it/system/files?file=2025-07/Rettifica-Bando-365.196-CTER-UPPBC_signed.pdf",
+        "protocollo": "266295",
+        "data": "14-07-2025"
+      },
+      {
+        "titolo": "Conclusione procedura",
+        "link": "https://www.urp.cnr.it/system/files?file=2025-11/Bando-365.196-Provvedimento-esito-negativo_signed.pdf",
+        "protocollo": "475634",
+        "data": "25-11-2025"
+      }
+    ],
+    "tipologia": "mobilità",
+    "codice": "BANDO N. 365.196 CTER UPPBC"
   },
   {
     "url": "https://www.urp.cnr.it/node/29157",
@@ -372,36 +384,6 @@
     "codice": "BANDO N. 365.192 CTER ISTI"
   },
   {
-    "url": "https://www.urp.cnr.it/node/16990",
-    "data_pubblicazione_bando": "14-10-2024",
-    "numero_protocollo": "379753",
-    "graduatoria_presente": true,
-    "data_pubblicazione_graduatoria": "28-03-2025",
-    "estratto": "Tipologia:\nConcorsi e Selezioni\n-\nBandi Pubblici - Mobilità\nProtocollo 379753\ndel  14-10-2024\nBANDO DI MOBILITÀ ESTERNA VOLONTARIA, PER TITOLI E COLLOQUIO, AI SENSI\nDELL’ART. 30 D.LGS N. 165/2001, PER LA COPERTURA DI N. 1 POSIZIONE, CON\nCONTRATTO DI LAVORO A TEMPO PIENO E INDETERMINATO PROFILO DI\nCOLLABORATORE DI AMMINISTRAZIONE - VII LIVELLO PROFESSIONALE – PRESSO\nL’ISTITUTO DI SCIENZE DELL’ATMOSFERA E DEL CLIMA – SEDE DI ROMA TOR\nVERGATA\nBANDO N. 365.190 CA\nAllegati\nCommissione\n- Protocollo 498896\ndel 16-12-2024\nCriteri di valutazione\n- Protocollo 31935\ndel 05-02-2025\nGraduatoria\n- Protocollo 98740\ndel 28-03-2025\nPagina aggiornata il 31-03-2025 10:03:08\nQuesta pagina ti è stata utile?\nSì\nNo\nSelect one\nIl contenuto della pagina non è chiaro\nLe informazioni sono incomplete",
-    "allegati": [
-      {
-        "titolo": "Commissione",
-        "link": "https://www.urp.cnr.it/system/files?file=2024-12/365.190-CA-ISAC-nomina-commissione-e-segretario-Mobilita_signed.pdf",
-        "protocollo": "498896",
-        "data": "16-12-2024"
-      },
-      {
-        "titolo": "Criteri di valutazione",
-        "link": "https://www.urp.cnr.it/system/files?file=2025-02/CRITERI-DI-VALUTAZIONE_BANDO-N-365.190-CA-ISAC_Redacted.pdf",
-        "protocollo": "31935",
-        "data": "05-02-2025"
-      },
-      {
-        "titolo": "Graduatoria",
-        "link": "https://www.urp.cnr.it/system/files?file=2025-03/Bando-365.190-CA-ISAC-Accertamento-e-nomina-vincitore_signed.pdf",
-        "protocollo": "98740",
-        "data": "28-03-2025"
-      }
-    ],
-    "tipologia": "mobilità",
-    "codice": "BANDO N. 365.190 CA"
-  },
-  {
     "url": "https://www.urp.cnr.it/node/16989",
     "data_pubblicazione_bando": "14-10-2024",
     "numero_protocollo": "379748",
@@ -430,6 +412,36 @@
     ],
     "tipologia": "mobilità",
     "codice": "BANDO N. 365.189 FA CID ETHICS"
+  },
+  {
+    "url": "https://www.urp.cnr.it/node/16990",
+    "data_pubblicazione_bando": "14-10-2024",
+    "numero_protocollo": "379753",
+    "graduatoria_presente": true,
+    "data_pubblicazione_graduatoria": "28-03-2025",
+    "estratto": "Tipologia:\nConcorsi e Selezioni\n-\nBandi Pubblici - Mobilità\nProtocollo 379753\ndel  14-10-2024\nBANDO DI MOBILITÀ ESTERNA VOLONTARIA, PER TITOLI E COLLOQUIO, AI SENSI\nDELL’ART. 30 D.LGS N. 165/2001, PER LA COPERTURA DI N. 1 POSIZIONE, CON\nCONTRATTO DI LAVORO A TEMPO PIENO E INDETERMINATO PROFILO DI\nCOLLABORATORE DI AMMINISTRAZIONE - VII LIVELLO PROFESSIONALE – PRESSO\nL’ISTITUTO DI SCIENZE DELL’ATMOSFERA E DEL CLIMA – SEDE DI ROMA TOR\nVERGATA\nBANDO N. 365.190 CA\nAllegati\nCommissione\n- Protocollo 498896\ndel 16-12-2024\nCriteri di valutazione\n- Protocollo 31935\ndel 05-02-2025\nGraduatoria\n- Protocollo 98740\ndel 28-03-2025\nPagina aggiornata il 31-03-2025 10:03:08\nQuesta pagina ti è stata utile?\nSì\nNo\nSelect one\nIl contenuto della pagina non è chiaro\nLe informazioni sono incomplete",
+    "allegati": [
+      {
+        "titolo": "Commissione",
+        "link": "https://www.urp.cnr.it/system/files?file=2024-12/365.190-CA-ISAC-nomina-commissione-e-segretario-Mobilita_signed.pdf",
+        "protocollo": "498896",
+        "data": "16-12-2024"
+      },
+      {
+        "titolo": "Criteri di valutazione",
+        "link": "https://www.urp.cnr.it/system/files?file=2025-02/CRITERI-DI-VALUTAZIONE_BANDO-N-365.190-CA-ISAC_Redacted.pdf",
+        "protocollo": "31935",
+        "data": "05-02-2025"
+      },
+      {
+        "titolo": "Graduatoria",
+        "link": "https://www.urp.cnr.it/system/files?file=2025-03/Bando-365.190-CA-ISAC-Accertamento-e-nomina-vincitore_signed.pdf",
+        "protocollo": "98740",
+        "data": "28-03-2025"
+      }
+    ],
+    "tipologia": "mobilità",
+    "codice": "BANDO N. 365.190 CA"
   },
   {
     "url": "https://www.urp.cnr.it/node/13775",
