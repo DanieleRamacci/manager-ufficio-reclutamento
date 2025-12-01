@@ -84,7 +84,8 @@ app.register_blueprint(auth_bp)
 
 
 
-
+APP_VERSION = "2025-12-01-urpmgr-borse-v2"
+print(f"[Oscuramento] Avvio versione: {APP_VERSION}")
 
 # ========= Utils =========
 # ========= Config firme / modello YOLO =========
