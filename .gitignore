@@ -1,6 +1,7 @@
 # ambienti virtuali
 .venv/
 venv/
+.venv311/
 
 # build artefacts
 build/
@@ -26,4 +27,7 @@ coverage.xml
 
 # segreti (se li usi)
 .env
+.png
+docs_firme/
+pii_ocr_debug/
 

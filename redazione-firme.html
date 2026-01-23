@@ -106,6 +106,11 @@
       border: 1px solid #ff9800;
       color: #775300;
     }
+    .sidebar-page-link.table {
+      background-color: #efe6ff;
+      border: 1px solid #7b2cbf;
+      color: #4a1f73;
+    }
 
     /* evidenziazione della pagina quando ci arrivi da un click in sidebar */
     .page-container.highlight-page {
@@ -143,6 +148,14 @@
 <form id="upload-form">
   <label for="pdf-input">Carica uno o più PDF:</label>
   <input type="file" id="pdf-input" name="pdf" accept="application/pdf" multiple required>
+  <label style="margin-left: 10px;">
+    <input type="checkbox" id="pii-toggle" checked>
+    Rileva dati personali (OCR)
+  </label>
+  <label style="margin-left: 10px;">
+    <input type="checkbox" id="pii-debug-toggle">
+    Debug PII (mostra scarti)
+  </label>
   <button type="submit">Analizza</button>
 </form>
 
@@ -172,6 +185,8 @@
     const fileInput = document.getElementById('pdf-input');
     const dropzone = document.getElementById('dropzone');
     const sidebarNav = document.getElementById('sidebar-nav');
+    const piiToggle = document.getElementById('pii-toggle');
+    const piiDebugToggle = document.getElementById('pii-debug-toggle');
 
     // Drag & drop
 dropzone.addEventListener('dragover', function (e) {
@@ -218,6 +233,8 @@ dropzone.addEventListener('drop', function (e) {
       for (const f of files) {
         formData.append('pdf', f);
       }
+      formData.append('pii', (piiToggle && piiToggle.checked) ? '1' : '0');
+      formData.append('pii_debug', (piiDebugToggle && piiDebugToggle.checked) ? '1' : '0');
 
       statusEl.textContent = 'Analisi in corso...';
       pagesWrapper.innerHTML = '';
@@ -300,7 +317,8 @@ dropzone.addEventListener('drop', function (e) {
         docNav.appendChild(navTitle);
 
         const pagesHigh = [];
-        const pagesLow = [];
+    const pagesLow = [];
+    const pagesTable = [];
 
         // analizziamo i box auto per capire quali pagine sono “high”/“low”
         doc.pages.forEach(page => {
@@ -342,7 +360,26 @@ dropzone.addEventListener('drop', function (e) {
           });
         }
 
-        if (pagesHigh.length || pagesLow.length) {
+        // Tabelle rilevate
+        doc.pages.forEach(page => {
+          if (page.table_boxes && page.table_boxes.length) {
+            pagesTable.push(page.index);
+          }
+        });
+
+        if (pagesTable.length) {
+          const labelTable = document.createElement('span');
+          labelTable.className = 'sidebar-pages-label';
+          labelTable.textContent = 'Tabelle rilevate:';
+          docNav.appendChild(labelTable);
+
+          pagesTable.forEach(idx => {
+            const link = createSidebarPageLink(doc.doc_id, idx, 'table');
+            docNav.appendChild(link);
+          });
+        }
+
+        if (pagesHigh.length || pagesLow.length || pagesTable.length) {
           sidebarNav.appendChild(docNav);
         }
 
@@ -385,9 +422,59 @@ img.onload = function () {
       w: b.w,
       h: b.h,
       auto: true,
-      score: b.score
+      score: b.score,
+      source: 'signature'
     });
   });
+
+        if (page.pii_boxes && page.pii_boxes.length) {
+    page.pii_boxes.forEach(b => {
+      const skipRedact = (b.source === 'table_header' || b.source === 'table_column');
+      pageState.boxes.push({
+        x: b.x,
+        y: b.y,
+        w: b.w,
+        h: b.h,
+        auto: true,
+        source: b.source || 'pii',
+        label: b.label,
+        confidence: b.confidence,
+        skip_redact: skipRedact
+      });
+    });
+  }
+
+  if (page.pii_reject_boxes && page.pii_reject_boxes.length) {
+    page.pii_reject_boxes.forEach(b => {
+      pageState.boxes.push({
+        x: b.x,
+        y: b.y,
+        w: b.w,
+        h: b.h,
+        auto: true,
+        source: 'pii_reject',
+        label: b.label,
+        confidence: b.confidence,
+        skip_redact: true
+      });
+    });
+  }
+
+  if (page.table_boxes && page.table_boxes.length) {
+    page.table_boxes.forEach(b => {
+      pageState.boxes.push({
+        x: b.x,
+        y: b.y,
+        w: b.w,
+        h: b.h,
+        auto: true,
+        source: 'table',
+        label: b.label,
+        confidence: b.confidence,
+        skip_redact: true
+      });
+    });
+  }
 
   setupCanvasDrawing(canvas, pageState);
   redrawPageBoxes(canvas, pageState);
@@ -475,11 +562,29 @@ img.onload = function () {
     const h = b.h * canvas.height;
 
     if (b.auto) {
-      // auto-detect: rosso se alta confidenza, arancione se bassa
-      if (b.score !== undefined && b.score < 0.8) {
-        ctx.strokeStyle = 'orange';
+      if (b.source === 'pii') {
+        ctx.strokeStyle = (b.confidence === 'medium') ? '#0b7dda' : '#0057a8';
+      } else if (b.source === 'pii_column') {
+        ctx.strokeStyle = '#7b2cbf';
+      } else if (b.source === 'table_header') {
+        ctx.strokeStyle = '#7b2cbf';
+        ctx.setLineDash([4, 3]);
+      } else if (b.source === 'table_column') {
+        ctx.strokeStyle = '#9d4edd';
+        ctx.setLineDash([6, 3]);
+      } else if (b.source === 'pii_reject') {
+        ctx.strokeStyle = '#a000a0';
+        ctx.setLineDash([6, 4]);
+      } else if (b.source === 'table') {
+        ctx.strokeStyle = '#7b2cbf';
+        ctx.setLineDash([8, 6]);
       } else {
-        ctx.strokeStyle = 'red';
+        // auto-detect firme: rosso se alta confidenza, arancione se bassa
+        if (b.score !== undefined && b.score < 0.8) {
+          ctx.strokeStyle = 'orange';
+        } else {
+          ctx.strokeStyle = 'red';
+        }
       }
     } else {
       // box aggiunte dall'utente
@@ -487,6 +592,7 @@ img.onload = function () {
     }
 
     ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
   });
 }
 
@@ -516,7 +622,7 @@ img.onload = function () {
       filename: doc.filename,
       pages: doc.pages.map(p => ({
         page_index: p.page_index,
-        boxes: p.boxes.map(b => ({
+        boxes: p.boxes.filter(b => !b.skip_redact).map(b => ({
           x: b.x,
           y: b.y,
           w: b.w,

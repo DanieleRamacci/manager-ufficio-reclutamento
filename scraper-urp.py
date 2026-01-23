@@ -294,6 +294,9 @@ def get_numero_documenti(soup):
     return 0, 0
 
 
+
+
+
 def get_bandi_links_from_page(url_base, pagina):
     url = f"{url_base}?page={pagina}"
     print(f"[+] Scarico pagina: {url}")
@@ -302,6 +305,12 @@ def get_bandi_links_from_page(url_base, pagina):
     numero_corrente, numero_totale = get_numero_documenti(soup)
     bandi = soup.select("a.link-apri-documento")
     links = [BASE_URL + b["href"] for b in bandi]
+
+    # DEBUG: stampa tutti i link trovati su quella pagina
+    print(f"[DEBUG] Pagina {pagina}, link-apri-documento trovati:")
+    for l in links:
+        print("   ", l)
+
     return links, numero_corrente, numero_totale
 
 
