@@ -30,4 +30,5 @@ coverage.xml
 .png
 docs_firme/
 pii_ocr_debug/
+instance/
 

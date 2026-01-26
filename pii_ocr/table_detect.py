@@ -121,6 +121,34 @@ def _map_bbox_to_original(bbox: dict, rotation: int, orig_w: int, orig_h: int) -
     }
 
 
+def _map_bbox_to_rotated(bbox: dict, rotation: int, orig_w: int, orig_h: int) -> dict:
+    x1, y1, x2, y2 = bbox["x1"], bbox["y1"], bbox["x2"], bbox["y2"]
+
+    def map_point(x: int, y: int) -> tuple[int, int]:
+        if rotation == 90:
+            return orig_h - y - 1, x
+        if rotation == 180:
+            return orig_w - x - 1, orig_h - y - 1
+        if rotation == 270:
+            return y, orig_w - x - 1
+        return x, y
+
+    points = [
+        map_point(x1, y1),
+        map_point(x2, y1),
+        map_point(x1, y2),
+        map_point(x2, y2),
+    ]
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    return {
+        "x1": max(0, min(xs)),
+        "y1": max(0, min(ys)),
+        "x2": max(xs),
+        "y2": max(ys),
+    }
+
+
 def _detect_rotation_osd(pil_img: Image.Image) -> int:
     try:
         osd = pytesseract.image_to_osd(pil_img)
@@ -220,10 +248,6 @@ def _column_header_text(
     if width <= 0 or height <= 0:
         return ""
     top_y = int(height * header_ratio)
-    bottom_y = int(height * (1 - header_ratio))
-    left_x = int(width * header_ratio)
-    right_x = int(width * (1 - header_ratio))
-
     parts: list[str] = []
     for line in lines or []:
         lb = line.get("bbox") or {}
@@ -235,10 +259,7 @@ def _column_header_text(
             continue
 
         in_top = ly2 <= top_y
-        in_bottom = ly1 >= bottom_y
-        in_left = lx2 <= left_x
-        in_right = lx1 >= right_x
-        if not (in_top or in_bottom or in_left or in_right):
+        if not in_top:
             continue
 
         text = (line.get("text") or "").strip()
@@ -817,18 +838,47 @@ def get_table_column_boxes_for_page(image_path: str, lang: str, config: str) -> 
         rot_crop = _rotate_image(crop, rotation)
         cols_rot = _detect_column_boxes_in_rotated_table(rot_crop)
 
+        # Map OCR lines/tokens into rotated space for header detection on rotated tables
+        if rotation in (90, 180, 270):
+            rot_w = crop_h if rotation in (90, 270) else crop_w
+            rot_h = crop_w if rotation in (90, 270) else crop_h
+
+            lines_work = []
+            for line in lines:
+                lb = line.get("bbox") or {}
+                rb = _map_bbox_to_rotated(lb, rotation, crop_w, crop_h)
+                lines_work.append({
+                    "text": line.get("text"),
+                    "bbox": rb,
+                })
+
+            tokens_work = []
+            for t in tokens:
+                bb = t.get("bbox") or {}
+                rb = _map_bbox_to_rotated(bb, rotation, crop_w, crop_h)
+                tokens_work.append({
+                    "text": t.get("text"),
+                    "bbox": rb,
+                    "line_id": t.get("line_id"),
+                })
+            work_w, work_h = rot_w, rot_h
+        else:
+            lines_work = lines
+            tokens_work = tokens
+            work_w, work_h = crop_w, crop_h
+
         for idx, cb in enumerate(cols_rot, start=1):
             bbox = dict(cb)
             if rotation:
                 bbox = _map_bbox_to_original(bbox, rotation, crop_w, crop_h)
 
             sensitive, label, reason = _column_has_sensitive_data(
-                bbox["x1"],
-                bbox["x2"],
-                lines,
-                tokens,
-                crop_w,
-                crop_h,
+                cb["x1"] if rotation else bbox["x1"],
+                cb["x2"] if rotation else bbox["x2"],
+                lines_work,
+                tokens_work,
+                work_w,
+                work_h,
             )
             if not sensitive:
                 continue
