@@ -65,10 +65,37 @@ bg_threads = []
 jobs_lock = threading.Lock()
 jobs: dict[str, dict] = {}
 job_queue: "queue.Queue[str]" = queue.Queue()
+DOC_TTL_SECONDS = int(os.environ.get("FIRME_DOC_TTL_SECONDS", "86400"))
 
 
 def _current_user_id() -> str | None:
     return session.get("user") or session.get("user_email")
+
+
+def _doc_owner_path(doc_id: str) -> str:
+    return os.path.join(DOCS_FIRME_ROOT, doc_id, "owner.txt")
+
+
+def _write_doc_owner(doc_id: str, user_id: str, job_id: str) -> None:
+    try:
+        with open(_doc_owner_path(doc_id), "w", encoding="utf-8") as handle:
+            handle.write(f"{user_id}\n{job_id}\n")
+    except Exception as exc:
+        print(f"[FIRME][WARN] Impossibile scrivere owner per doc_id={doc_id}: {exc}", flush=True)
+
+
+def _read_doc_owner(doc_id: str) -> str | None:
+    try:
+        with open(_doc_owner_path(doc_id), "r", encoding="utf-8") as handle:
+            return handle.readline().strip() or None
+    except Exception:
+        return None
+
+
+def _is_doc_owned_by_user(doc_id: str, user_id: str | None) -> bool:
+    if not user_id:
+        return False
+    return _read_doc_owner(doc_id) == user_id
 
 
 def _update_job(job_id: str, **kwargs) -> None:
@@ -664,6 +691,37 @@ def _worker_loop():
 
 _worker_thread = threading.Thread(target=_worker_loop, daemon=True)
 _worker_thread.start()
+
+
+def _cleanup_doc_dirs():
+    while True:
+        try:
+            now = time.time()
+            active_doc_ids = set()
+            with jobs_lock:
+                for job in jobs.values():
+                    if job.get("status") in ("queued", "running"):
+                        for doc in job.get("documents_meta", []):
+                            active_doc_ids.add(doc.get("doc_id"))
+            for doc_id in os.listdir(DOCS_FIRME_ROOT):
+                doc_dir = os.path.join(DOCS_FIRME_ROOT, doc_id)
+                if not os.path.isdir(doc_dir):
+                    continue
+                if doc_id in active_doc_ids:
+                    continue
+                owner_file = _doc_owner_path(doc_id)
+                if not os.path.exists(owner_file):
+                    continue
+                age = now - os.path.getmtime(owner_file)
+                if age > DOC_TTL_SECONDS:
+                    shutil.rmtree(doc_dir, ignore_errors=True)
+        except Exception as exc:
+            print(f"[FIRME][WARN] Cleanup docs_firme failed: {exc}", flush=True)
+        time.sleep(600)
+
+
+_cleanup_thread = threading.Thread(target=_cleanup_doc_dirs, daemon=True)
+_cleanup_thread.start()
 def detect_signatures(image_path: str) -> list[dict]:
     """
     Usa il modello YOLO 'yolo_firme' per rilevare firme su una immagine.
@@ -931,6 +989,7 @@ def api_firme_analyze():
         os.makedirs(doc_dir, exist_ok=True)
         pdf_path = os.path.join(doc_dir, "original.pdf")
         pdf_file.save(pdf_path)
+        _write_doc_owner(doc_id, user_id, job_id)
         documents_meta.append({
             "doc_id": doc_id,
             "filename": pdf_file.filename,
@@ -1032,6 +1091,9 @@ def api_firme_confirm():
             return jsonify({"error": "Nessun documento da elaborare"}), 400
 
         print(f"[FIRME] Conferma redazione per {len(docs_data)} documenti", flush=True)
+        user_id = _current_user_id()
+        if not user_id:
+            return jsonify({"error": "Utente non autenticato"}), 403
 
         doc_dirs = []  # cartelle da cancellare alla fine
 
@@ -1045,6 +1107,8 @@ def api_firme_confirm():
                 if not doc_id:
                     print("[FIRME][WARN] doc_id mancante in una voce di documents", flush=True)
                     continue
+                if not _is_doc_owned_by_user(doc_id, user_id):
+                    return jsonify({"error": "Accesso negato al documento"}), 403
 
                 doc_dir = os.path.join(DOCS_FIRME_ROOT, doc_id)
                 if not os.path.isdir(doc_dir):
@@ -1191,6 +1255,13 @@ def rdp_tool():
 @app.route("/_static/<path:fname>", methods=["GET", "HEAD"])
 @login_required
 def protected_static(fname):
+    if fname.startswith("docs_firme/"):
+        parts = fname.split("/")
+        if len(parts) >= 2:
+            doc_id = parts[1]
+            user_id = _current_user_id()
+            if not _is_doc_owned_by_user(doc_id, user_id):
+                abort(403)
     return send_from_directory(DIR, fname)
 
 

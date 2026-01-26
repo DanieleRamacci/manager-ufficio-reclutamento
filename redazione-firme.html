@@ -170,6 +170,8 @@
 
   <div class="controls">
     <button id="confirm-btn" disabled>Conferma e genera PDF oscurati</button>
+    <button id="clear-session-btn" style="margin-left: 10px;">Reset sessione analisi</button>
+    <span id="job-id-label" style="margin-left: 10px; font-size: 12px; color: #666;"></span>
   </div>
 
   <div id="result"></div>
@@ -181,6 +183,8 @@
     const statusEl = document.getElementById('status');
     const pagesWrapper = document.getElementById('pages-wrapper');
     const confirmBtn = document.getElementById('confirm-btn');
+    const clearSessionBtn = document.getElementById('clear-session-btn');
+    const jobIdLabel = document.getElementById('job-id-label');
     const resultEl = document.getElementById('result');
     const fileInput = document.getElementById('pdf-input');
     const dropzone = document.getElementById('dropzone');
@@ -220,6 +224,80 @@ dropzone.addEventListener('drop', function (e) {
 });
 
 
+    let currentJobId = null;
+    let pollTimer = null;
+
+    function stopPolling() {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    function clearSessionState(message) {
+      stopPolling();
+      localStorage.removeItem('pii_job_id');
+      currentJobId = null;
+      jobIdLabel.textContent = '';
+      if (message) {
+        statusEl.textContent = message;
+      }
+    }
+
+    function startPolling(jobId) {
+      currentJobId = jobId;
+      localStorage.setItem('pii_job_id', jobId);
+      jobIdLabel.textContent = `Job: ${jobId}`;
+      stopPolling();
+      pollTimer = setInterval(() => {
+        fetch(`/api/firme/status/${jobId}`)
+          .then(r => r.json())
+          .then(st => {
+            if (st.error) {
+              clearSessionState('Errore: ' + st.error);
+              return;
+            }
+            if (st.status === 'running' || st.status === 'queued') {
+              const prog = st.progress || {};
+              if (prog.total) {
+                const pct = Math.round((prog.done / prog.total) * 100);
+                statusEl.textContent = `Analisi in corso... ${prog.done}/${prog.total} (${pct}%)`;
+              } else {
+                statusEl.textContent = 'Analisi in corso...';
+              }
+              return;
+            }
+            if (st.status === 'error') {
+              clearSessionState('Errore durante l\'analisi: ' + (st.error || ''));
+              return;
+            }
+            if (st.status === 'done') {
+              stopPolling();
+              fetch(`/api/firme/result/${jobId}`)
+                .then(r => r.json())
+                .then(res => {
+                  if (res.error) {
+                    clearSessionState('Errore: ' + res.error);
+                    return;
+                  }
+                  if (!res.documents || !res.documents.length) {
+                    clearSessionState('Nessun documento analizzato.');
+                    return;
+                  }
+                  statusEl.textContent = 'Analisi completata. Puoi controllare e aggiungere box per ogni documento.';
+                  renderDocuments(res.documents);
+                  confirmBtn.disabled = false;
+                  clearSessionState(); // pulisci il job id a fine job
+                });
+            }
+          })
+          .catch(err => {
+            console.error(err);
+            clearSessionState('Errore durante l\'analisi.');
+          });
+      }, 2000);
+    }
+
     uploadForm.addEventListener('submit', function (e) {
       e.preventDefault();
       const fileInput = document.getElementById('pdf-input');
@@ -252,64 +330,27 @@ dropzone.addEventListener('drop', function (e) {
           statusEl.textContent = 'Errore: ' + (data.error || 'Job non creato');
           return;
         }
-        const jobId = data.job_id;
-        statusEl.textContent = 'Analisi in corso...';
-
-        const poll = setInterval(() => {
-          fetch(`/api/firme/status/${jobId}`)
-            .then(r => r.json())
-            .then(st => {
-              if (st.error) {
-                clearInterval(poll);
-                statusEl.textContent = 'Errore: ' + st.error;
-                return;
-              }
-              if (st.status === 'running' || st.status === 'queued') {
-                const prog = st.progress || {};
-                if (prog.total) {
-                  const pct = Math.round((prog.done / prog.total) * 100);
-                  statusEl.textContent = `Analisi in corso... ${prog.done}/${prog.total} (${pct}%)`;
-                } else {
-                  statusEl.textContent = 'Analisi in corso...';
-                }
-                return;
-              }
-              if (st.status === 'error') {
-                clearInterval(poll);
-                statusEl.textContent = 'Errore durante l\'analisi: ' + (st.error || '');
-                return;
-              }
-              if (st.status === 'done') {
-                clearInterval(poll);
-                fetch(`/api/firme/result/${jobId}`)
-                  .then(r => r.json())
-                  .then(res => {
-                    if (res.error) {
-                      statusEl.textContent = 'Errore: ' + res.error;
-                      return;
-                    }
-                    if (!res.documents || !res.documents.length) {
-                      statusEl.textContent = 'Nessun documento analizzato.';
-                      return;
-                    }
-                    statusEl.textContent = 'Analisi completata. Puoi controllare e aggiungere box per ogni documento.';
-                    renderDocuments(res.documents);
-                    confirmBtn.disabled = false;
-                  });
-              }
-            })
-            .catch(err => {
-              console.error(err);
-              clearInterval(poll);
-              statusEl.textContent = 'Errore durante l\'analisi.';
-            });
-        }, 2000);
+        startPolling(data.job_id);
       })
       .catch(err => {
         console.error(err);
         statusEl.textContent = 'Errore durante l\'analisi.';
       });
     });
+
+    clearSessionBtn.addEventListener('click', function () {
+      const ok = confirm('Vuoi cancellare il riferimento al job di analisi in corso?');
+      if (!ok) {
+        return;
+      }
+      clearSessionState('Sessione analisi resettata.');
+    });
+
+    const savedJobId = localStorage.getItem('pii_job_id');
+    if (savedJobId) {
+      statusEl.textContent = 'Ripristino analisi in corso...';
+      startPolling(savedJobId);
+    }
 
         function createSidebarPageLink(docId, pageIndex, type) {
       const span = document.createElement('span');
