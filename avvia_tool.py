@@ -10,6 +10,7 @@ from datetime import datetime
 from flask import Flask
 from flask_session import Session
 import uuid
+import queue
 
 import fitz  # PyMuPDF
 from PIL import Image, ImageDraw
@@ -59,6 +60,31 @@ SCR_MOB = "scraper-mobilita.py"
 # sync di esecuzione scraper
 run_lock = threading.Lock()
 bg_threads = []
+
+# ========= Async job queue for firma/PII analysis =========
+jobs_lock = threading.Lock()
+jobs: dict[str, dict] = {}
+job_queue: "queue.Queue[str]" = queue.Queue()
+
+
+def _current_user_id() -> str | None:
+    return session.get("user") or session.get("user_email")
+
+
+def _update_job(job_id: str, **kwargs) -> None:
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if not job:
+            return
+        job.update(kwargs)
+
+
+def _set_job_progress(job_id: str, done: int, total: int) -> None:
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if not job:
+            return
+        job["progress"] = {"done": done, "total": total}
 
 # cache minima per /api/bandi-rdp
 CACHE_TTL = int(os.environ.get("CACHE_TTL", "60"))
@@ -236,6 +262,408 @@ def pdf_to_pil_images(pdf_path: str, dpi: int = 200) -> list[Image.Image]:
     return images
 
 
+def _analyze_documents(
+    documents_meta: list[dict],
+    pii_enabled: bool,
+    pii_debug: bool,
+) -> list[dict]:
+    pii_available = False
+    if pii_enabled:
+        try:
+            from pii_ocr.ocr_engine import extract_ocr_from_images
+            from pii_ocr.extractors import extract_pii
+            from pii_ocr.boxes import build_pii_boxes
+            pii_available = True
+        except Exception as e:
+            print(f"[PII][WARN] OCR non disponibile: {e}", flush=True)
+            pii_enabled = False
+
+    documents = []
+    for doc_entry in documents_meta:
+        doc_id = doc_entry["doc_id"]
+        pdf_path = doc_entry["pdf_path"]
+        filename = doc_entry["filename"]
+        doc_dir = doc_entry["doc_dir"]
+
+        try:
+            pages = pdf_to_pil_images(pdf_path, dpi=200)
+        except Exception as e:
+            print(f"[FIRME][ERR] PDF->immagini (doc_id={doc_id}): {e}", flush=True)
+            raise
+
+        pages_info = []
+        for i, img in enumerate(pages):
+            image_filename = f"page_{i}.png"
+            image_path = os.path.join(doc_dir, image_filename)
+            img.save(image_path, "PNG")
+
+            width, height = img.size
+
+            auto_boxes = detect_signatures(image_path)
+            norm_boxes = [{
+                "x": float(b["x"]),
+                "y": float(b["y"]),
+                "w": float(b["w"]),
+                "h": float(b["h"]),
+                "score": float(b.get("score", 1.0))
+            } for b in auto_boxes]
+
+            pii_boxes = []
+            pii_reject_boxes = []
+            table_boxes = []
+            if pii_enabled and pii_available:
+                try:
+                    from pii_ocr.boxes import build_column_value_boxes
+                    from pii_ocr.table_detect import (
+                        detect_tables,
+                        get_table_column_boxes_for_page,
+                        get_document_column_boxes_for_page,
+                        get_table_header_boxes_for_page,
+                    )
+                    from pii_ocr.validators import validate_doc_number
+                    ocr_pages = extract_ocr_from_images([image_path])
+                    if ocr_pages:
+                        ocr_page = ocr_pages[0]
+                        text_raw = ocr_page.get("text_raw", "")
+                        tokens = ocr_page.get("tokens", [])
+                        lines = ocr_page.get("lines", [])
+                        ocr_w = ocr_page.get("width") or width
+                        ocr_h = ocr_page.get("height") or height
+                        pii = extract_pii(text_raw.upper())
+                        pii_boxes = build_pii_boxes(pii, tokens, ocr_w, ocr_h)
+
+                        table_raw = detect_tables(image_path)
+                        table_boxes = [{
+                            "x": tb["x1"] / ocr_w,
+                            "y": tb["y1"] / ocr_h,
+                            "w": (tb["x2"] - tb["x1"]) / ocr_w,
+                            "h": (tb["y2"] - tb["y1"]) / ocr_h,
+                            "label": "TABLE",
+                            "confidence": "high",
+                            "source": "table",
+                        } for tb in table_raw]
+
+                        lang = os.environ.get("PII_OCR_LANG", "ita")
+                        config = os.environ.get("PII_OCR_CONFIG", "--oem 3 --psm 6")
+
+                        table_header_boxes = []
+                        header_page = get_table_header_boxes_for_page(image_path, lang=lang, config=config)
+                        for hb in header_page:
+                            table_header_boxes.append({
+                                "x": hb["x1"] / ocr_w,
+                                "y": hb["y1"] / ocr_h,
+                                "w": (hb["x2"] - hb["x1"]) / ocr_w,
+                                "h": (hb["y2"] - hb["y1"]) / ocr_h,
+                                "label": hb.get("label"),
+                                "confidence": hb.get("confidence"),
+                                "source": "table_header",
+                                "kind": "header",
+                            })
+
+                        table_column_boxes = []
+                        table_cols_page = get_table_column_boxes_for_page(image_path, lang=lang, config=config)
+                        for cb in table_cols_page:
+                            table_column_boxes.append({
+                                "x": cb["x1"] / ocr_w,
+                                "y": cb["y1"] / ocr_h,
+                                "w": (cb["x2"] - cb["x1"]) / ocr_w,
+                                "h": (cb["y2"] - cb["y1"]) / ocr_h,
+                                "label": cb.get("label"),
+                                "confidence": cb.get("confidence"),
+                                "source": cb.get("source", "pii_column"),
+                                "kind": "table_column",
+                            })
+
+                        column_boxes = []
+                        col_page = get_document_column_boxes_for_page(image_path, lang=lang, config=config)
+                        for cb in col_page:
+                            column_boxes.append({
+                                "x": cb["x1"] / ocr_w,
+                                "y": cb["y1"] / ocr_h,
+                                "w": (cb["x2"] - cb["x1"]) / ocr_w,
+                                "h": (cb["y2"] - cb["y1"]) / ocr_h,
+                                "label": cb.get("label"),
+                                "confidence": cb.get("confidence"),
+                                "source": cb.get("source", "pii"),
+                                "kind": "column",
+                            })
+
+                        column_value_boxes = build_column_value_boxes(column_boxes, tokens, ocr_w, ocr_h)
+
+                        pii_boxes.extend(table_header_boxes)
+                        pii_boxes.extend(table_column_boxes)
+                        pii_boxes.extend(column_boxes)
+                        pii_boxes.extend(column_value_boxes)
+
+                        pii_reject_boxes = []
+                        if pii_debug and column_boxes:
+                            for col in column_boxes:
+                                col_x1 = int(col["x"] * ocr_w)
+                                col_x2 = int((col["x"] + col["w"]) * ocr_w)
+                                col_y1 = int(col["y"] * ocr_h)
+                                for t in tokens:
+                                    bb = t.get("bbox") or {}
+                                    tx1 = int(bb.get("x1", 0))
+                                    tx2 = int(bb.get("x2", 0))
+                                    ty1 = int(bb.get("y1", 0))
+                                    ty2 = int(bb.get("y2", 0))
+                                    if ty2 < col_y1:
+                                        continue
+                                    if tx2 < col_x1 or tx1 > col_x2:
+                                        continue
+                                    raw_token = (t.get("text") or "").upper()
+                                    cleaned = "".join(ch for ch in raw_token if ch.isalnum())
+                                    if len(cleaned) < 7 or len(cleaned) > 12:
+                                        continue
+                                    letters = sum(1 for ch in cleaned if ch.isalpha())
+                                    digits = sum(1 for ch in cleaned if ch.isdigit())
+                                    if letters < 2 or digits < 3:
+                                        continue
+
+                                    is_valid = (
+                                        validate_doc_number("CIE", cleaned)
+                                        or validate_doc_number("CI_CARTACEA", cleaned)
+                                        or validate_doc_number("PATENTE", cleaned)
+                                    )
+                                    if is_valid:
+                                        continue
+
+                                    pii_reject_boxes.append({
+                                        "x": tx1 / ocr_w,
+                                        "y": ty1 / ocr_h,
+                                        "w": (tx2 - tx1) / ocr_w,
+                                        "h": (ty2 - ty1) / ocr_h,
+                                        "label": "REJECTED_DOC",
+                                        "confidence": "low",
+                                        "source": "pii_reject",
+                                    })
+                except Exception as e:
+                    print(f"[PII][WARN] OCR fallito per pagina {i}: {e}", flush=True)
+
+            pages_info.append({
+                "index": i,
+                "image_url": f"/_static/docs_firme/{doc_id}/{image_filename}",
+                "width": width,
+                "height": height,
+                "auto_boxes": norm_boxes,
+                "pii_boxes": pii_boxes,
+                "pii_reject_boxes": pii_reject_boxes if pii_debug else [],
+                "table_boxes": table_boxes if pii_enabled and pii_available else []
+            })
+
+        documents.append({
+            "doc_id": doc_id,
+            "filename": filename,
+            "pages": pages_info
+        })
+
+    return documents
+
+
+def _worker_loop():
+    while True:
+        job_id = job_queue.get()
+        if not job_id:
+            continue
+        with jobs_lock:
+            job = jobs.get(job_id)
+        if not job:
+            continue
+        _update_job(job_id, status="running")
+        try:
+            total_pages = 0
+            done_pages = 0
+            for doc in job["documents_meta"]:
+                pages = pdf_to_pil_images(doc["pdf_path"], dpi=200)
+                total_pages += len(pages)
+            _set_job_progress(job_id, done_pages, total_pages)
+
+            documents = []
+            for doc in job["documents_meta"]:
+                doc_id = doc["doc_id"]
+                pdf_path = doc["pdf_path"]
+                filename = doc["filename"]
+                doc_dir = doc["doc_dir"]
+
+                pages = pdf_to_pil_images(pdf_path, dpi=200)
+                pages_info = []
+                for i, img in enumerate(pages):
+                    image_filename = f"page_{i}.png"
+                    image_path = os.path.join(doc_dir, image_filename)
+                    img.save(image_path, "PNG")
+
+                    width, height = img.size
+                    auto_boxes = detect_signatures(image_path)
+                    norm_boxes = [{
+                        "x": float(b["x"]),
+                        "y": float(b["y"]),
+                        "w": float(b["w"]),
+                        "h": float(b["h"]),
+                        "score": float(b.get("score", 1.0))
+                    } for b in auto_boxes]
+
+                    pii_boxes = []
+                    pii_reject_boxes = []
+                    table_boxes = []
+                    if job["pii_enabled"]:
+                        try:
+                            from pii_ocr.ocr_engine import extract_ocr_from_images
+                            from pii_ocr.extractors import extract_pii
+                            from pii_ocr.boxes import build_pii_boxes, build_column_value_boxes
+                            from pii_ocr.table_detect import (
+                                detect_tables,
+                                get_table_column_boxes_for_page,
+                                get_document_column_boxes_for_page,
+                                get_table_header_boxes_for_page,
+                            )
+                            from pii_ocr.validators import validate_doc_number
+                            ocr_pages = extract_ocr_from_images([image_path])
+                            if ocr_pages:
+                                ocr_page = ocr_pages[0]
+                                text_raw = ocr_page.get("text_raw", "")
+                                tokens = ocr_page.get("tokens", [])
+                                ocr_w = ocr_page.get("width") or width
+                                ocr_h = ocr_page.get("height") or height
+                                pii = extract_pii(text_raw.upper())
+                                pii_boxes = build_pii_boxes(pii, tokens, ocr_w, ocr_h)
+
+                                table_raw = detect_tables(image_path)
+                                table_boxes = [{
+                                    "x": tb["x1"] / ocr_w,
+                                    "y": tb["y1"] / ocr_h,
+                                    "w": (tb["x2"] - tb["x1"]) / ocr_w,
+                                    "h": (tb["y2"] - tb["y1"]) / ocr_h,
+                                    "label": "TABLE",
+                                    "confidence": "high",
+                                    "source": "table",
+                                } for tb in table_raw]
+
+                                lang = os.environ.get("PII_OCR_LANG", "ita")
+                                config = os.environ.get("PII_OCR_CONFIG", "--oem 3 --psm 6")
+
+                                table_header_boxes = []
+                                header_page = get_table_header_boxes_for_page(image_path, lang=lang, config=config)
+                                for hb in header_page:
+                                    table_header_boxes.append({
+                                        "x": hb["x1"] / ocr_w,
+                                        "y": hb["y1"] / ocr_h,
+                                        "w": (hb["x2"] - hb["x1"]) / ocr_w,
+                                        "h": (hb["y2"] - hb["y1"]) / ocr_h,
+                                        "label": hb.get("label"),
+                                        "confidence": hb.get("confidence"),
+                                        "source": "table_header",
+                                        "kind": "header",
+                                    })
+
+                                table_column_boxes = []
+                                table_cols_page = get_table_column_boxes_for_page(image_path, lang=lang, config=config)
+                                for cb in table_cols_page:
+                                    table_column_boxes.append({
+                                        "x": cb["x1"] / ocr_w,
+                                        "y": cb["y1"] / ocr_h,
+                                        "w": (cb["x2"] - cb["x1"]) / ocr_w,
+                                        "h": (cb["y2"] - cb["y1"]) / ocr_h,
+                                        "label": cb.get("label"),
+                                        "confidence": cb.get("confidence"),
+                                        "source": cb.get("source", "pii_column"),
+                                        "kind": "table_column",
+                                    })
+
+                                column_boxes = []
+                                col_page = get_document_column_boxes_for_page(image_path, lang=lang, config=config)
+                                for cb in col_page:
+                                    column_boxes.append({
+                                        "x": cb["x1"] / ocr_w,
+                                        "y": cb["y1"] / ocr_h,
+                                        "w": (cb["x2"] - cb["x1"]) / ocr_w,
+                                        "h": (cb["y2"] - cb["y1"]) / ocr_h,
+                                        "label": cb.get("label"),
+                                        "confidence": cb.get("confidence"),
+                                        "source": cb.get("source", "pii"),
+                                        "kind": "column",
+                                    })
+
+                                column_value_boxes = build_column_value_boxes(column_boxes, tokens, ocr_w, ocr_h)
+
+                                pii_boxes.extend(table_header_boxes)
+                                pii_boxes.extend(table_column_boxes)
+                                pii_boxes.extend(column_boxes)
+                                pii_boxes.extend(column_value_boxes)
+
+                                pii_reject_boxes = []
+                                if job["pii_debug"] and column_boxes:
+                                    for col in column_boxes:
+                                        col_x1 = int(col["x"] * ocr_w)
+                                        col_x2 = int((col["x"] + col["w"]) * ocr_w)
+                                        col_y1 = int(col["y"] * ocr_h)
+                                        for t in tokens:
+                                            bb = t.get("bbox") or {}
+                                            tx1 = int(bb.get("x1", 0))
+                                            tx2 = int(bb.get("x2", 0))
+                                            ty1 = int(bb.get("y1", 0))
+                                            ty2 = int(bb.get("y2", 0))
+                                            if ty2 < col_y1:
+                                                continue
+                                            if tx2 < col_x1 or tx1 > col_x2:
+                                                continue
+                                            raw_token = (t.get("text") or "").upper()
+                                            cleaned = "".join(ch for ch in raw_token if ch.isalnum())
+                                            if len(cleaned) < 7 or len(cleaned) > 12:
+                                                continue
+                                            letters = sum(1 for ch in cleaned if ch.isalpha())
+                                            digits = sum(1 for ch in cleaned if ch.isdigit())
+                                            if letters < 2 or digits < 3:
+                                                continue
+
+                                            is_valid = (
+                                                validate_doc_number("CIE", cleaned)
+                                                or validate_doc_number("CI_CARTACEA", cleaned)
+                                                or validate_doc_number("PATENTE", cleaned)
+                                            )
+                                            if is_valid:
+                                                continue
+
+                                            pii_reject_boxes.append({
+                                                "x": tx1 / ocr_w,
+                                                "y": ty1 / ocr_h,
+                                                "w": (tx2 - tx1) / ocr_w,
+                                                "h": (ty2 - ty1) / ocr_h,
+                                                "label": "REJECTED_DOC",
+                                                "confidence": "low",
+                                                "source": "pii_reject",
+                                            })
+                        except Exception as e:
+                            print(f"[PII][WARN] OCR fallito per pagina {i}: {e}", flush=True)
+
+                    pages_info.append({
+                        "index": i,
+                        "image_url": f"/_static/docs_firme/{doc_id}/{image_filename}",
+                        "width": width,
+                        "height": height,
+                        "auto_boxes": norm_boxes,
+                        "pii_boxes": pii_boxes,
+                        "pii_reject_boxes": pii_reject_boxes if job["pii_debug"] else [],
+                        "table_boxes": table_boxes if job["pii_enabled"] else []
+                    })
+
+                    done_pages += 1
+                    _set_job_progress(job_id, done_pages, total_pages)
+
+                documents.append({
+                    "doc_id": doc_id,
+                    "filename": filename,
+                    "pages": pages_info
+                })
+
+            _update_job(job_id, status="done", documents=documents)
+        except Exception as exc:
+            _update_job(job_id, status="error", error=str(exc))
+        finally:
+            job_queue.task_done()
+
+
+_worker_thread = threading.Thread(target=_worker_loop, daemon=True)
+_worker_thread.start()
 def detect_signatures(image_path: str) -> list[dict]:
     """
     Usa il modello YOLO 'yolo_firme' per rilevare firme su una immagine.
@@ -487,208 +915,77 @@ def api_firme_analyze():
     pii_debug_flag = (request.form.get("pii_debug", "0") or "").strip().lower()
     pii_debug = pii_debug_flag in ("1", "true", "on", "yes")
     pii_enabled = pii_flag in ("1", "true", "on", "yes")
-    pii_available = False
-    if pii_enabled:
-        try:
-            from pii_ocr.ocr_engine import extract_ocr_from_images
-            from pii_ocr.extractors import extract_pii
-            from pii_ocr.boxes import build_pii_boxes
-            pii_available = True
-        except Exception as e:
-            print(f"[PII][WARN] OCR non disponibile: {e}", flush=True)
-            pii_enabled = False
 
-    documents = []
+    user_id = _current_user_id()
+    if not user_id:
+        return jsonify({"error": "Utente non autenticato"}), 403
+
+    job_id = str(uuid.uuid4())
+    documents_meta = []
 
     for pdf_file in files:
         if not pdf_file.filename:
             continue
-
-        # ID univoco per questo documento
         doc_id = str(uuid.uuid4())
         doc_dir = os.path.join(DOCS_FIRME_ROOT, doc_id)
         os.makedirs(doc_dir, exist_ok=True)
-
         pdf_path = os.path.join(doc_dir, "original.pdf")
         pdf_file.save(pdf_path)
-
-        try:
-            pages = pdf_to_pil_images(pdf_path, dpi=200)
-        except Exception as e:
-            print(f"[FIRME][ERR] PDF->immagini (doc_id={doc_id}): {e}", flush=True)
-            return jsonify({"error": f"Errore nella conversione PDF->immagini (PyMuPDF): {e}"}), 500
-
-
-        pages_info = []
-        for i, img in enumerate(pages):
-            image_filename = f"page_{i}.png"
-            image_path = os.path.join(doc_dir, image_filename)
-            img.save(image_path, "PNG")
-
-            width, height = img.size
-
-            # rilevazione firme con YOLO
-            auto_boxes = detect_signatures(image_path)
-            norm_boxes = [{
-                "x": float(b["x"]),
-                "y": float(b["y"]),
-                "w": float(b["w"]),
-                "h": float(b["h"]),
-                "score": float(b.get("score", 1.0))
-            } for b in auto_boxes]
-
-            pii_boxes = []
-            pii_reject_boxes = []
-            table_boxes = []
-            if pii_enabled and pii_available:
-                try:
-                    from pii_ocr.boxes import build_column_value_boxes
-                    from pii_ocr.table_detect import (
-                        detect_tables,
-                        get_table_column_boxes_for_page,
-                        get_document_column_boxes_for_page,
-                        get_table_header_boxes_for_page,
-                    )
-                    from pii_ocr.validators import validate_doc_number
-                    ocr_pages = extract_ocr_from_images([image_path])
-                    if ocr_pages:
-                        ocr_page = ocr_pages[0]
-                        text_raw = ocr_page.get("text_raw", "")
-                        tokens = ocr_page.get("tokens", [])
-                        lines = ocr_page.get("lines", [])
-                        ocr_w = ocr_page.get("width") or width
-                        ocr_h = ocr_page.get("height") or height
-                        pii = extract_pii(text_raw.upper())
-                        pii_boxes = build_pii_boxes(pii, tokens, ocr_w, ocr_h)
-
-                        table_raw = detect_tables(image_path)
-                        table_boxes = [{
-                            "x": tb["x1"] / ocr_w,
-                            "y": tb["y1"] / ocr_h,
-                            "w": (tb["x2"] - tb["x1"]) / ocr_w,
-                            "h": (tb["y2"] - tb["y1"]) / ocr_h,
-                            "label": "TABLE",
-                            "confidence": "high",
-                            "source": "table",
-                        } for tb in table_raw]
-
-                        lang = os.environ.get("PII_OCR_LANG", "ita")
-                        config = os.environ.get("PII_OCR_CONFIG", "--oem 3 --psm 6")
-
-                        table_header_boxes = []
-                        header_page = get_table_header_boxes_for_page(image_path, lang=lang, config=config)
-                        for hb in header_page:
-                            table_header_boxes.append({
-                                "x": hb["x1"] / ocr_w,
-                                "y": hb["y1"] / ocr_h,
-                                "w": (hb["x2"] - hb["x1"]) / ocr_w,
-                                "h": (hb["y2"] - hb["y1"]) / ocr_h,
-                                "label": hb.get("label"),
-                                "confidence": hb.get("confidence"),
-                                "source": "table_header",
-                                "kind": "header",
-                            })
-
-                        table_column_boxes = []
-                        table_cols_page = get_table_column_boxes_for_page(image_path, lang=lang, config=config)
-                        for cb in table_cols_page:
-                            table_column_boxes.append({
-                                "x": cb["x1"] / ocr_w,
-                                "y": cb["y1"] / ocr_h,
-                                "w": (cb["x2"] - cb["x1"]) / ocr_w,
-                                "h": (cb["y2"] - cb["y1"]) / ocr_h,
-                                "label": cb.get("label"),
-                                "confidence": cb.get("confidence"),
-                                "source": cb.get("source", "pii_column"),
-                                "kind": "table_column",
-                            })
-
-                        column_boxes = []
-                        col_page = get_document_column_boxes_for_page(image_path, lang=lang, config=config)
-                        for cb in col_page:
-                            column_boxes.append({
-                                "x": cb["x1"] / ocr_w,
-                                "y": cb["y1"] / ocr_h,
-                                "w": (cb["x2"] - cb["x1"]) / ocr_w,
-                                "h": (cb["y2"] - cb["y1"]) / ocr_h,
-                                "label": cb.get("label"),
-                                "confidence": cb.get("confidence"),
-                                "source": cb.get("source", "pii"),
-                                "kind": "column",
-                            })
-
-                        column_value_boxes = build_column_value_boxes(column_boxes, tokens, ocr_w, ocr_h)
-
-                        pii_boxes.extend(table_header_boxes)
-                        pii_boxes.extend(table_column_boxes)
-                        pii_boxes.extend(column_boxes)
-                        pii_boxes.extend(column_value_boxes)
-
-                        pii_reject_boxes = []
-                        if pii_debug and column_boxes:
-                            for col in column_boxes:
-                                col_x1 = int(col["x"] * ocr_w)
-                                col_x2 = int((col["x"] + col["w"]) * ocr_w)
-                                col_y1 = int(col["y"] * ocr_h)
-                                for t in tokens:
-                                    bb = t.get("bbox") or {}
-                                    tx1 = int(bb.get("x1", 0))
-                                    tx2 = int(bb.get("x2", 0))
-                                    ty1 = int(bb.get("y1", 0))
-                                    ty2 = int(bb.get("y2", 0))
-                                    if ty2 < col_y1:
-                                        continue
-                                    if tx2 < col_x1 or tx1 > col_x2:
-                                        continue
-                                    raw_token = (t.get("text") or "").upper()
-                                    cleaned = "".join(ch for ch in raw_token if ch.isalnum())
-                                    if len(cleaned) < 7 or len(cleaned) > 12:
-                                        continue
-                                    letters = sum(1 for ch in cleaned if ch.isalpha())
-                                    digits = sum(1 for ch in cleaned if ch.isdigit())
-                                    if letters < 2 or digits < 3:
-                                        continue
-
-                                    is_valid = (
-                                        validate_doc_number("CIE", cleaned)
-                                        or validate_doc_number("CI_CARTACEA", cleaned)
-                                        or validate_doc_number("PATENTE", cleaned)
-                                    )
-                                    if is_valid:
-                                        continue
-
-                                    pii_reject_boxes.append({
-                                        "x": tx1 / ocr_w,
-                                        "y": ty1 / ocr_h,
-                                        "w": (tx2 - tx1) / ocr_w,
-                                        "h": (ty2 - ty1) / ocr_h,
-                                        "label": "REJECTED_DOC",
-                                        "confidence": "low",
-                                        "source": "pii_reject",
-                                    })
-                except Exception as e:
-                    print(f"[PII][WARN] OCR fallito per pagina {i}: {e}", flush=True)
-
-            pages_info.append({
-                "index": i,
-                # usiamo /_static/... che passa da protected_static (login_required)
-                "image_url": url_for("protected_static", fname=f"docs_firme/{doc_id}/{image_filename}"),
-                "width": width,
-                "height": height,
-                "auto_boxes": norm_boxes,
-                "pii_boxes": pii_boxes,
-                "pii_reject_boxes": pii_reject_boxes if pii_debug else [],
-                "table_boxes": table_boxes if pii_enabled and pii_available else []
-            })
-
-        documents.append({
+        documents_meta.append({
             "doc_id": doc_id,
             "filename": pdf_file.filename,
-            "pages": pages_info
+            "doc_dir": doc_dir,
+            "pdf_path": pdf_path,
         })
 
-    print(f"[FIRME] Analizzati {len(documents)} documenti per la redazione firme", flush=True)
-    return jsonify({"documents": documents})
+    with jobs_lock:
+        jobs[job_id] = {
+            "status": "queued",
+            "user": user_id,
+            "pii_enabled": pii_enabled,
+            "pii_debug": pii_debug,
+            "documents_meta": documents_meta,
+            "documents": None,
+            "progress": {"done": 0, "total": 0},
+            "error": None,
+            "created_at": time.time(),
+        }
+
+    job_queue.put(job_id)
+    return jsonify({"job_id": job_id, "status": "queued"})
+
+
+@app.get("/api/firme/status/<job_id>")
+@login_required
+def api_firme_status(job_id: str):
+    user_id = _current_user_id()
+    with jobs_lock:
+        job = jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job non trovato"}), 404
+    if job.get("user") != user_id:
+        return jsonify({"error": "Accesso negato"}), 403
+    return jsonify({
+        "job_id": job_id,
+        "status": job.get("status"),
+        "progress": job.get("progress", {"done": 0, "total": 0}),
+        "error": job.get("error"),
+    })
+
+
+@app.get("/api/firme/result/<job_id>")
+@login_required
+def api_firme_result(job_id: str):
+    user_id = _current_user_id()
+    with jobs_lock:
+        job = jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job non trovato"}), 404
+    if job.get("user") != user_id:
+        return jsonify({"error": "Accesso negato"}), 403
+    if job.get("status") != "done":
+        return jsonify({"error": "Job non completato", "status": job.get("status")}), 400
+    return jsonify({"documents": job.get("documents") or []})
 
 #aggiunto log
 

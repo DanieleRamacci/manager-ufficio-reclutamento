@@ -236,7 +236,7 @@ dropzone.addEventListener('drop', function (e) {
       formData.append('pii', (piiToggle && piiToggle.checked) ? '1' : '0');
       formData.append('pii_debug', (piiDebugToggle && piiDebugToggle.checked) ? '1' : '0');
 
-      statusEl.textContent = 'Analisi in corso...';
+      statusEl.textContent = 'Analisi in coda...';
       pagesWrapper.innerHTML = '';
       resultEl.innerHTML = '';
       confirmBtn.disabled = true;
@@ -248,17 +248,62 @@ dropzone.addEventListener('drop', function (e) {
       })
       .then(r => r.json())
       .then(data => {
-        if (data.error) {
-          statusEl.textContent = 'Errore: ' + data.error;
+        if (data.error || !data.job_id) {
+          statusEl.textContent = 'Errore: ' + (data.error || 'Job non creato');
           return;
         }
-        if (!data.documents || !data.documents.length) {
-          statusEl.textContent = 'Nessun documento analizzato.';
-          return;
-        }
-        statusEl.textContent = 'Analisi completata. Puoi controllare e aggiungere box per ogni documento.';
-        renderDocuments(data.documents);
-        confirmBtn.disabled = false;
+        const jobId = data.job_id;
+        statusEl.textContent = 'Analisi in corso...';
+
+        const poll = setInterval(() => {
+          fetch(`/api/firme/status/${jobId}`)
+            .then(r => r.json())
+            .then(st => {
+              if (st.error) {
+                clearInterval(poll);
+                statusEl.textContent = 'Errore: ' + st.error;
+                return;
+              }
+              if (st.status === 'running' || st.status === 'queued') {
+                const prog = st.progress || {};
+                if (prog.total) {
+                  const pct = Math.round((prog.done / prog.total) * 100);
+                  statusEl.textContent = `Analisi in corso... ${prog.done}/${prog.total} (${pct}%)`;
+                } else {
+                  statusEl.textContent = 'Analisi in corso...';
+                }
+                return;
+              }
+              if (st.status === 'error') {
+                clearInterval(poll);
+                statusEl.textContent = 'Errore durante l\'analisi: ' + (st.error || '');
+                return;
+              }
+              if (st.status === 'done') {
+                clearInterval(poll);
+                fetch(`/api/firme/result/${jobId}`)
+                  .then(r => r.json())
+                  .then(res => {
+                    if (res.error) {
+                      statusEl.textContent = 'Errore: ' + res.error;
+                      return;
+                    }
+                    if (!res.documents || !res.documents.length) {
+                      statusEl.textContent = 'Nessun documento analizzato.';
+                      return;
+                    }
+                    statusEl.textContent = 'Analisi completata. Puoi controllare e aggiungere box per ogni documento.';
+                    renderDocuments(res.documents);
+                    confirmBtn.disabled = false;
+                  });
+              }
+            })
+            .catch(err => {
+              console.error(err);
+              clearInterval(poll);
+              statusEl.textContent = 'Errore durante l\'analisi.';
+            });
+        }, 2000);
       })
       .catch(err => {
         console.error(err);
