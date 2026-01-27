@@ -46,6 +46,10 @@ _YOLO_TABLE_MODEL: Optional[object] = None
 _YOLO_TABLE_MODEL_NAME: Optional[str] = None
 
 
+def init_table_model() -> Optional[object]:
+    return _load_yolo_table_model()
+
+
 def _keyword_score(text: str) -> int:
     if not text:
         return 0

@@ -24,6 +24,18 @@
       border: 1px solid #ccc;
       display: inline-block;
     }
+    .page-badge {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: #4a1f73;
+      color: #fff;
+      font-size: 11px;
+      padding: 4px 6px;
+      border-radius: 6px;
+      z-index: 3;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    }
     .page-image {
       display: block;
       max-width: 800px;
@@ -156,6 +168,10 @@
     <input type="checkbox" id="pii-debug-toggle">
     Debug PII (mostra scarti)
   </label>
+  <label style="margin-left: 10px;">
+    <input type="checkbox" id="table-columns-only-toggle">
+    Oscura solo colonne sensibili (non tutta la tabella)
+  </label>
   <button type="submit">Analizza</button>
 </form>
 
@@ -191,6 +207,7 @@
     const sidebarNav = document.getElementById('sidebar-nav');
     const piiToggle = document.getElementById('pii-toggle');
     const piiDebugToggle = document.getElementById('pii-debug-toggle');
+    const tableColumnsOnlyToggle = document.getElementById('table-columns-only-toggle');
 
     // Drag & drop
 dropzone.addEventListener('dragover', function (e) {
@@ -244,6 +261,24 @@ dropzone.addEventListener('drop', function (e) {
       }
     }
 
+    function fetchResult(jobId) {
+      fetch(`/api/firme/result/${jobId}`)
+        .then(r => r.json())
+        .then(res => {
+          if (res.error) {
+            statusEl.textContent = 'Errore: ' + res.error;
+            return;
+          }
+          if (!res.documents || !res.documents.length) {
+            statusEl.textContent = 'Nessun documento analizzato.';
+            return;
+          }
+          statusEl.textContent = 'Analisi completata. Puoi controllare e aggiungere box per ogni documento.';
+          renderDocuments(res.documents);
+          confirmBtn.disabled = false;
+        });
+    }
+
     function startPolling(jobId) {
       currentJobId = jobId;
       localStorage.setItem('pii_job_id', jobId);
@@ -273,22 +308,8 @@ dropzone.addEventListener('drop', function (e) {
             }
             if (st.status === 'done') {
               stopPolling();
-              fetch(`/api/firme/result/${jobId}`)
-                .then(r => r.json())
-                .then(res => {
-                  if (res.error) {
-                    clearSessionState('Errore: ' + res.error);
-                    return;
-                  }
-                  if (!res.documents || !res.documents.length) {
-                    clearSessionState('Nessun documento analizzato.');
-                    return;
-                  }
-                  statusEl.textContent = 'Analisi completata. Puoi controllare e aggiungere box per ogni documento.';
-                  renderDocuments(res.documents);
-                  confirmBtn.disabled = false;
-                  clearSessionState(); // pulisci il job id a fine job
-                });
+              fetchResult(jobId);
+              localStorage.setItem('pii_job_done', '1');
             }
           })
           .catch(err => {
@@ -313,6 +334,7 @@ dropzone.addEventListener('drop', function (e) {
       }
       formData.append('pii', (piiToggle && piiToggle.checked) ? '1' : '0');
       formData.append('pii_debug', (piiDebugToggle && piiDebugToggle.checked) ? '1' : '0');
+      formData.append('table_mode', (tableColumnsOnlyToggle && tableColumnsOnlyToggle.checked) ? 'columns' : 'full');
 
       statusEl.textContent = 'Analisi in coda...';
       pagesWrapper.innerHTML = '';
@@ -349,7 +371,24 @@ dropzone.addEventListener('drop', function (e) {
     const savedJobId = localStorage.getItem('pii_job_id');
     if (savedJobId) {
       statusEl.textContent = 'Ripristino analisi in corso...';
-      startPolling(savedJobId);
+      fetch(`/api/firme/status/${savedJobId}`)
+        .then(r => r.json())
+        .then(st => {
+          if (st.error) {
+            clearSessionState('Errore: ' + st.error);
+            return;
+          }
+          if (st.status === 'done') {
+            jobIdLabel.textContent = `Job: ${savedJobId}`;
+            fetchResult(savedJobId);
+            return;
+          }
+          startPolling(savedJobId);
+        })
+        .catch(err => {
+          console.error(err);
+          clearSessionState('Errore durante l\'analisi.');
+        });
     }
 
         function createSidebarPageLink(docId, pageIndex, type) {
@@ -483,6 +522,14 @@ dropzone.addEventListener('drop', function (e) {
 
           const canvas = document.createElement('canvas');
           canvas.className = 'page-canvas';
+
+          const hasTableRedact = (page.pii_boxes || []).some(b => b.source === 'table_redact');
+          if (hasTableRedact) {
+            const badge = document.createElement('div');
+            badge.className = 'page-badge';
+            badge.textContent = 'Tabella oscurata';
+            container.appendChild(badge);
+          }
 
           container.appendChild(img);
           container.appendChild(canvas);
@@ -652,6 +699,8 @@ img.onload = function () {
         ctx.strokeStyle = (b.confidence === 'medium') ? '#0b7dda' : '#0057a8';
       } else if (b.source === 'pii_column') {
         ctx.strokeStyle = '#7b2cbf';
+      } else if (b.source === 'table_redact') {
+        ctx.strokeStyle = '#4a1f73';
       } else if (b.source === 'table_header') {
         ctx.strokeStyle = '#7b2cbf';
         ctx.setLineDash([4, 3]);
