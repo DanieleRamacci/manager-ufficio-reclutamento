@@ -67,6 +67,13 @@
           <div><span class="badge done">completato</span> Export già eseguito</div>
         </div>
       </div>
+      <div class="card">
+        <h2>Monitor parallelizzazione</h2>
+        <div id="metrics-box" class="muted">Caricamento...</div>
+        <div style="margin-top: 8px;">
+          <a id="metrics-download" class="btn secondary" href="/api/system/report.txt" download>Scarica report txt</a>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -332,6 +339,32 @@
         });
     }
 
+    function loadMetrics() {
+      fetch('/api/system/metrics')
+        .then(r => r.json())
+        .then(m => {
+          if (m.error) {
+            document.getElementById('metrics-box').textContent = m.error;
+            return;
+          }
+          const parts = [];
+          parts.push(`workers: ${m.workers_configured}`);
+          parts.push(`jobs: ${m.running_jobs} running / ${m.total_jobs} total`);
+          parts.push(`pages: ${m.pages_done}/${m.pages_total}`);
+          if (m.avg_page_sec) {
+            parts.push(`avg_page: ${m.avg_page_sec.toFixed(2)}s`);
+          }
+          if (m.eta_sec) {
+            parts.push(`ETA: ${Math.round(m.eta_sec / 60)} min`);
+          }
+          parts.push(`detector: ${m.table_detector}`);
+          document.getElementById('metrics-box').textContent = parts.join(' | ');
+        })
+        .catch(() => {
+          document.getElementById('metrics-box').textContent = 'Monitor non disponibile';
+        });
+    }
+
     uploadForm.addEventListener('submit', function (e) {
       e.preventDefault();
       const files = document.getElementById('pdf-input').files;
@@ -355,7 +388,9 @@
 
     loadStats();
     loadJobs();
+    loadMetrics();
     setInterval(loadJobs, 5000);
+    setInterval(loadMetrics, 5000);
   </script>
 </body>
 </html>

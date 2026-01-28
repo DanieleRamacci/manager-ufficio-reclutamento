@@ -431,6 +431,41 @@ def _get_system_stats(job: dict | None = None) -> dict:
     return stats
 
 
+def _get_metrics_snapshot() -> dict:
+    conn = _db_conn()
+    rows = conn.execute(
+        "SELECT status, progress_done, progress_total, timing_pages, timing_total FROM jobs"
+    ).fetchall()
+    conn.close()
+
+    total_jobs = len(rows)
+    running = sum(1 for r in rows if r["status"] in ("queued", "running"))
+    done = sum(1 for r in rows if r["status"] == "done")
+    error = sum(1 for r in rows if r["status"] == "error")
+    pages_done = sum(int(r["progress_done"] or 0) for r in rows)
+    pages_total = sum(int(r["progress_total"] or 0) for r in rows)
+    timing_pages = sum(int(r["timing_pages"] or 0) for r in rows)
+    timing_total = sum(float(r["timing_total"] or 0.0) for r in rows)
+
+    avg_page_sec = (timing_total / timing_pages) if timing_pages else None
+    remaining = max(0, pages_total - pages_done)
+    eta_sec = (avg_page_sec * remaining) if avg_page_sec is not None else None
+
+    return {
+        "total_jobs": total_jobs,
+        "running_jobs": running,
+        "done_jobs": done,
+        "error_jobs": error,
+        "pages_done": pages_done,
+        "pages_total": pages_total,
+        "avg_page_sec": avg_page_sec,
+        "eta_sec": eta_sec,
+        "workers_configured": int(os.environ.get("FIRME_PARALLEL_WORKERS", "2") or 2),
+        "table_detector": os.environ.get("PII_TABLE_DETECTOR", "morph"),
+        "pii_ocr_lang": os.environ.get("PII_OCR_LANG", "ita"),
+    }
+
+
 def _doc_owner_path(doc_id: str) -> str:
     return os.path.join(DOCS_FIRME_ROOT, doc_id, "owner.txt")
 
@@ -1648,6 +1683,51 @@ def api_system_stats():
     if not user_id:
         return jsonify({"error": "Utente non autenticato"}), 403
     return jsonify(_get_system_stats())
+
+
+@app.get("/api/system/metrics")
+@login_required
+def api_system_metrics():
+    user_id = _current_user_id()
+    if not _is_admin(user_id):
+        return jsonify({"error": "Accesso negato"}), 403
+    data = _get_metrics_snapshot()
+    data.update(_get_system_stats())
+    return jsonify(data)
+
+
+@app.get("/api/system/report.txt")
+@login_required
+def api_system_report():
+    user_id = _current_user_id()
+    if not _is_admin(user_id):
+        return jsonify({"error": "Accesso negato"}), 403
+    metrics = _get_metrics_snapshot()
+    stats = _get_system_stats()
+    lines = []
+    lines.append(f"timestamp: {datetime.utcnow().isoformat()}Z")
+    lines.append(f"workers_configured: {metrics.get('workers_configured')}")
+    lines.append(f"total_jobs: {metrics.get('total_jobs')}")
+    lines.append(f"running_jobs: {metrics.get('running_jobs')}")
+    lines.append(f"done_jobs: {metrics.get('done_jobs')}")
+    lines.append(f"error_jobs: {metrics.get('error_jobs')}")
+    lines.append(f"pages_done: {metrics.get('pages_done')}")
+    lines.append(f"pages_total: {metrics.get('pages_total')}")
+    lines.append(f"avg_page_sec: {metrics.get('avg_page_sec')}")
+    lines.append(f"eta_sec: {metrics.get('eta_sec')}")
+    lines.append(f"table_detector: {metrics.get('table_detector')}")
+    lines.append(f"pii_ocr_lang: {metrics.get('pii_ocr_lang')}")
+    lines.append(f"cpu_count: {stats.get('cpu_count')}")
+    lines.append(f"load_avg: {stats.get('load_avg')}")
+    lines.append(f"mem_total_gb: {stats.get('mem_total_gb')}")
+    lines.append(f"mem_free_gb: {stats.get('mem_free_gb')}")
+    payload = "\n".join(str(l) for l in lines) + "\n"
+    return send_file(
+        io.BytesIO(payload.encode("utf-8")),
+        mimetype="text/plain",
+        as_attachment=True,
+        download_name="parallelization-report.txt",
+    )
 
 @app.route("/api/firme/analyze", methods=["POST"])
 @login_required
