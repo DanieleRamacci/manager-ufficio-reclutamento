@@ -55,19 +55,6 @@
     #result ul {
       padding-left: 20px;
     }
-    .dropzone {
-  border: 2px dashed #888;
-  border-radius: 6px;
-  padding: 20px;
-  margin-top: 10px;
-  text-align: center;
-  color: #555;
-}
-.dropzone.dragover {
-  border-color: #0b7dda;
-  background: #eef7ff;
-  color: #000;
-}
     .sidebar-nav {
       position: fixed;
       right: 20px;
@@ -123,6 +110,53 @@
       border: 1px solid #7b2cbf;
       color: #4a1f73;
     }
+    .sidebar-page-link.manual {
+      background-color: #e6f7ed;
+      border: 1px solid #1b7f3a;
+      color: #1b7f3a;
+    }
+    .sidebar-actions {
+      position: sticky;
+      top: 0;
+      background: #fff;
+      padding: 6px 4px 8px;
+      border-bottom: 1px solid #eee;
+      margin-bottom: 8px;
+      z-index: 2;
+    }
+    .sidebar-actions button {
+      display: block;
+      width: 100%;
+      padding: 6px 8px;
+      margin-bottom: 6px;
+      background: #0b3d91;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .sidebar-actions button:disabled {
+      background: #8aa0c8;
+      cursor: not-allowed;
+    }
+    .sidebar-link {
+      display: block;
+      padding: 6px 8px;
+      margin-bottom: 6px;
+      background: #f0f0f0;
+      border-radius: 4px;
+      text-decoration: none;
+      font-size: 12px;
+      color: #222;
+      text-align: center;
+    }
+    .sidebar-job-id {
+      display: block;
+      font-size: 11px;
+      color: #666;
+      word-break: break-all;
+    }
 
     /* evidenziazione della pagina quando ci arrivi da un click in sidebar */
     .page-container.highlight-page {
@@ -148,36 +182,20 @@
     <a href="report-mese.html" style="margin-right: 15px;">Report del Mese</a>
     <a href="stato-avanzamento.html" style="margin-right: 15px;">Stato avanzamento</a>
     <a href="redazione-firme.html" style="margin-right: 15px;">Redazione Firme AI</a>
+    <a href="firme-jobs.html" style="margin-right: 15px; font-weight: 600;">Riepilogo Job</a>
 
 
  <!-- 🔹 Badge di stato globale -->
   <span id="statusBadge" style="margin-left: 16px; font-size: 0.9em;"></span>
 </nav>
   <h1>Redazione firme documenti</h1>
-    <div id="sidebar-nav" class="sidebar-nav"></div>
-
-
-<form id="upload-form">
-  <label for="pdf-input">Carica uno o più PDF:</label>
-  <input type="file" id="pdf-input" name="pdf" accept="application/pdf" multiple required>
-  <label style="margin-left: 10px;">
-    <input type="checkbox" id="pii-toggle" checked>
-    Rileva dati personali (OCR)
-  </label>
-  <label style="margin-left: 10px;">
-    <input type="checkbox" id="pii-debug-toggle">
-    Debug PII (mostra scarti)
-  </label>
-  <label style="margin-left: 10px;">
-    <input type="checkbox" id="table-columns-only-toggle">
-    Oscura solo colonne sensibili (non tutta la tabella)
-  </label>
-  <button type="submit">Analizza</button>
-</form>
-
-<div id="dropzone" class="dropzone">
-  Trascina qui i PDF oppure usa il pulsante "Analizza".
-</div>
+  <div id="sidebar-nav" class="sidebar-nav">
+    <div class="sidebar-actions">
+      <button id="save-job-btn" disabled>Salva modifiche</button>
+      <a href="firme-jobs.html" class="sidebar-link">Riepilogo job</a>
+      <span id="job-id-label" class="sidebar-job-id"></span>
+    </div>
+  </div>
 
 
   <div class="status" id="status"></div>
@@ -186,8 +204,7 @@
 
   <div class="controls">
     <button id="confirm-btn" disabled>Conferma e genera PDF oscurati</button>
-    <button id="clear-session-btn" style="margin-left: 10px;">Reset sessione analisi</button>
-    <span id="job-id-label" style="margin-left: 10px; font-size: 12px; color: #666;"></span>
+    <span id="confirm-spinner" style="margin-left: 10px; display: none;">⏳ Generazione ZIP...</span>
   </div>
 
   <div id="result"></div>
@@ -195,51 +212,14 @@
   <script>
     
     let documentsState = [];
-    const uploadForm = document.getElementById('upload-form');
     const statusEl = document.getElementById('status');
     const pagesWrapper = document.getElementById('pages-wrapper');
     const confirmBtn = document.getElementById('confirm-btn');
-    const clearSessionBtn = document.getElementById('clear-session-btn');
+    const saveJobBtn = document.getElementById('save-job-btn');
     const jobIdLabel = document.getElementById('job-id-label');
     const resultEl = document.getElementById('result');
-    const fileInput = document.getElementById('pdf-input');
-    const dropzone = document.getElementById('dropzone');
     const sidebarNav = document.getElementById('sidebar-nav');
-    const piiToggle = document.getElementById('pii-toggle');
-    const piiDebugToggle = document.getElementById('pii-debug-toggle');
-    const tableColumnsOnlyToggle = document.getElementById('table-columns-only-toggle');
-
-    // Drag & drop
-dropzone.addEventListener('dragover', function (e) {
-  e.preventDefault();
-  dropzone.classList.add('dragover');
-});
-
-dropzone.addEventListener('dragleave', function (e) {
-  e.preventDefault();
-  dropzone.classList.remove('dragover');
-});
-
-dropzone.addEventListener('drop', function (e) {
-  e.preventDefault();
-  dropzone.classList.remove('dragover');
-
-  const files = Array.from(e.dataTransfer.files)
-    .filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
-
-  if (!files.length) {
-    statusEl.textContent = 'Nessun PDF valido rilevato nel drop.';
-    return;
-  }
-
-  // Mettiamo i file anche nell’input, così il submit li vede
-  const dt = new DataTransfer();
-  files.forEach(f => dt.items.add(f));
-  fileInput.files = dt.files;
-
-  statusEl.textContent = files.length + ' file pronti per l\'analisi.';
-});
-
+    const confirmSpinner = document.getElementById('confirm-spinner');
 
     let currentJobId = null;
     let pollTimer = null;
@@ -256,6 +236,9 @@ dropzone.addEventListener('drop', function (e) {
       localStorage.removeItem('pii_job_id');
       currentJobId = null;
       jobIdLabel.textContent = '';
+      if (saveJobBtn) {
+        saveJobBtn.disabled = true;
+      }
       if (message) {
         statusEl.textContent = message;
       }
@@ -276,6 +259,40 @@ dropzone.addEventListener('drop', function (e) {
           statusEl.textContent = 'Analisi completata. Puoi controllare e aggiungere box per ogni documento.';
           renderDocuments(res.documents);
           confirmBtn.disabled = false;
+          if (saveJobBtn) {
+            saveJobBtn.disabled = false;
+          }
+        });
+    }
+
+    function loadJob(jobId) {
+      fetch(`/api/firme/jobs/${jobId}`)
+        .then(r => r.json())
+        .then(res => {
+          if (res.error) {
+            statusEl.textContent = 'Errore: ' + res.error;
+            return;
+          }
+          const job = res.job || {};
+          const docs = res.documents || [];
+          jobIdLabel.textContent = `Job: ${jobId}`;
+          currentJobId = jobId;
+          localStorage.setItem('pii_job_id', jobId);
+
+          if (docs.length) {
+            statusEl.textContent = job.status === 'done'
+              ? 'Job completato. Puoi modificare e salvare.'
+              : 'Analisi in corso... puoi monitorare lo stato.';
+            renderDocuments(docs);
+            confirmBtn.disabled = (job.status !== 'done');
+            if (saveJobBtn) {
+              saveJobBtn.disabled = (job.status !== 'done');
+            }
+          } else {
+            statusEl.textContent = job.status === 'done'
+              ? 'Job completato ma nessuna pagina disponibile.'
+              : 'Analisi in corso...';
+          }
         });
     }
 
@@ -289,7 +306,7 @@ dropzone.addEventListener('drop', function (e) {
           .then(r => r.json())
           .then(st => {
             if (st.error) {
-              clearSessionState('Errore: ' + st.error);
+              statusEl.textContent = 'Errore: ' + st.error;
               return;
             }
             if (st.status === 'running' || st.status === 'queued') {
@@ -303,7 +320,7 @@ dropzone.addEventListener('drop', function (e) {
               return;
             }
             if (st.status === 'error') {
-              clearSessionState('Errore durante l\'analisi: ' + (st.error || ''));
+              statusEl.textContent = 'Errore durante l\'analisi: ' + (st.error || '');
               return;
             }
             if (st.status === 'done') {
@@ -319,67 +336,20 @@ dropzone.addEventListener('drop', function (e) {
       }, 2000);
     }
 
-    uploadForm.addEventListener('submit', function (e) {
-      e.preventDefault();
-      const fileInput = document.getElementById('pdf-input');
-      const files = fileInput.files;
-      if (!files.length) {
-        alert('Seleziona almeno un PDF');
-        return;
-      }
-
-      const formData = new FormData();
-      for (const f of files) {
-        formData.append('pdf', f);
-      }
-      formData.append('pii', (piiToggle && piiToggle.checked) ? '1' : '0');
-      formData.append('pii_debug', (piiDebugToggle && piiDebugToggle.checked) ? '1' : '0');
-      formData.append('table_mode', (tableColumnsOnlyToggle && tableColumnsOnlyToggle.checked) ? 'columns' : 'full');
-
-      statusEl.textContent = 'Analisi in coda...';
-      pagesWrapper.innerHTML = '';
-      resultEl.innerHTML = '';
-      confirmBtn.disabled = true;
-      documentsState = [];
-
-      fetch('/api/firme/analyze', {
-        method: 'POST',
-        body: formData
-      })
-      .then(r => r.json())
-      .then(data => {
-        if (data.error || !data.job_id) {
-          statusEl.textContent = 'Errore: ' + (data.error || 'Job non creato');
-          return;
-        }
-        startPolling(data.job_id);
-      })
-      .catch(err => {
-        console.error(err);
-        statusEl.textContent = 'Errore durante l\'analisi.';
-      });
-    });
-
-    clearSessionBtn.addEventListener('click', function () {
-      const ok = confirm('Vuoi cancellare il riferimento al job di analisi in corso?');
-      if (!ok) {
-        return;
-      }
-      clearSessionState('Sessione analisi resettata.');
-    });
-
-    const savedJobId = localStorage.getItem('pii_job_id');
+    const params = new URLSearchParams(window.location.search);
+    const urlJobId = params.get('job_id');
+    const savedJobId = urlJobId || localStorage.getItem('pii_job_id');
     if (savedJobId) {
       statusEl.textContent = 'Ripristino analisi in corso...';
+      loadJob(savedJobId);
       fetch(`/api/firme/status/${savedJobId}`)
         .then(r => r.json())
         .then(st => {
           if (st.error) {
-            clearSessionState('Errore: ' + st.error);
+            statusEl.textContent = 'Errore: ' + st.error;
             return;
           }
           if (st.status === 'done') {
-            jobIdLabel.textContent = `Job: ${savedJobId}`;
             fetchResult(savedJobId);
             return;
           }
@@ -387,13 +357,16 @@ dropzone.addEventListener('drop', function (e) {
         })
         .catch(err => {
           console.error(err);
-          clearSessionState('Errore durante l\'analisi.');
         });
     }
 
         function createSidebarPageLink(docId, pageIndex, type) {
       const span = document.createElement('span');
-      span.className = 'sidebar-page-link ' + (type === 'high' ? 'high' : 'low');
+      let cls = 'low';
+      if (type === 'high') cls = 'high';
+      if (type === 'table') cls = 'table';
+      if (type === 'manual') cls = 'manual';
+      span.className = 'sidebar-page-link ' + cls;
       span.textContent = 'P' + (pageIndex + 1);
 
       span.addEventListener('click', () => {
@@ -411,9 +384,16 @@ dropzone.addEventListener('drop', function (e) {
       return span;
     }
 
+    let renderToken = 0;
+
     function renderDocuments(documents) {
+      const token = ++renderToken;
       pagesWrapper.innerHTML = '';
+      const actions = sidebarNav.querySelector('.sidebar-actions');
       sidebarNav.innerHTML = '';
+      if (actions) {
+        sidebarNav.appendChild(actions);
+      }
       documentsState = [];
 
       documents.forEach((doc, docIdx) => {
@@ -442,8 +422,9 @@ dropzone.addEventListener('drop', function (e) {
         docNav.appendChild(navTitle);
 
         const pagesHigh = [];
-    const pagesLow = [];
-    const pagesTable = [];
+        const pagesLow = [];
+        const pagesTable = [];
+        const pagesManual = [];
 
         // analizziamo i box auto per capire quali pagine sono “high”/“low”
         doc.pages.forEach(page => {
@@ -508,6 +489,27 @@ dropzone.addEventListener('drop', function (e) {
           sidebarNav.appendChild(docNav);
         }
 
+        const manualAnchors = new Set();
+        const manualLabel = document.createElement('span');
+        manualLabel.className = 'sidebar-pages-label';
+        manualLabel.textContent = 'Annotazioni manuali:';
+        let manualLabelAdded = false;
+
+        function ensureManualAnchor(pageIndex) {
+          if (token !== renderToken) return;
+          if (manualAnchors.has(pageIndex)) return;
+          if (!manualLabelAdded) {
+            docNav.appendChild(manualLabel);
+            manualLabelAdded = true;
+          }
+          const link = createSidebarPageLink(doc.doc_id, pageIndex, 'manual');
+          docNav.appendChild(link);
+          manualAnchors.add(pageIndex);
+          if (!docNav.parentElement) {
+            sidebarNav.appendChild(docNav);
+          }
+        }
+
         // --- rendering delle pagine ---
         doc.pages.forEach(page => {
           const container = document.createElement('div');
@@ -537,28 +539,54 @@ dropzone.addEventListener('drop', function (e) {
 
           const pageState = {
             page_index: page.index,
+            image_url: page.image_url,
+            width: page.width,
+            height: page.height,
+            auto_boxes: page.auto_boxes || [],
+            pii_boxes: page.pii_boxes || [],
+            pii_reject_boxes: page.pii_reject_boxes || [],
+            table_boxes: page.table_boxes || [],
+            manual_boxes: page.manual_boxes || [],
+            edited_boxes: page.edited_boxes || [],
             boxes: [],
             canvasWidth: null,
             canvasHeight: null
           };
           docState.pages.push(pageState);
 img.onload = function () {
+  if (token !== renderToken) return;
   canvas.width = img.clientWidth;
   canvas.height = img.clientHeight;
   pageState.canvasWidth = canvas.width;
   pageState.canvasHeight = canvas.height;
 
-  page.auto_boxes.forEach(b => {
-    pageState.boxes.push({
-      x: b.x,
-      y: b.y,
-      w: b.w,
-      h: b.h,
-      auto: true,
-      score: b.score,
-      source: 'signature'
+  if (page.edited_boxes && page.edited_boxes.length) {
+    page.edited_boxes.forEach(b => {
+      pageState.boxes.push({
+        x: b.x,
+        y: b.y,
+        w: b.w,
+        h: b.h,
+        auto: b.auto !== false,
+        score: b.score,
+        source: b.source || (b.auto === false ? 'manual' : 'signature'),
+        label: b.label,
+        confidence: b.confidence,
+        skip_redact: b.skip_redact
+      });
     });
-  });
+  } else {
+    page.auto_boxes.forEach(b => {
+      pageState.boxes.push({
+        x: b.x,
+        y: b.y,
+        w: b.w,
+        h: b.h,
+        auto: true,
+        score: b.score,
+        source: 'signature'
+      });
+    });
 
         if (page.pii_boxes && page.pii_boxes.length) {
     page.pii_boxes.forEach(b => {
@@ -593,6 +621,19 @@ img.onload = function () {
     });
   }
 
+  if (page.manual_boxes && page.manual_boxes.length) {
+    page.manual_boxes.forEach(b => {
+      pageState.boxes.push({
+        x: b.x,
+        y: b.y,
+        w: b.w,
+        h: b.h,
+        auto: false,
+        source: 'manual'
+      });
+    });
+  }
+
   if (page.table_boxes && page.table_boxes.length) {
     page.table_boxes.forEach(b => {
       pageState.boxes.push({
@@ -608,8 +649,13 @@ img.onload = function () {
       });
     });
   }
+  }
 
-  setupCanvasDrawing(canvas, pageState);
+  if (page.manual_boxes && page.manual_boxes.length) {
+    ensureManualAnchor(page.index);
+  }
+
+  setupCanvasDrawing(canvas, pageState, ensureManualAnchor);
   redrawPageBoxes(canvas, pageState);
 };
 
@@ -621,7 +667,7 @@ img.onload = function () {
 
     
 
-    function setupCanvasDrawing(canvas, pageState) {
+    function setupCanvasDrawing(canvas, pageState, onManualAnchor) {
       let drawing = false;
       let startX = 0;
       let startY = 0;
@@ -630,6 +676,13 @@ img.onload = function () {
         const rect = canvas.getBoundingClientRect();
         startX = e.clientX - rect.left;
         startY = e.clientY - rect.top;
+
+        const hit = findDeleteHit(pageState, startX, startY, canvas);
+        if (hit !== null) {
+          pageState.boxes.splice(hit, 1);
+          redrawPageBoxes(canvas, pageState);
+          return;
+        }
         drawing = true;
       });
 
@@ -677,10 +730,30 @@ img.onload = function () {
           h: h_norm,
           auto: false
         });
+        if (typeof onManualAnchor === 'function') {
+          onManualAnchor(pageState.page_index);
+        }
 
         redrawPageBoxes(canvas, pageState);
       });
     }
+
+ function findDeleteHit(pageState, x, y, canvas) {
+  const size = 12;
+  for (let i = 0; i < pageState.boxes.length; i++) {
+    const b = pageState.boxes[i];
+    const bx = b.x * canvas.width;
+    const by = b.y * canvas.height;
+    const bw = b.w * canvas.width;
+    const bh = b.h * canvas.height;
+    const dx = bx + bw - size;
+    const dy = by - size;
+    if (x >= dx && x <= dx + size && y >= dy && y <= dy + size) {
+      return i;
+    }
+  }
+  return null;
+ }
 
  function redrawPageBoxes(canvas, pageState) {
   const ctx = canvas.getContext('2d');
@@ -728,6 +801,22 @@ img.onload = function () {
 
     ctx.strokeRect(x, y, w, h);
     ctx.setLineDash([]);
+
+    // draw delete badge
+    const size = 12;
+    const dx = x + w - size;
+    const dy = y - size;
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#cc0000';
+    ctx.lineWidth = 1;
+    ctx.fillRect(dx, dy, size, size);
+    ctx.strokeRect(dx, dy, size, size);
+    ctx.beginPath();
+    ctx.moveTo(dx + 3, dy + 3);
+    ctx.lineTo(dx + size - 3, dy + size - 3);
+    ctx.moveTo(dx + size - 3, dy + 3);
+    ctx.lineTo(dx + 3, dy + size - 3);
+    ctx.stroke();
   });
 }
 
@@ -739,6 +828,10 @@ img.onload = function () {
   }
 
   statusEl.textContent = 'Generazione PDF oscurati e preparazione ZIP...';
+  confirmBtn.disabled = true;
+  if (confirmSpinner) {
+    confirmSpinner.style.display = 'inline-block';
+  }
   resultEl.innerHTML = '';
 
   // riepilogo locale (non dal server)
@@ -752,11 +845,24 @@ img.onload = function () {
   resultEl.appendChild(riepilogo);
 
   const payload = {
+    job_id: currentJobId,
     documents: documentsState.map(doc => ({
       doc_id: doc.doc_id,
       filename: doc.filename,
       pages: doc.pages.map(p => ({
         page_index: p.page_index,
+        edited_boxes: p.boxes.map(b => ({
+          x: b.x,
+          y: b.y,
+          w: b.w,
+          h: b.h,
+          auto: !!b.auto,
+          source: b.source,
+          score: b.score,
+          label: b.label,
+          confidence: b.confidence,
+          skip_redact: !!b.skip_redact
+        })),
         boxes: p.boxes.filter(b => !b.skip_redact).map(b => ({
           x: b.x,
           y: b.y,
@@ -797,19 +903,90 @@ img.onload = function () {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'pdf_oscurati.zip';
+    const now = new Date();
+    const stamp = now.toISOString().slice(0,19).replace(/[:T]/g,'-');
+    a.download = `export-edited-${stamp}.zip`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     window.URL.revokeObjectURL(url);
 
-    statusEl.textContent = 'ZIP scaricato correttamente. I dati non sono più presenti sul server.';
+    statusEl.textContent = 'ZIP scaricato correttamente. Il job resta disponibile per ulteriori modifiche.';
+    confirmBtn.disabled = false;
+    if (confirmSpinner) {
+      confirmSpinner.style.display = 'none';
+    }
   })
   .catch(err => {
     console.error(err);
     statusEl.textContent = 'Errore durante la generazione/scaricamento dello ZIP: ' + err.message;
+    confirmBtn.disabled = false;
+    if (confirmSpinner) {
+      confirmSpinner.style.display = 'none';
+    }
   });
 });
+
+if (saveJobBtn) {
+  saveJobBtn.addEventListener('click', function () {
+  if (!currentJobId) {
+    alert('Nessun job attivo.');
+    return;
+  }
+  const payload = {
+    documents: documentsState.map(doc => ({
+      doc_id: doc.doc_id,
+      filename: doc.filename,
+      pages: doc.pages.map(p => ({
+        index: p.page_index,
+        image_url: p.image_url,
+        width: p.width,
+        height: p.height,
+        auto_boxes: p.auto_boxes || [],
+        pii_boxes: p.pii_boxes || [],
+        pii_reject_boxes: p.pii_reject_boxes || [],
+        table_boxes: p.table_boxes || [],
+        manual_boxes: p.boxes.filter(b => !b.skip_redact && !b.auto).map(b => ({
+          x: b.x,
+          y: b.y,
+          w: b.w,
+          h: b.h
+        })),
+        edited_boxes: p.boxes.map(b => ({
+          x: b.x,
+          y: b.y,
+          w: b.w,
+          h: b.h,
+          auto: !!b.auto,
+          source: b.source,
+          score: b.score,
+          label: b.label,
+          confidence: b.confidence,
+          skip_redact: !!b.skip_redact
+        })),
+        page_index: p.page_index
+      }))
+    }))
+  };
+  fetch(`/api/firme/jobs/${currentJobId}/save`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  })
+  .then(r => r.json())
+  .then(res => {
+    if (res.error) {
+      statusEl.textContent = 'Errore salvataggio: ' + res.error;
+      return;
+    }
+    statusEl.textContent = 'Modifiche salvate.';
+  })
+  .catch(err => {
+    console.error(err);
+    statusEl.textContent = 'Errore salvataggio.';
+  });
+});
+}
 
 
 

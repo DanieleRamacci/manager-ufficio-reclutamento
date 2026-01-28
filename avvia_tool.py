@@ -7,7 +7,9 @@ import time
 import threading
 import concurrent.futures
 import subprocess
-from datetime import datetime
+import json
+import sqlite3
+from datetime import datetime, timedelta
 from flask import Flask
 from flask_session import Session
 import uuid
@@ -69,13 +71,355 @@ bg_threads = []
 
 # ========= Async job queue for firma/PII analysis =========
 jobs_lock = threading.Lock()
-jobs: dict[str, dict] = {}
 job_queue: "queue.Queue[str]" = queue.Queue()
 DOC_TTL_SECONDS = int(os.environ.get("FIRME_DOC_TTL_SECONDS", "86400"))
+DB_PATH = os.path.join(os.path.dirname(__file__), "instance", "jobs.db")
+_admin_raw = [
+    e.strip().lower()
+    for e in (os.environ.get("FIRME_ADMIN_EMAILS", "danbiele.ramacci@cnr.it") or "").split(",")
+    if e.strip()
+]
+ADMIN_EMAILS = set()
+for e in _admin_raw:
+    ADMIN_EMAILS.add(e)
+    if "@" in e:
+        ADMIN_EMAILS.add(e.split("@", 1)[0])
 
 
 def _current_user_id() -> str | None:
-    return session.get("user") or session.get("user_email")
+    return session.get("user_email") or session.get("user")
+
+
+def _current_user_email() -> str | None:
+    return session.get("user_email") or None
+
+
+def _normalize_user_id(value: str | None) -> tuple[str, str]:
+    if not value:
+        return "", ""
+    v = value.strip().lower()
+    local = v.split("@", 1)[0] if "@" in v else v
+    return v, local
+
+
+def _is_admin(email: str | None) -> bool:
+    if not email:
+        return False
+    full, local = _normalize_user_id(email)
+    return full in ADMIN_EMAILS or (local and local in ADMIN_EMAILS)
+
+
+def _db_conn() -> sqlite3.Connection:
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    return conn
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+    cur = conn.execute(f"PRAGMA table_info({table})")
+    cols = {row["name"] for row in cur.fetchall()}
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
+
+
+def _init_db() -> None:
+    conn = _db_conn()
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS jobs (
+            job_id TEXT PRIMARY KEY,
+            owner_email TEXT NOT NULL,
+            status TEXT NOT NULL,
+            redaction_status TEXT NOT NULL,
+            progress_done INTEGER DEFAULT 0,
+            progress_total INTEGER DEFAULT 0,
+            timing_pages INTEGER DEFAULT 0,
+            timing_total REAL DEFAULT 0,
+            created_at REAL,
+            updated_at REAL,
+            error TEXT
+        )
+        """
+    )
+    _ensure_column(conn, "jobs", "pii_enabled", "pii_enabled INTEGER DEFAULT 1")
+    _ensure_column(conn, "jobs", "pii_debug", "pii_debug INTEGER DEFAULT 0")
+    _ensure_column(conn, "jobs", "table_mode", "table_mode TEXT DEFAULT 'full'")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS job_acl (
+            job_id TEXT NOT NULL,
+            email TEXT NOT NULL,
+            role TEXT DEFAULT 'viewer',
+            PRIMARY KEY(job_id, email)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS job_documents (
+            doc_id TEXT PRIMARY KEY,
+            job_id TEXT NOT NULL,
+            filename TEXT,
+            pages_count INTEGER DEFAULT 0,
+            analyzed_at REAL,
+            redacted_at REAL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS job_pages (
+            job_id TEXT NOT NULL,
+            doc_id TEXT NOT NULL,
+            page_index INTEGER NOT NULL,
+            data_json TEXT,
+            PRIMARY KEY(job_id, doc_id, page_index)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS job_exports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT NOT NULL,
+            exported_at REAL,
+            exported_by TEXT
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def _db_job_user_can_access(job_id: str, email: str | None) -> bool:
+    if not email:
+        return False
+    if _is_admin(email):
+        return True
+    conn = _db_conn()
+    row = conn.execute("SELECT owner_email FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
+    if not row:
+        conn.close()
+        return False
+    owner_full, owner_local = _normalize_user_id(row["owner_email"])
+    user_full, user_local = _normalize_user_id(email)
+    if owner_full == user_full or (owner_local and owner_local == user_local):
+        conn.close()
+        return True
+    acl = conn.execute(
+        "SELECT email FROM job_acl WHERE job_id = ?",
+        (job_id,),
+    ).fetchall()
+    conn.close()
+    for a in acl:
+        a_full, a_local = _normalize_user_id(a["email"])
+        if a_full == user_full or (a_local and a_local == user_local):
+            return True
+    return False
+
+
+def _db_get_job(job_id: str) -> dict | None:
+    conn = _db_conn()
+    row = conn.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def _db_update_job(job_id: str, **fields) -> None:
+    if not fields:
+        return
+    fields["updated_at"] = time.time()
+    keys = list(fields.keys())
+    values = [fields[k] for k in keys]
+    sets = ", ".join(f"{k} = ?" for k in keys)
+    conn = _db_conn()
+    conn.execute(f"UPDATE jobs SET {sets} WHERE job_id = ?", (*values, job_id))
+    conn.commit()
+    conn.close()
+
+
+def _db_set_progress(job_id: str, done: int, total: int) -> None:
+    _db_update_job(job_id, progress_done=int(done), progress_total=int(total))
+
+
+def _db_insert_job(job_id: str, owner_email: str, status: str, redaction_status: str) -> None:
+    now = time.time()
+    conn = _db_conn()
+    conn.execute(
+        """
+        INSERT INTO jobs(job_id, owner_email, status, redaction_status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (job_id, owner_email, status, redaction_status, now, now),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _db_insert_job_acl(job_id: str, email: str, role: str = "viewer") -> None:
+    conn = _db_conn()
+    conn.execute(
+        "INSERT OR IGNORE INTO job_acl(job_id, email, role) VALUES (?, ?, ?)",
+        (job_id, email, role),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _db_insert_document(doc_id: str, job_id: str, filename: str) -> None:
+    conn = _db_conn()
+    conn.execute(
+        "INSERT INTO job_documents(doc_id, job_id, filename) VALUES (?, ?, ?)",
+        (doc_id, job_id, filename),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _db_update_document(doc_id: str, **fields) -> None:
+    if not fields:
+        return
+    keys = list(fields.keys())
+    values = [fields[k] for k in keys]
+    sets = ", ".join(f"{k} = ?" for k in keys)
+    conn = _db_conn()
+    conn.execute(f"UPDATE job_documents SET {sets} WHERE doc_id = ?", (*values, doc_id))
+    conn.commit()
+    conn.close()
+
+
+def _db_upsert_page(job_id: str, doc_id: str, page_index: int, data: dict) -> None:
+    payload = json.dumps(data)
+    conn = _db_conn()
+    conn.execute(
+        """
+        INSERT INTO job_pages(job_id, doc_id, page_index, data_json)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(job_id, doc_id, page_index) DO UPDATE SET data_json = excluded.data_json
+        """,
+        (job_id, doc_id, int(page_index), payload),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _db_list_jobs(email: str, include_all: bool = False) -> list[dict]:
+    conn = _db_conn()
+    if include_all:
+        rows = conn.execute("SELECT * FROM jobs ORDER BY created_at DESC").fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT j.*
+            FROM jobs j
+            LEFT JOIN job_acl a ON a.job_id = j.job_id
+            WHERE lower(j.owner_email) = lower(?)
+               OR lower(a.email) = lower(?)
+            ORDER BY j.created_at DESC
+            """,
+            (email, email),
+        ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def _db_get_job_documents(job_id: str) -> list[dict]:
+    conn = _db_conn()
+    rows = conn.execute(
+        "SELECT * FROM job_documents WHERE job_id = ? ORDER BY rowid ASC",
+        (job_id,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def _db_get_job_pages(job_id: str, doc_id: str) -> list[dict]:
+    conn = _db_conn()
+    rows = conn.execute(
+        "SELECT page_index, data_json FROM job_pages WHERE job_id = ? AND doc_id = ? ORDER BY page_index ASC",
+        (job_id, doc_id),
+    ).fetchall()
+    conn.close()
+    out = []
+    for r in rows:
+        try:
+            out.append(json.loads(r["data_json"]))
+        except Exception:
+            out.append({})
+    return out
+
+
+def _db_delete_job(job_id: str) -> None:
+    conn = _db_conn()
+    conn.execute("DELETE FROM job_pages WHERE job_id = ?", (job_id,))
+    conn.execute("DELETE FROM job_documents WHERE job_id = ?", (job_id,))
+    conn.execute("DELETE FROM job_acl WHERE job_id = ?", (job_id,))
+    conn.execute("DELETE FROM job_exports WHERE job_id = ?", (job_id,))
+    conn.execute("DELETE FROM jobs WHERE job_id = ?", (job_id,))
+    conn.commit()
+    conn.close()
+
+
+def _assemble_job_documents(job_id: str) -> list[dict]:
+    documents = []
+    for doc in _db_get_job_documents(job_id):
+        pages = _db_get_job_pages(job_id, doc["doc_id"])
+        documents.append({
+            "doc_id": doc["doc_id"],
+            "filename": doc.get("filename"),
+            "pages": pages,
+        })
+    return documents
+
+
+def _get_system_stats(job: dict | None = None) -> dict:
+    stats: dict = {
+        "cpu_count": os.cpu_count() or 1,
+        "load_avg": None,
+        "mem_total_gb": None,
+        "mem_free_gb": None,
+    }
+    if hasattr(os, "getloadavg"):
+        try:
+            stats["load_avg"] = list(os.getloadavg())
+        except Exception:
+            stats["load_avg"] = None
+    meminfo_path = "/proc/meminfo"
+    if os.path.exists(meminfo_path):
+        try:
+            data = {}
+            with open(meminfo_path, "r", encoding="utf-8") as handle:
+                for line in handle:
+                    parts = line.split(":")
+                    if len(parts) < 2:
+                        continue
+                    key = parts[0].strip()
+                    val = parts[1].strip().split()[0]
+                    data[key] = int(val)
+            if "MemTotal" in data:
+                stats["mem_total_gb"] = round(data["MemTotal"] / 1024 / 1024, 2)
+            if "MemAvailable" in data:
+                stats["mem_free_gb"] = round(data["MemAvailable"] / 1024 / 1024, 2)
+        except Exception:
+            pass
+    if job:
+        timing_pages = int(job.get("timing_pages") or 0)
+        timing_total = float(job.get("timing_total") or 0.0)
+        if timing_pages > 0:
+            stats["avg_page_sec"] = timing_total / timing_pages
+        else:
+            stats["avg_page_sec"] = None
+        progress_total = int(job.get("progress_total") or 0)
+        progress_done = int(job.get("progress_done") or 0)
+        remaining = max(0, progress_total - progress_done)
+        if stats.get("avg_page_sec") is not None:
+            stats["eta_sec"] = remaining * stats["avg_page_sec"]
+        else:
+            stats["eta_sec"] = None
+    return stats
 
 
 def _doc_owner_path(doc_id: str) -> str:
@@ -101,23 +445,29 @@ def _read_doc_owner(doc_id: str) -> str | None:
 def _is_doc_owned_by_user(doc_id: str, user_id: str | None) -> bool:
     if not user_id:
         return False
-    return _read_doc_owner(doc_id) == user_id
+    owner = _read_doc_owner(doc_id)
+    if owner:
+        owner_full, owner_local = _normalize_user_id(owner)
+        user_full, user_local = _normalize_user_id(user_id)
+        if owner_full == user_full or (owner_local and owner_local == user_local):
+            return True
+    try:
+        conn = _db_conn()
+        row = conn.execute("SELECT job_id FROM job_documents WHERE doc_id = ?", (doc_id,)).fetchone()
+        conn.close()
+        if not row:
+            return False
+        return _db_job_user_can_access(row["job_id"], user_id)
+    except Exception:
+        return False
 
 
 def _update_job(job_id: str, **kwargs) -> None:
-    with jobs_lock:
-        job = jobs.get(job_id)
-        if not job:
-            return
-        job.update(kwargs)
+    _db_update_job(job_id, **kwargs)
 
 
 def _set_job_progress(job_id: str, done: int, total: int) -> None:
-    with jobs_lock:
-        job = jobs.get(job_id)
-        if not job:
-            return
-        job["progress"] = {"done": done, "total": total}
+    _db_set_progress(job_id, done, total)
 
 
 def _box_intersects_norm(a: dict, b: dict) -> bool:
@@ -339,9 +689,11 @@ def _process_page_task(doc_id: str, doc_dir: str, i: int, image_path: str, job_c
         except Exception as e:
             print(f"[PII][WARN] OCR fallito per pagina {i}: {e}", flush=True)
 
+    timing_total = t_yolo_firme + t_yolo_tabelle + t_ocr
     print(
         f"[TIMING] doc_id={doc_id} page={i} "
-        f"yolo_firme={t_yolo_firme:.3f}s yolo_tabelle={t_yolo_tabelle:.3f}s ocr={t_ocr:.3f}s",
+        f"yolo_firme={t_yolo_firme:.3f}s yolo_tabelle={t_yolo_tabelle:.3f}s "
+        f"ocr={t_ocr:.3f}s total={timing_total:.3f}s",
         flush=True,
     )
 
@@ -353,7 +705,9 @@ def _process_page_task(doc_id: str, doc_dir: str, i: int, image_path: str, job_c
         "auto_boxes": norm_boxes,
         "pii_boxes": pii_boxes,
         "pii_reject_boxes": pii_reject_boxes if job_conf.get("pii_debug") else [],
-        "table_boxes": table_boxes if job_conf.get("pii_enabled") else []
+        "table_boxes": table_boxes if job_conf.get("pii_enabled") else [],
+        "manual_boxes": [],
+        "timing_total": timing_total,
     }
     return doc_id, i, page_info
 
@@ -369,15 +723,19 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret')
 # Sessione server-side su filesystem (consigliato per evitare cookie giganti)
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_FILE_DIR'] = os.path.join(os.path.dirname(__file__), 'instance', 'flask_session')
-app.config['SESSION_PERMANENT'] = False
+app.config['SESSION_PERMANENT'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = False  # True se usi HTTPS
 os.makedirs(app.config['SESSION_FILE_DIR'], exist_ok=True)
+session_ttl = int(os.environ.get("SESSION_TTL_SECONDS", str(60 * 60 * 24 * 7)))
+app.permanent_session_lifetime = timedelta(seconds=session_ttl)
 
 Session(app)
 
 # registra le route di autenticazione (/login, /oidc-callback, /logout, /api/userinfo)
 app.register_blueprint(auth_bp)
+
+_init_db()
 
 
 
@@ -779,39 +1137,40 @@ def _worker_loop():
         job_id = job_queue.get()
         if not job_id:
             continue
-        with jobs_lock:
-            job = jobs.get(job_id)
+        job = _db_get_job(job_id)
         if not job:
             continue
         _update_job(job_id, status="running")
         try:
             total_pages = 0
             done_pages = 0
-            for doc in job["documents_meta"]:
-                total_pages += pdf_page_count(doc["pdf_path"])
+            documents_meta = _db_get_job_documents(job_id)
+            for doc in documents_meta:
+                total_pages += pdf_page_count(os.path.join(DOCS_FIRME_ROOT, doc["doc_id"], "original.pdf"))
             _set_job_progress(job_id, done_pages, total_pages)
 
             job_conf = {
-                "pii_enabled": bool(job.get("pii_enabled")),
-                "pii_debug": bool(job.get("pii_debug")),
-                "table_mode": job.get("table_mode"),
+                "pii_enabled": bool(job.get("pii_enabled", 1)),
+                "pii_debug": bool(job.get("pii_debug", 0)),
+                "table_mode": job.get("table_mode", "full"),
             }
+            timing_pages = int(job.get("timing_pages") or 0)
+            timing_total = float(job.get("timing_total") or 0.0)
 
             max_workers = int(os.environ.get("FIRME_PARALLEL_WORKERS", "2") or 2)
             max_workers = max(1, min(os.cpu_count() or 1, max_workers))
 
-            documents = []
             if max_workers > 1:
                 with concurrent.futures.ProcessPoolExecutor(
                     max_workers=max_workers,
                     initializer=_init_process_worker,
                     initargs=(model_firme_path,),
                 ) as executor:
-                    for doc in job["documents_meta"]:
+                    for doc in documents_meta:
                         doc_id = doc["doc_id"]
-                        pdf_path = doc["pdf_path"]
                         filename = doc["filename"]
-                        doc_dir = doc["doc_dir"]
+                        doc_dir = os.path.join(DOCS_FIRME_ROOT, doc_id)
+                        pdf_path = os.path.join(doc_dir, "original.pdf")
 
                         t_conv_start = time.perf_counter()
                         pages = pdf_to_pil_images(pdf_path, dpi=200)
@@ -835,21 +1194,26 @@ def _worker_loop():
                         for fut in concurrent.futures.as_completed(futures):
                             _, page_idx, page_info = fut.result()
                             pages_info.append(page_info)
+                            _db_upsert_page(job_id, doc_id, page_idx, page_info)
+                            if page_info.get("timing_total"):
+                                timing_pages += 1
+                                timing_total += float(page_info["timing_total"])
+                                _db_update_job(job_id, timing_pages=timing_pages, timing_total=timing_total)
                             done_pages += 1
                             _set_job_progress(job_id, done_pages, total_pages)
 
                         pages_info.sort(key=lambda p: p["index"])
-                        documents.append({
-                            "doc_id": doc_id,
-                            "filename": filename,
-                            "pages": pages_info,
-                        })
+                        _db_update_document(
+                            doc_id,
+                            pages_count=len(pages_info),
+                            analyzed_at=time.time(),
+                        )
             else:
-                for doc in job["documents_meta"]:
+                for doc in documents_meta:
                     doc_id = doc["doc_id"]
-                    pdf_path = doc["pdf_path"]
                     filename = doc["filename"]
-                    doc_dir = doc["doc_dir"]
+                    doc_dir = os.path.join(DOCS_FIRME_ROOT, doc_id)
+                    pdf_path = os.path.join(doc_dir, "original.pdf")
 
                     t_conv_start = time.perf_counter()
                     pages = pdf_to_pil_images(pdf_path, dpi=200)
@@ -869,17 +1233,22 @@ def _worker_loop():
                     for i, image_path in enumerate(image_paths):
                         _, page_idx, page_info = _process_page_task(doc_id, doc_dir, i, image_path, job_conf)
                         pages_info.append(page_info)
+                        _db_upsert_page(job_id, doc_id, page_idx, page_info)
+                        if page_info.get("timing_total"):
+                            timing_pages += 1
+                            timing_total += float(page_info["timing_total"])
+                            _db_update_job(job_id, timing_pages=timing_pages, timing_total=timing_total)
                         done_pages += 1
                         _set_job_progress(job_id, done_pages, total_pages)
 
                     pages_info.sort(key=lambda p: p["index"])
-                    documents.append({
-                        "doc_id": doc_id,
-                        "filename": filename,
-                        "pages": pages_info,
-                    })
+                    _db_update_document(
+                        doc_id,
+                        pages_count=len(pages_info),
+                        analyzed_at=time.time(),
+                    )
 
-            _update_job(job_id, status="done", documents=documents)
+            _update_job(job_id, status="done")
         except Exception as exc:
             _update_job(job_id, status="error", error=str(exc))
         finally:
@@ -893,13 +1262,18 @@ _worker_thread.start()
 def _cleanup_doc_dirs():
     while True:
         try:
+            if os.environ.get("FIRME_CLEANUP_ENABLED", "0").lower() not in ("1", "true", "on", "yes"):
+                time.sleep(600)
+                continue
             now = time.time()
             active_doc_ids = set()
-            with jobs_lock:
-                for job in jobs.values():
-                    if job.get("status") in ("queued", "running"):
-                        for doc in job.get("documents_meta", []):
-                            active_doc_ids.add(doc.get("doc_id"))
+            conn = _db_conn()
+            rows = conn.execute(
+                "SELECT doc_id FROM job_documents d JOIN jobs j ON j.job_id = d.job_id WHERE j.status IN ('queued','running')"
+            ).fetchall()
+            conn.close()
+            for r in rows:
+                active_doc_ids.add(r["doc_id"])
             for doc_id in os.listdir(DOCS_FIRME_ROOT):
                 doc_dir = os.path.join(DOCS_FIRME_ROOT, doc_id)
                 if not os.path.isdir(doc_dir):
@@ -1103,7 +1477,139 @@ def kick_monitors():
 @app.route("/redazione-firme.html")
 @login_required
 def redazione_firme_html():
-    return send_from_directory(DIR, "redazione-firme.html")
+    resp = send_from_directory(DIR, "redazione-firme.html")
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.route("/firme-jobs.html")
+@login_required
+def firme_jobs_html():
+    resp = send_from_directory(DIR, "firme-jobs.html")
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.get("/api/firme/jobs")
+@login_required
+def api_firme_jobs():
+    user_id = _current_user_id()
+    if not user_id:
+        return jsonify({"error": "Utente non autenticato"}), 403
+    include_all = _is_admin(user_id)
+    jobs_list = _db_list_jobs(user_id, include_all=include_all)
+    out = []
+    for j in jobs_list:
+        avg_page = None
+        eta = None
+        if j.get("timing_pages"):
+            avg_page = float(j.get("timing_total") or 0.0) / max(1, int(j.get("timing_pages") or 0))
+        if avg_page is not None and j.get("progress_total"):
+            remaining = max(0, int(j.get("progress_total") or 0) - int(j.get("progress_done") or 0))
+            eta = remaining * avg_page
+        out.append({
+            "job_id": j.get("job_id"),
+            "owner_email": j.get("owner_email"),
+            "status": j.get("status"),
+            "redaction_status": j.get("redaction_status"),
+            "progress": {"done": j.get("progress_done", 0), "total": j.get("progress_total", 0)},
+            "created_at": j.get("created_at"),
+            "updated_at": j.get("updated_at"),
+            "avg_page_sec": avg_page,
+            "eta_sec": eta,
+        })
+    return jsonify({"jobs": out, "is_admin": include_all})
+
+
+@app.get("/api/firme/jobs/<job_id>")
+@login_required
+def api_firme_job_detail(job_id: str):
+    user_id = _current_user_id()
+    job = _db_get_job(job_id)
+    if not job:
+        return jsonify({"error": "Job non trovato"}), 404
+    if not _db_job_user_can_access(job_id, user_id):
+        return jsonify({"error": "Accesso negato"}), 403
+    documents = _assemble_job_documents(job_id)
+    return jsonify({
+        "job": {
+            "job_id": job_id,
+            "status": job.get("status"),
+            "redaction_status": job.get("redaction_status"),
+            "progress": {"done": job.get("progress_done", 0), "total": job.get("progress_total", 0)},
+        },
+        "documents": documents,
+    })
+
+
+@app.post("/api/firme/jobs/<job_id>/save")
+@login_required
+def api_firme_job_save(job_id: str):
+    user_id = _current_user_id()
+    if not _db_job_user_can_access(job_id, user_id):
+        return jsonify({"error": "Accesso negato"}), 403
+    payload = request.json or {}
+    docs = payload.get("documents") or []
+    for doc in docs:
+        doc_id = doc.get("doc_id")
+        pages = doc.get("pages") or []
+        if not doc_id:
+            continue
+        for page in pages:
+            page_idx = page.get("index")
+            if page_idx is None:
+                page_idx = page.get("page_index")
+            if page_idx is None:
+                continue
+            page["index"] = page_idx
+            _db_upsert_page(job_id, doc_id, page_idx, page)
+    _db_update_job(job_id, redaction_status="in_progress")
+    return jsonify({"ok": True})
+
+
+@app.post("/api/firme/jobs/<job_id>/delete")
+@login_required
+def api_firme_job_delete(job_id: str):
+    user_id = _current_user_id()
+    job = _db_get_job(job_id)
+    if not job:
+        return jsonify({"error": "Job non trovato"}), 404
+    if not user_id:
+        return jsonify({"error": "Utente non autenticato"}), 403
+    if not (_is_admin(user_id) or (job.get("owner_email") or "").lower() == user_id.lower()):
+        return jsonify({"error": "Accesso negato"}), 403
+    for doc in _db_get_job_documents(job_id):
+        doc_dir = os.path.join(DOCS_FIRME_ROOT, doc["doc_id"])
+        if os.path.isdir(doc_dir):
+            shutil.rmtree(doc_dir, ignore_errors=True)
+    _db_delete_job(job_id)
+    return jsonify({"ok": True})
+
+
+@app.post("/api/firme/jobs/<job_id>/share")
+@login_required
+def api_firme_job_share(job_id: str):
+    user_id = _current_user_id()
+    if not _is_admin(user_id):
+        return jsonify({"error": "Accesso negato"}), 403
+    payload = request.json or {}
+    email = (payload.get("email") or "").strip()
+    role = (payload.get("role") or "viewer").strip()
+    if not email:
+        return jsonify({"error": "Email mancante"}), 400
+    _db_insert_job_acl(job_id, email, role)
+    return jsonify({"ok": True})
+
+
+@app.get("/api/system/stats")
+@login_required
+def api_system_stats():
+    user_id = _current_user_id()
+    if not user_id:
+        return jsonify({"error": "Utente non autenticato"}), 403
+    return jsonify(_get_system_stats())
 
 @app.route("/api/firme/analyze", methods=["POST"])
 @login_required
@@ -1145,8 +1651,6 @@ def api_firme_analyze():
         return jsonify({"error": "Utente non autenticato"}), 403
 
     job_id = str(uuid.uuid4())
-    documents_meta = []
-
     for pdf_file in files:
         if not pdf_file.filename:
             continue
@@ -1155,27 +1659,19 @@ def api_firme_analyze():
         os.makedirs(doc_dir, exist_ok=True)
         pdf_path = os.path.join(doc_dir, "original.pdf")
         pdf_file.save(pdf_path)
-        _write_doc_owner(doc_id, user_id, job_id)
-        documents_meta.append({
-            "doc_id": doc_id,
-            "filename": pdf_file.filename,
-            "doc_dir": doc_dir,
-            "pdf_path": pdf_path,
-        })
+        owner_email = _current_user_email() or user_id
+        _write_doc_owner(doc_id, owner_email, job_id)
+        _db_insert_document(doc_id, job_id, pdf_file.filename)
 
-    with jobs_lock:
-        jobs[job_id] = {
-            "status": "queued",
-            "user": user_id,
-            "pii_enabled": pii_enabled,
-            "pii_debug": pii_debug,
-            "table_mode": table_mode if table_mode in ("full", "columns") else "full",
-            "documents_meta": documents_meta,
-            "documents": None,
-            "progress": {"done": 0, "total": 0},
-            "error": None,
-            "created_at": time.time(),
-        }
+    owner_email = _current_user_email() or user_id
+    _db_insert_job(job_id, owner_email, "queued", "not_started")
+    _db_update_job(
+        job_id,
+        pii_enabled=1 if pii_enabled else 0,
+        pii_debug=1 if pii_debug else 0,
+        table_mode=table_mode if table_mode in ("full", "columns") else "full",
+    )
+    _db_insert_job_acl(job_id, user_id, role="owner")
 
     job_queue.put(job_id)
     return jsonify({"job_id": job_id, "status": "queued"})
@@ -1185,16 +1681,15 @@ def api_firme_analyze():
 @login_required
 def api_firme_status(job_id: str):
     user_id = _current_user_id()
-    with jobs_lock:
-        job = jobs.get(job_id)
+    job = _db_get_job(job_id)
     if not job:
         return jsonify({"error": "Job non trovato"}), 404
-    if job.get("user") != user_id:
+    if not _db_job_user_can_access(job_id, user_id):
         return jsonify({"error": "Accesso negato"}), 403
     return jsonify({
         "job_id": job_id,
         "status": job.get("status"),
-        "progress": job.get("progress", {"done": 0, "total": 0}),
+        "progress": {"done": job.get("progress_done", 0), "total": job.get("progress_total", 0)},
         "error": job.get("error"),
     })
 
@@ -1203,15 +1698,22 @@ def api_firme_status(job_id: str):
 @login_required
 def api_firme_result(job_id: str):
     user_id = _current_user_id()
-    with jobs_lock:
-        job = jobs.get(job_id)
+    job = _db_get_job(job_id)
     if not job:
         return jsonify({"error": "Job non trovato"}), 404
-    if job.get("user") != user_id:
+    if not _db_job_user_can_access(job_id, user_id):
         return jsonify({"error": "Accesso negato"}), 403
     if job.get("status") != "done":
         return jsonify({"error": "Job non completato", "status": job.get("status")}), 400
-    return jsonify({"documents": job.get("documents") or []})
+    documents = []
+    for doc in _db_get_job_documents(job_id):
+        pages = _db_get_job_pages(job_id, doc["doc_id"])
+        documents.append({
+            "doc_id": doc["doc_id"],
+            "filename": doc.get("filename"),
+            "pages": pages,
+        })
+    return jsonify({"documents": documents})
 
 #aggiunto log
 
@@ -1243,10 +1745,10 @@ def api_firme_confirm():
       - crea un PDF oscurato in memoria
     Poi:
       - crea un unico ZIP in memoria con tutti i PDF oscurati
-      - cancella TUTTE le cartelle docs_firme/<doc_id>
+      - mantiene i dati per permettere successive revisioni
       - restituisce lo ZIP come download
 
-    Nessun file PDF o immagine rimane sul server dopo la risposta.
+    I file restano sul server finché l'utente non elimina il job.
     """
     try:
         data = request.get_json(silent=True)
@@ -1254,6 +1756,7 @@ def api_firme_confirm():
             return jsonify({"error": "JSON mancante in /api/firme/confirm"}), 400
 
         docs_data = data.get("documents", [])
+        job_id = data.get("job_id")
         if not docs_data:
             return jsonify({"error": "Nessun documento da elaborare"}), 400
 
@@ -1261,8 +1764,6 @@ def api_firme_confirm():
         user_id = _current_user_id()
         if not user_id:
             return jsonify({"error": "Utente non autenticato"}), 403
-
-        doc_dirs = []  # cartelle da cancellare alla fine
 
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
@@ -1276,13 +1777,17 @@ def api_firme_confirm():
                     continue
                 if not _is_doc_owned_by_user(doc_id, user_id):
                     return jsonify({"error": "Accesso negato al documento"}), 403
+                if not job_id:
+                    conn = _db_conn()
+                    row = conn.execute("SELECT job_id FROM job_documents WHERE doc_id = ?", (doc_id,)).fetchone()
+                    conn.close()
+                    if row:
+                        job_id = row["job_id"]
 
                 doc_dir = os.path.join(DOCS_FIRME_ROOT, doc_id)
                 if not os.path.isdir(doc_dir):
                     print(f"[FIRME][WARN] Cartella documento non trovata: {doc_dir}", flush=True)
                     continue
-
-                doc_dirs.append(doc_dir)
 
                 redacted_image_paths = []
 
@@ -1320,6 +1825,17 @@ def api_firme_confirm():
                     redacted_image_path = os.path.join(doc_dir, f"redacted_page_{page_index}.png")
                     img.save(redacted_image_path, "PNG")
                     redacted_image_paths.append(redacted_image_path)
+                    if job_id:
+                        stored_page = dict(page_info)
+                        stored_page["index"] = page_index
+                        stored_page["manual_boxes"] = [
+                            {"x": b["x"], "y": b["y"], "w": b["w"], "h": b["h"]}
+                            for b in boxes
+                        ]
+                        edited = page_info.get("edited_boxes")
+                        if isinstance(edited, list):
+                            stored_page["edited_boxes"] = edited
+                        _db_upsert_page(job_id, doc_id, page_index, stored_page)
 
                 if not redacted_image_paths:
                     print(f"[FIRME][WARN] Nessuna pagina redatta per doc_id={doc_id}", flush=True)
@@ -1353,13 +1869,19 @@ def api_firme_confirm():
 
         zip_buffer.seek(0)
 
-        # Cancella tutte le cartelle temporanee
-        for d in doc_dirs:
-            try:
-                shutil.rmtree(d, ignore_errors=True)
-                print(f"[FIRME] Eliminata cartella temporanea: {d}", flush=True)
-            except Exception as e:
-                print(f"[FIRME][WARN] Impossibile eliminare {d}: {e}", flush=True)
+        if job_id:
+            _db_update_job(job_id, redaction_status="done")
+            conn = _db_conn()
+            conn.execute(
+                "INSERT INTO job_exports(job_id, exported_at, exported_by) VALUES (?, ?, ?)",
+                (job_id, time.time(), user_id),
+            )
+            conn.commit()
+            conn.close()
+        for doc_entry in docs_data:
+            doc_id = doc_entry.get("doc_id")
+            if doc_id:
+                _db_update_document(doc_id, redacted_at=time.time())
 
         # Se non abbiamo scritto niente nello ZIP -> errore esplicito
         if zip_buffer.getbuffer().nbytes == 0:
@@ -1433,6 +1955,8 @@ def protected_static(fname):
         if len(parts) >= 2:
             doc_id = parts[1]
             user_id = _current_user_id()
+            if _is_admin(user_id):
+                return send_from_directory(DIR, fname)
             if not _is_doc_owned_by_user(doc_id, user_id):
                 abort(403)
     return send_from_directory(DIR, fname)

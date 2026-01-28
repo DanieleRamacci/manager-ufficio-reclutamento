@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Riepilogo Job - Redazione Firme</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f7f7f7; margin: 0; padding: 0; }
+    header { background: #0b3d91; color: #fff; padding: 16px 24px; }
+    header a { color: #fff; margin-right: 12px; text-decoration: none; }
+    .container { max-width: 1200px; margin: 20px auto; padding: 0 16px; }
+    .card { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 16px; margin-bottom: 16px; }
+    .card h2 { margin: 0 0 12px; font-size: 18px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid #eee; padding: 8px; text-align: left; font-size: 13px; }
+    th { background: #f0f0f0; }
+    .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+    .badge.running { background: #ffe08a; }
+    .badge.done { background: #c6f6d5; }
+    .badge.edit { background: #bee3f8; }
+    .btn { background: #0b3d91; color: #fff; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    .btn.secondary { background: #666; }
+    .btn.danger { background: #c53030; }
+    .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .muted { color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="index.html">Home</a>
+    <a href="redazione-firme.html">Redazione Firme</a>
+    <strong>Riepilogo Job</strong>
+  </header>
+  <div class="container">
+    <div class="card">
+      <h2>Nuovo job</h2>
+      <form id="upload-form">
+        <input type="file" id="pdf-input" name="pdf" accept="application/pdf" multiple required>
+        <label style="margin-left: 8px;">
+          <input type="checkbox" id="pii-toggle" checked> OCR/PII
+        </label>
+        <label style="margin-left: 8px;">
+          <input type="checkbox" id="table-columns-only-toggle"> Solo colonne sensibili
+        </label>
+        <button class="btn" type="submit">Avvia analisi</button>
+      </form>
+      <div id="upload-status" class="muted"></div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Risorse macchina</h2>
+        <div id="stats-box" class="muted">Caricamento...</div>
+      </div>
+      <div class="card">
+        <h2>Legenda</h2>
+        <div class="muted">
+          <div><span class="badge running">in corso</span> Analisi in esecuzione</div>
+          <div><span class="badge edit">da editare</span> Analisi finita, serve revisione</div>
+          <div><span class="badge done">completato</span> Export già eseguito</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Job in corso</h2>
+      <table id="jobs-running">
+        <thead>
+          <tr>
+            <th>Job ID</th>
+            <th>Owner</th>
+            <th>Progresso</th>
+            <th>ETA</th>
+            <th>Azioni</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Job da editare</h2>
+      <table id="jobs-edit">
+        <thead>
+          <tr>
+            <th>Job ID</th>
+            <th>Owner</th>
+            <th>Stato</th>
+            <th>Aggiornato</th>
+            <th>Azioni</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Job completati</h2>
+      <table id="jobs-done">
+        <thead>
+          <tr>
+            <th>Job ID</th>
+            <th>Owner</th>
+            <th>Aggiornato</th>
+            <th>Azioni</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const uploadForm = document.getElementById('upload-form');
+    const uploadStatus = document.getElementById('upload-status');
+    const piiToggle = document.getElementById('pii-toggle');
+    const tableColumnsOnlyToggle = document.getElementById('table-columns-only-toggle');
+
+    function fmtDate(ts) {
+      if (!ts) return '-';
+      const d = new Date(ts * 1000);
+      return d.toLocaleString();
+    }
+
+    function fmtEta(sec) {
+      if (sec === null || sec === undefined) return '-';
+      const m = Math.round(sec / 60);
+      return `${m} min`;
+    }
+
+    function renderJobs(list, isAdmin) {
+      const tbodyRun = document.querySelector('#jobs-running tbody');
+      const tbodyEdit = document.querySelector('#jobs-edit tbody');
+      const tbodyDone = document.querySelector('#jobs-done tbody');
+      tbodyRun.innerHTML = '';
+      tbodyEdit.innerHTML = '';
+      tbodyDone.innerHTML = '';
+
+      list.forEach(job => {
+        const isRunning = job.status === 'queued' || job.status === 'running';
+        const isDone = job.status === 'done';
+        const needsEdit = isDone && job.redaction_status !== 'done';
+        const tr = document.createElement('tr');
+        const actions = document.createElement('div');
+        actions.className = 'row-actions';
+
+        const resumeBtn = document.createElement('button');
+        resumeBtn.className = 'btn';
+        resumeBtn.textContent = 'Apri editor';
+        resumeBtn.onclick = () => { window.location.href = `redazione-firme.html?job_id=${job.job_id}`; };
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn danger';
+        delBtn.textContent = 'Elimina';
+        delBtn.onclick = () => {
+          if (!confirm('Vuoi eliminare questo job?')) return;
+          fetch(`/api/firme/jobs/${job.job_id}/delete`, {method: 'POST'})
+            .then(r => r.json())
+            .then(() => loadJobs());
+        };
+        actions.appendChild(delBtn);
+
+        if (isAdmin) {
+          const shareBtn = document.createElement('button');
+          shareBtn.className = 'btn secondary';
+          shareBtn.textContent = 'Condividi';
+          shareBtn.onclick = () => {
+            const email = prompt('Email utente da aggiungere:');
+            if (!email) return;
+            fetch(`/api/firme/jobs/${job.job_id}/share`, {
+              method: 'POST',
+              headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({email})
+            }).then(() => alert('Utente aggiunto'));
+          };
+          actions.appendChild(shareBtn);
+        }
+
+        if (isRunning) {
+          tr.innerHTML = `<td>${job.job_id}</td><td>${job.owner_email || '-'}</td><td>${job.progress.done}/${job.progress.total}</td><td>${fmtEta(job.eta_sec)}</td>`;
+          const td = document.createElement('td');
+          const monitorBtn = document.createElement('button');
+          monitorBtn.className = 'btn secondary';
+          monitorBtn.textContent = 'Apri monitor';
+          monitorBtn.onclick = () => { window.location.href = `redazione-firme.html?job_id=${job.job_id}`; };
+          td.appendChild(monitorBtn);
+          td.appendChild(actions);
+          tr.appendChild(td);
+          tbodyRun.appendChild(tr);
+        } else if (needsEdit) {
+          tr.innerHTML = `<td>${job.job_id}</td><td>${job.owner_email || '-'}</td><td><span class="badge edit">da editare</span></td><td>${fmtDate(job.updated_at)}</td>`;
+          const td = document.createElement('td');
+          td.appendChild(resumeBtn);
+          td.appendChild(actions);
+          tr.appendChild(td);
+          tbodyEdit.appendChild(tr);
+        } else {
+          tr.innerHTML = `<td>${job.job_id}</td><td>${job.owner_email || '-'}</td><td>${fmtDate(job.updated_at)}</td>`;
+          const td = document.createElement('td');
+          const reeditBtn = document.createElement('button');
+          reeditBtn.className = 'btn';
+          reeditBtn.textContent = 'Riedita';
+          reeditBtn.onclick = () => { window.location.href = `redazione-firme.html?job_id=${job.job_id}`; };
+          td.appendChild(reeditBtn);
+          td.appendChild(actions);
+          tr.appendChild(td);
+          tbodyDone.appendChild(tr);
+        }
+      });
+    }
+
+    function loadStats() {
+      fetch('/api/system/stats')
+        .then(r => r.json())
+        .then(st => {
+          const lines = [];
+          if (st.cpu_count) lines.push(`CPU: ${st.cpu_count}`);
+          if (st.mem_total_gb) lines.push(`RAM: ${st.mem_total_gb} GB (libera ${st.mem_free_gb} GB)`);
+          if (st.load_avg) lines.push(`Load: ${st.load_avg.map(v => v.toFixed(2)).join(', ')}`);
+          document.getElementById('stats-box').textContent = lines.join(' | ');
+        });
+    }
+
+    function loadJobs() {
+      fetch('/api/firme/jobs')
+        .then(r => r.json())
+        .then(res => {
+          renderJobs(res.jobs || [], res.is_admin);
+        });
+    }
+
+    uploadForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      const files = document.getElementById('pdf-input').files;
+      if (!files.length) return;
+      const formData = new FormData();
+      for (const f of files) formData.append('pdf', f);
+      formData.append('pii', piiToggle.checked ? '1' : '0');
+      formData.append('table_mode', tableColumnsOnlyToggle.checked ? 'columns' : 'full');
+      uploadStatus.textContent = 'Job in creazione...';
+      fetch('/api/firme/analyze', {method:'POST', body: formData})
+        .then(r => r.json())
+        .then(res => {
+          if (res.error) {
+            uploadStatus.textContent = 'Errore: ' + res.error;
+            return;
+          }
+          uploadStatus.textContent = 'Job avviato.';
+          window.location.href = `redazione-firme.html?job_id=${res.job_id}`;
+        });
+    });
+
+    loadStats();
+    loadJobs();
+    setInterval(loadJobs, 5000);
+  </script>
+</body>
+</html>
