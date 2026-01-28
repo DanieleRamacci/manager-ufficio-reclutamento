@@ -74,11 +74,10 @@ jobs_lock = threading.Lock()
 job_queue: "queue.Queue[str]" = queue.Queue()
 DOC_TTL_SECONDS = int(os.environ.get("FIRME_DOC_TTL_SECONDS", "86400"))
 DB_PATH = os.path.join(os.path.dirname(__file__), "instance", "jobs.db")
-_admin_raw = [
-    e.strip().lower()
-    for e in (os.environ.get("FIRME_ADMIN_EMAILS", "danbiele.ramacci@cnr.it") or "").split(",")
-    if e.strip()
-]
+_admin_env = os.environ.get("FIRME_ADMIN_EMAILS", "")
+if not _admin_env:
+    _admin_env = "danbiele.ramacci@cnr.it,daniele.ramacci@cnr.it"
+_admin_raw = [e.strip().lower() for e in _admin_env.split(",") if e.strip()]
 ADMIN_EMAILS = set()
 for e in _admin_raw:
     ADMIN_EMAILS.add(e)
@@ -350,6 +349,16 @@ def _db_get_job_pages(job_id: str, doc_id: str) -> list[dict]:
         except Exception:
             out.append({})
     return out
+
+
+def _db_get_job_acl(job_id: str) -> list[str]:
+    conn = _db_conn()
+    rows = conn.execute(
+        "SELECT email FROM job_acl WHERE job_id = ? ORDER BY email ASC",
+        (job_id,),
+    ).fetchall()
+    conn.close()
+    return [r["email"] for r in rows]
 
 
 def _db_delete_job(job_id: str) -> None:
@@ -1502,6 +1511,14 @@ def api_firme_jobs():
     jobs_list = _db_list_jobs(user_id, include_all=include_all)
     out = []
     for j in jobs_list:
+        acl_list = _db_get_job_acl(j.get("job_id")) if include_all else []
+        owner_email = j.get("owner_email") or ""
+        if acl_list and owner_email:
+            owner_full, owner_local = _normalize_user_id(owner_email)
+            acl_list = [
+                a for a in acl_list
+                if _normalize_user_id(a)[0] != owner_full and _normalize_user_id(a)[1] != owner_local
+            ]
         avg_page = None
         eta = None
         if j.get("timing_pages"):
@@ -1511,7 +1528,8 @@ def api_firme_jobs():
             eta = remaining * avg_page
         out.append({
             "job_id": j.get("job_id"),
-            "owner_email": j.get("owner_email"),
+            "owner_email": owner_email,
+            "authorized": acl_list,
             "status": j.get("status"),
             "redaction_status": j.get("redaction_status"),
             "progress": {"done": j.get("progress_done", 0), "total": j.get("progress_total", 0)},
@@ -1600,6 +1618,26 @@ def api_firme_job_share(job_id: str):
     if not email:
         return jsonify({"error": "Email mancante"}), 400
     _db_insert_job_acl(job_id, email, role)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/firme/jobs/<job_id>/unshare", methods=["POST", "DELETE"])
+@login_required
+def api_firme_job_unshare(job_id: str):
+    user_id = _current_user_id()
+    if not _is_admin(user_id):
+        return jsonify({"error": "Accesso negato"}), 403
+    payload = request.json or {}
+    email = (payload.get("email") or "").strip()
+    if not email:
+        return jsonify({"error": "Email mancante"}), 400
+    conn = _db_conn()
+    conn.execute(
+        "DELETE FROM job_acl WHERE job_id = ? AND lower(email) = lower(?)",
+        (job_id, email),
+    )
+    conn.commit()
+    conn.close()
     return jsonify({"ok": True})
 
 

@@ -23,6 +23,12 @@
     .btn.secondary { background: #666; }
     .btn.danger { background: #c53030; }
     .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .owner-cell { display: flex; align-items: center; gap: 6px; }
+    .share-toggle { background: #e2e8f0; border: 1px solid #cbd5e0; color: #1a202c; padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    .share-panel { display: none; margin-top: 6px; }
+    .share-panel input { width: 180px; font-size: 12px; padding: 4px 6px; }
+    .acl-list { font-size: 12px; color: #333; }
+    .acl-pill { display: inline-block; background: #edf2f7; border: 1px solid #cbd5e0; border-radius: 10px; padding: 2px 6px; margin: 2px 4px 2px 0; }
     .muted { color: #666; font-size: 12px; }
   </style>
 </head>
@@ -70,6 +76,7 @@
           <tr>
             <th>Job ID</th>
             <th>Owner</th>
+            <th>Autorizzati</th>
             <th>Progresso</th>
             <th>ETA</th>
             <th>Azioni</th>
@@ -86,6 +93,7 @@
           <tr>
             <th>Job ID</th>
             <th>Owner</th>
+            <th>Autorizzati</th>
             <th>Stato</th>
             <th>Aggiornato</th>
             <th>Azioni</th>
@@ -102,6 +110,7 @@
           <tr>
             <th>Job ID</th>
             <th>Owner</th>
+            <th>Autorizzati</th>
             <th>Aggiornato</th>
             <th>Azioni</th>
           </tr>
@@ -128,6 +137,8 @@
       const m = Math.round(sec / 60);
       return `${m} min`;
     }
+
+    let shareEditing = false;
 
     function renderJobs(list, isAdmin) {
       const tbodyRun = document.querySelector('#jobs-running tbody');
@@ -161,24 +172,108 @@
         };
         actions.appendChild(delBtn);
 
-        if (isAdmin) {
-          const shareBtn = document.createElement('button');
-          shareBtn.className = 'btn secondary';
-          shareBtn.textContent = 'Condividi';
-          shareBtn.onclick = () => {
-            const email = prompt('Email utente da aggiungere:');
-            if (!email) return;
-            fetch(`/api/firme/jobs/${job.job_id}/share`, {
-              method: 'POST',
-              headers: {'Content-Type':'application/json'},
-              body: JSON.stringify({email})
-            }).then(() => alert('Utente aggiunto'));
-          };
-          actions.appendChild(shareBtn);
+        function buildOwnerCell() {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'owner-cell';
+
+          const ownerSpan = document.createElement('span');
+          ownerSpan.textContent = job.owner_email || '-';
+          wrapper.appendChild(ownerSpan);
+
+          if (isAdmin) {
+            const toggle = document.createElement('button');
+            toggle.className = 'share-toggle';
+            toggle.textContent = '+';
+            wrapper.appendChild(toggle);
+
+            const panel = document.createElement('div');
+            panel.className = 'share-panel';
+
+            const input = document.createElement('input');
+            input.type = 'email';
+            input.placeholder = 'Email utente';
+            input.addEventListener('focus', () => { shareEditing = true; });
+            input.addEventListener('blur', () => { shareEditing = false; });
+
+            const addBtn = document.createElement('button');
+            addBtn.className = 'btn secondary';
+            addBtn.textContent = 'Aggiungi';
+            addBtn.onclick = () => {
+              const email = (input.value || '').trim();
+              if (!email) {
+                alert('Inserisci una email.');
+                return;
+              }
+              fetch(`/api/firme/jobs/${job.job_id}/share`, {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({email})
+              }).then(r => r.json()).then(res => {
+                if (res.error) {
+                  alert('Errore: ' + res.error);
+                  return;
+                }
+                input.value = '';
+                alert('Utente aggiunto');
+                loadJobs();
+              });
+            };
+
+            panel.appendChild(input);
+            panel.appendChild(addBtn);
+            wrapper.appendChild(panel);
+
+            toggle.onclick = () => {
+              panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
+            };
+          }
+          return wrapper;
+        }
+
+        function buildAclCell() {
+          const cell = document.createElement('div');
+          cell.className = 'acl-list';
+          const list = Array.isArray(job.authorized) ? job.authorized : [];
+          if (!list.length) {
+            cell.textContent = '-';
+            return cell;
+          }
+          list.forEach(email => {
+            const pill = document.createElement('span');
+            pill.className = 'acl-pill';
+            pill.textContent = email;
+            if (isAdmin) {
+              const remove = document.createElement('span');
+              remove.textContent = '×';
+              remove.style.marginLeft = '6px';
+              remove.style.cursor = 'pointer';
+              remove.style.color = '#c53030';
+              remove.title = 'Rimuovi accesso';
+              remove.onclick = () => {
+                if (!confirm(`Rimuovere ${email}?`)) return;
+                fetch(`/api/firme/jobs/${job.job_id}/unshare`, {
+                  method: 'POST',
+                  headers: {'Content-Type':'application/json'},
+                  body: JSON.stringify({email})
+                }).then(r => r.json()).then(res => {
+                  if (res.error) {
+                    alert('Errore: ' + res.error);
+                    return;
+                  }
+                  loadJobs();
+                });
+              };
+              pill.appendChild(remove);
+            }
+            cell.appendChild(pill);
+          });
+          return cell;
         }
 
         if (isRunning) {
-          tr.innerHTML = `<td>${job.job_id}</td><td>${job.owner_email || '-'}</td><td>${job.progress.done}/${job.progress.total}</td><td>${fmtEta(job.eta_sec)}</td>`;
+          tr.innerHTML = `<td>${job.job_id}</td><td></td><td></td><td>${job.progress.done}/${job.progress.total}</td><td>${fmtEta(job.eta_sec)}</td>`;
+          tr.children[1].appendChild(buildOwnerCell());
+          tr.children[2].appendChild(buildAclCell());
           const td = document.createElement('td');
           const monitorBtn = document.createElement('button');
           monitorBtn.className = 'btn secondary';
@@ -189,14 +284,18 @@
           tr.appendChild(td);
           tbodyRun.appendChild(tr);
         } else if (needsEdit) {
-          tr.innerHTML = `<td>${job.job_id}</td><td>${job.owner_email || '-'}</td><td><span class="badge edit">da editare</span></td><td>${fmtDate(job.updated_at)}</td>`;
+          tr.innerHTML = `<td>${job.job_id}</td><td></td><td></td><td><span class="badge edit">da editare</span></td><td>${fmtDate(job.updated_at)}</td>`;
+          tr.children[1].appendChild(buildOwnerCell());
+          tr.children[2].appendChild(buildAclCell());
           const td = document.createElement('td');
           td.appendChild(resumeBtn);
           td.appendChild(actions);
           tr.appendChild(td);
           tbodyEdit.appendChild(tr);
         } else {
-          tr.innerHTML = `<td>${job.job_id}</td><td>${job.owner_email || '-'}</td><td>${fmtDate(job.updated_at)}</td>`;
+          tr.innerHTML = `<td>${job.job_id}</td><td></td><td></td><td>${fmtDate(job.updated_at)}</td>`;
+          tr.children[1].appendChild(buildOwnerCell());
+          tr.children[2].appendChild(buildAclCell());
           const td = document.createElement('td');
           const reeditBtn = document.createElement('button');
           reeditBtn.className = 'btn';
@@ -223,6 +322,9 @@
     }
 
     function loadJobs() {
+      if (shareEditing) {
+        return;
+      }
       fetch('/api/firme/jobs')
         .then(r => r.json())
         .then(res => {
