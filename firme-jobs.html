@@ -30,6 +30,9 @@
     .acl-list { font-size: 12px; color: #333; }
     .acl-pill { display: inline-block; background: #edf2f7; border: 1px solid #cbd5e0; border-radius: 10px; padding: 2px 6px; margin: 2px 4px 2px 0; }
     .muted { color: #666; font-size: 12px; }
+    .form-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+    .form-row label { font-size: 12px; display: flex; align-items: center; gap: 6px; }
+    .form-row input, .form-row select { font-size: 12px; padding: 4px 6px; }
   </style>
 </head>
 <body>
@@ -72,6 +75,36 @@
         <div id="metrics-box" class="muted">Caricamento...</div>
         <div style="margin-top: 8px;">
           <a id="metrics-download" class="btn secondary" href="/api/system/report.txt" download>Scarica report txt</a>
+        </div>
+        <div id="config-box" style="margin-top: 16px;">
+          <div class="muted" style="margin-bottom: 8px;">Config runtime (admin)</div>
+          <form id="config-form" class="inline-form">
+            <div class="form-row">
+              <label>Workers <input type="number" id="cfg-workers" min="1" max="48"></label>
+              <label>DPI <input type="number" id="cfg-dpi" min="72" max="400"></label>
+              <label>ImgSz <input type="number" id="cfg-imgsz" min="320" max="1280"></label>
+              <label>Conf <input type="number" id="cfg-conf" step="0.01" min="0" max="1"></label>
+              <label>IoU <input type="number" id="cfg-iou" step="0.01" min="0" max="1"></label>
+            </div>
+            <div class="form-row">
+              <label>OCR lang <input type="text" id="cfg-ocr-lang"></label>
+              <label>OCR config <input type="text" id="cfg-ocr-config" style="width: 320px;"></label>
+            </div>
+            <div class="form-row">
+              <label><input type="checkbox" id="cfg-pii-default"> PII attivo di default</label>
+              <label>Tabella default
+                <select id="cfg-table-mode">
+                  <option value="full">full</option>
+                  <option value="columns">columns</option>
+                </select>
+              </label>
+            </div>
+            <div class="form-row">
+              <button class="btn" type="submit">Salva config</button>
+              <button class="btn secondary" type="button" id="cfg-reset">Reset</button>
+              <span id="config-status" class="muted"></span>
+            </div>
+          </form>
         </div>
       </div>
     </div>
@@ -132,6 +165,18 @@
     const uploadStatus = document.getElementById('upload-status');
     const piiToggle = document.getElementById('pii-toggle');
     const tableColumnsOnlyToggle = document.getElementById('table-columns-only-toggle');
+    const configForm = document.getElementById('config-form');
+    const configStatus = document.getElementById('config-status');
+    const cfgWorkers = document.getElementById('cfg-workers');
+    const cfgDpi = document.getElementById('cfg-dpi');
+    const cfgImgsz = document.getElementById('cfg-imgsz');
+    const cfgConf = document.getElementById('cfg-conf');
+    const cfgIou = document.getElementById('cfg-iou');
+    const cfgOcrLang = document.getElementById('cfg-ocr-lang');
+    const cfgOcrConfig = document.getElementById('cfg-ocr-config');
+    const cfgPiiDefault = document.getElementById('cfg-pii-default');
+    const cfgTableMode = document.getElementById('cfg-table-mode');
+    const cfgReset = document.getElementById('cfg-reset');
 
     function fmtDate(ts) {
       if (!ts) return '-';
@@ -323,6 +368,7 @@
           const lines = [];
           if (st.cpu_count) lines.push(`CPU: ${st.cpu_count}`);
           if (st.mem_total_gb) lines.push(`RAM: ${st.mem_total_gb} GB (libera ${st.mem_free_gb} GB)`);
+          if (st.swap_used_gb) lines.push(`Swap: ${st.swap_used_gb} GB`);
           if (st.load_avg) lines.push(`Load: ${st.load_avg.map(v => v.toFixed(2)).join(', ')}`);
           document.getElementById('stats-box').textContent = lines.join(' | ');
         });
@@ -358,10 +404,37 @@
             parts.push(`ETA: ${Math.round(m.eta_sec / 60)} min`);
           }
           parts.push(`detector: ${m.table_detector}`);
+          if (m.bottleneck_hint) {
+            parts.push(`hint: ${m.bottleneck_hint}`);
+          }
           document.getElementById('metrics-box').textContent = parts.join(' | ');
         })
         .catch(() => {
           document.getElementById('metrics-box').textContent = 'Monitor non disponibile';
+        });
+    }
+
+    function loadConfig() {
+      fetch('/api/firme/config')
+        .then(r => r.json())
+        .then(cfg => {
+          if (cfg.error) {
+            configStatus.textContent = cfg.error;
+            return;
+          }
+          cfgWorkers.value = cfg.parallel_workers ?? '';
+          cfgDpi.value = cfg.dpi ?? '';
+          cfgImgsz.value = cfg.yolo_imgsz ?? '';
+          cfgConf.value = cfg.yolo_conf ?? '';
+          cfgIou.value = cfg.yolo_iou ?? '';
+          cfgOcrLang.value = cfg.ocr_lang ?? '';
+          cfgOcrConfig.value = cfg.ocr_config ?? '';
+          cfgPiiDefault.checked = !!cfg.pii_enabled_default;
+          cfgTableMode.value = cfg.table_mode_default ?? 'full';
+          configStatus.textContent = '';
+        })
+        .catch(() => {
+          configStatus.textContent = 'Config non disponibile';
         });
     }
 
@@ -386,9 +459,64 @@
         });
     });
 
+    if (configForm) {
+      configForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        const payload = {
+          parallel_workers: cfgWorkers.value,
+          dpi: cfgDpi.value,
+          yolo_imgsz: cfgImgsz.value,
+          yolo_conf: cfgConf.value,
+          yolo_iou: cfgIou.value,
+          ocr_lang: cfgOcrLang.value,
+          ocr_config: cfgOcrConfig.value,
+          pii_enabled_default: cfgPiiDefault.checked,
+          table_mode_default: cfgTableMode.value,
+        };
+        configStatus.textContent = 'Salvataggio...';
+        fetch('/api/firme/config', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(payload),
+        })
+          .then(r => r.json())
+          .then(res => {
+            if (res.error) {
+              configStatus.textContent = res.error;
+              return;
+            }
+            configStatus.textContent = 'Configurazione aggiornata.';
+            loadMetrics();
+            loadConfig();
+          })
+          .catch(() => {
+            configStatus.textContent = 'Errore salvataggio config.';
+          });
+      });
+
+      cfgReset.addEventListener('click', function () {
+        configStatus.textContent = 'Reset in corso...';
+        fetch('/api/firme/config/reset', {method:'POST'})
+          .then(r => r.json())
+          .then(res => {
+            if (res.error) {
+              configStatus.textContent = res.error;
+              return;
+            }
+            configStatus.textContent = 'Configurazione ripristinata.';
+            loadMetrics();
+            loadConfig();
+          })
+          .catch(() => {
+            configStatus.textContent = 'Errore reset config.';
+          });
+      });
+    }
+
     loadStats();
     loadJobs();
     loadMetrics();
+    loadConfig();
     setInterval(loadJobs, 5000);
     setInterval(loadMetrics, 5000);
   </script>

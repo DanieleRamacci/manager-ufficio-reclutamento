@@ -93,6 +93,49 @@ def _current_user_email() -> str | None:
     return session.get("user_email") or None
 
 
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, str(default)))
+    except Exception:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, str(default)))
+    except Exception:
+        return default
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    val = os.environ.get(name)
+    if val is None:
+        return default
+    return val.strip().lower() in ("1", "true", "on", "yes")
+
+
+def _env_str(name: str, default: str) -> str:
+    return os.environ.get(name, default)
+
+
+def _default_runtime_config() -> dict:
+    return {
+        "parallel_workers": min(32, max(1, _env_int("FIRME_PARALLEL_WORKERS", 2))),
+        "dpi": _env_int("FIRME_DPI", 200),
+        "yolo_imgsz": _env_int("FIRME_YOLO_IMGSZ", 640),
+        "yolo_conf": _env_float("FIRME_YOLO_CONF", 0.25),
+        "yolo_iou": _env_float("FIRME_YOLO_IOU", 0.45),
+        "pii_enabled_default": _env_bool("PII_ENABLED_DEFAULT", True),
+        "table_mode_default": _env_str("TABLE_MODE_DEFAULT", "full"),
+        "ocr_lang": _env_str("PII_OCR_LANG", "ita"),
+        "ocr_config": _env_str("PII_OCR_CONFIG", "--oem 3 --psm 6"),
+    }
+
+
+_runtime_lock = threading.Lock()
+FIRME_RUNTIME_CONFIG = _default_runtime_config()
+
+
 def _normalize_user_id(value: str | None) -> tuple[str, str]:
     if not value:
         return "", ""
@@ -146,6 +189,16 @@ def _init_db() -> None:
     _ensure_column(conn, "jobs", "pii_enabled", "pii_enabled INTEGER DEFAULT 1")
     _ensure_column(conn, "jobs", "pii_debug", "pii_debug INTEGER DEFAULT 0")
     _ensure_column(conn, "jobs", "table_mode", "table_mode TEXT DEFAULT 'full'")
+    _ensure_column(conn, "jobs", "pdf_to_img_total", "pdf_to_img_total REAL DEFAULT 0")
+    _ensure_column(conn, "jobs", "timing_yolo_firme_total", "timing_yolo_firme_total REAL DEFAULT 0")
+    _ensure_column(conn, "jobs", "timing_yolo_table_total", "timing_yolo_table_total REAL DEFAULT 0")
+    _ensure_column(conn, "jobs", "timing_ocr_total", "timing_ocr_total REAL DEFAULT 0")
+    _ensure_column(conn, "jobs", "job_dpi", "job_dpi INTEGER DEFAULT 0")
+    _ensure_column(conn, "jobs", "job_imgsz", "job_imgsz INTEGER DEFAULT 0")
+    _ensure_column(conn, "jobs", "job_conf", "job_conf REAL DEFAULT 0")
+    _ensure_column(conn, "jobs", "job_iou", "job_iou REAL DEFAULT 0")
+    _ensure_column(conn, "jobs", "job_ocr_lang", "job_ocr_lang TEXT DEFAULT ''")
+    _ensure_column(conn, "jobs", "job_ocr_config", "job_ocr_config TEXT DEFAULT ''")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS job_acl (
@@ -186,6 +239,16 @@ def _init_db() -> None:
             job_id TEXT NOT NULL,
             exported_at REAL,
             exported_by TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS firme_config (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at REAL,
+            updated_by TEXT
         )
         """
     )
@@ -361,6 +424,68 @@ def _db_get_job_acl(job_id: str) -> list[str]:
     return [r["email"] for r in rows]
 
 
+def _load_runtime_config_from_db() -> None:
+    defaults = _default_runtime_config()
+    cfg = dict(defaults)
+    try:
+        conn = _db_conn()
+        rows = conn.execute("SELECT key, value FROM firme_config").fetchall()
+        conn.close()
+        for r in rows:
+            key = r["key"]
+            val = r["value"]
+            if key not in cfg:
+                continue
+            if isinstance(cfg[key], bool):
+                cfg[key] = str(val).lower() in ("1", "true", "on", "yes")
+            elif isinstance(cfg[key], int):
+                try:
+                    cfg[key] = int(float(val))
+                except Exception:
+                    pass
+            elif isinstance(cfg[key], float):
+                try:
+                    cfg[key] = float(val)
+                except Exception:
+                    pass
+            else:
+                cfg[key] = str(val)
+    except Exception:
+        cfg = defaults
+    with _runtime_lock:
+        FIRME_RUNTIME_CONFIG.update(cfg)
+
+
+def _save_runtime_config_to_db(updated_by: str | None = None) -> None:
+    with _runtime_lock:
+        items = dict(FIRME_RUNTIME_CONFIG)
+    conn = _db_conn()
+    now = time.time()
+    for k, v in items.items():
+        conn.execute(
+            """
+            INSERT INTO firme_config(key, value, updated_at, updated_by)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, updated_by = excluded.updated_by
+            """,
+            (k, str(v), now, updated_by or ""),
+        )
+    conn.commit()
+    conn.close()
+
+
+def _get_runtime_config() -> dict:
+    with _runtime_lock:
+        return dict(FIRME_RUNTIME_CONFIG)
+
+
+def _update_runtime_config(patch: dict, updated_by: str | None = None) -> dict:
+    with _runtime_lock:
+        FIRME_RUNTIME_CONFIG.update(patch)
+    _save_runtime_config_to_db(updated_by)
+    return _get_runtime_config()
+
+
 def _db_delete_job(job_id: str) -> None:
     conn = _db_conn()
     conn.execute("DELETE FROM job_pages WHERE job_id = ?", (job_id,))
@@ -390,6 +515,7 @@ def _get_system_stats(job: dict | None = None) -> dict:
         "load_avg": None,
         "mem_total_gb": None,
         "mem_free_gb": None,
+        "swap_used_gb": None,
     }
     if hasattr(os, "getloadavg"):
         try:
@@ -412,6 +538,9 @@ def _get_system_stats(job: dict | None = None) -> dict:
                 stats["mem_total_gb"] = round(data["MemTotal"] / 1024 / 1024, 2)
             if "MemAvailable" in data:
                 stats["mem_free_gb"] = round(data["MemAvailable"] / 1024 / 1024, 2)
+            if "SwapTotal" in data and "SwapFree" in data:
+                swap_used = max(0, data["SwapTotal"] - data["SwapFree"])
+                stats["swap_used_gb"] = round(swap_used / 1024 / 1024, 2)
         except Exception:
             pass
     if job:
@@ -431,10 +560,45 @@ def _get_system_stats(job: dict | None = None) -> dict:
     return stats
 
 
+def _read_cgroup_value(path: str) -> str | None:
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return handle.read().strip()
+    except Exception:
+        return None
+
+
+def _get_cgroup_limits() -> dict:
+    limits: dict[str, float | None] = {"cpu_limit": None, "mem_limit_gb": None}
+    cpu_max = _read_cgroup_value("/sys/fs/cgroup/cpu.max")
+    if cpu_max and cpu_max != "max":
+        try:
+            quota_str, period_str = cpu_max.split()
+            quota = int(quota_str)
+            period = int(period_str)
+            if quota > 0 and period > 0:
+                limits["cpu_limit"] = round(quota / period, 2)
+        except Exception:
+            pass
+    mem_max = _read_cgroup_value("/sys/fs/cgroup/memory.max")
+    if mem_max and mem_max != "max":
+        try:
+            mem_bytes = int(mem_max)
+            if mem_bytes > 0:
+                limits["mem_limit_gb"] = round(mem_bytes / 1024 / 1024 / 1024, 2)
+        except Exception:
+            pass
+    return limits
+
+
 def _get_metrics_snapshot() -> dict:
     conn = _db_conn()
     rows = conn.execute(
-        "SELECT status, progress_done, progress_total, timing_pages, timing_total FROM jobs"
+        """
+        SELECT status, progress_done, progress_total, timing_pages, timing_total,
+               pdf_to_img_total, timing_yolo_firme_total, timing_yolo_table_total, timing_ocr_total
+        FROM jobs
+        """
     ).fetchall()
     conn.close()
 
@@ -446,10 +610,30 @@ def _get_metrics_snapshot() -> dict:
     pages_total = sum(int(r["progress_total"] or 0) for r in rows)
     timing_pages = sum(int(r["timing_pages"] or 0) for r in rows)
     timing_total = sum(float(r["timing_total"] or 0.0) for r in rows)
+    pdf_to_img_total = sum(float(r["pdf_to_img_total"] or 0.0) for r in rows)
+    timing_yolo_firme_total = sum(float(r["timing_yolo_firme_total"] or 0.0) for r in rows)
+    timing_yolo_table_total = sum(float(r["timing_yolo_table_total"] or 0.0) for r in rows)
+    timing_ocr_total = sum(float(r["timing_ocr_total"] or 0.0) for r in rows)
 
     avg_page_sec = (timing_total / timing_pages) if timing_pages else None
     remaining = max(0, pages_total - pages_done)
     eta_sec = (avg_page_sec * remaining) if avg_page_sec is not None else None
+
+    bottleneck_hint = None
+    total_cost = pdf_to_img_total + timing_yolo_firme_total + timing_yolo_table_total + timing_ocr_total
+    if total_cost > 0:
+        share_pdf = pdf_to_img_total / total_cost
+        share_ocr = timing_ocr_total / total_cost
+        share_yolo = (timing_yolo_firme_total + timing_yolo_table_total) / total_cost
+        if share_pdf >= 0.4:
+            bottleneck_hint = "pdf_to_img domina: riduci DPI o abilita streaming"
+        elif share_ocr >= 0.4:
+            bottleneck_hint = "ocr domina: ottimizza OCR (lang/config)"
+        elif share_yolo >= 0.4:
+            bottleneck_hint = "yolo domina: riduci imgsz/conf o valuta fuse"
+
+    runtime_cfg = _get_runtime_config()
+    limits = _get_cgroup_limits()
 
     return {
         "total_jobs": total_jobs,
@@ -460,9 +644,16 @@ def _get_metrics_snapshot() -> dict:
         "pages_total": pages_total,
         "avg_page_sec": avg_page_sec,
         "eta_sec": eta_sec,
-        "workers_configured": int(os.environ.get("FIRME_PARALLEL_WORKERS", "2") or 2),
+        "workers_configured": int(runtime_cfg.get("parallel_workers") or 2),
         "table_detector": os.environ.get("PII_TABLE_DETECTOR", "morph"),
-        "pii_ocr_lang": os.environ.get("PII_OCR_LANG", "ita"),
+        "pii_ocr_lang": runtime_cfg.get("ocr_lang") or os.environ.get("PII_OCR_LANG", "ita"),
+        "pdf_to_img_total": pdf_to_img_total,
+        "timing_yolo_firme_total": timing_yolo_firme_total,
+        "timing_yolo_table_total": timing_yolo_table_total,
+        "timing_ocr_total": timing_ocr_total,
+        "bottleneck_hint": bottleneck_hint,
+        "cpu_limit": limits.get("cpu_limit"),
+        "mem_limit_gb": limits.get("mem_limit_gb"),
     }
 
 
@@ -522,14 +713,19 @@ def _box_intersects_norm(a: dict, b: dict) -> bool:
     return not (ax2 <= bx1 or ax1 >= bx2 or ay2 <= by1 or ay1 >= by2)
 
 
-def _detect_signatures_from_bgr(img_bgr: np.ndarray) -> list[dict]:
+def _detect_signatures_from_bgr(
+    img_bgr: np.ndarray,
+    imgsz: int | None = None,
+    conf: float | None = None,
+    iou: float | None = None,
+) -> list[dict]:
     if img_bgr is None:
         return []
     h, w = img_bgr.shape[:2]
     if _YOLO_FIRME_WORKER is None:
-        results = yolo_firme.predict(source=img_bgr, save=False)[0]
+        results = yolo_firme.predict(source=img_bgr, save=False, imgsz=imgsz, conf=conf, iou=iou)[0]
     else:
-        results = _YOLO_FIRME_WORKER.predict(source=img_bgr, save=False)[0]
+        results = _YOLO_FIRME_WORKER.predict(source=img_bgr, save=False, imgsz=imgsz, conf=conf, iou=iou)[0]
     boxes_out: list[dict] = []
     for box in results.boxes:
         x1, y1, x2, y2 = map(float, box.xyxy[0])
@@ -565,7 +761,12 @@ def _process_page_task(doc_id: str, doc_dir: str, i: int, image_path: str, job_c
     height, width = img_bgr.shape[:2]
 
     t_yolo_start = time.perf_counter()
-    auto_boxes = _detect_signatures_from_bgr(img_bgr)
+    auto_boxes = _detect_signatures_from_bgr(
+        img_bgr,
+        imgsz=job_conf.get("yolo_imgsz"),
+        conf=job_conf.get("yolo_conf"),
+        iou=job_conf.get("yolo_iou"),
+    )
     t_yolo_firme = time.perf_counter() - t_yolo_start
     norm_boxes = [{
         "x": float(b["x"]),
@@ -592,6 +793,10 @@ def _process_page_task(doc_id: str, doc_dir: str, i: int, image_path: str, job_c
                 get_table_header_boxes_for_page,
             )
             from pii_ocr.validators import validate_doc_number
+            if job_conf.get("ocr_lang"):
+                os.environ["PII_OCR_LANG"] = str(job_conf.get("ocr_lang"))
+            if job_conf.get("ocr_config"):
+                os.environ["PII_OCR_CONFIG"] = str(job_conf.get("ocr_config"))
             t_ocr_start = time.perf_counter()
             ocr_pages = extract_ocr_from_images([image_path])
             if ocr_pages:
@@ -751,6 +956,9 @@ def _process_page_task(doc_id: str, doc_dir: str, i: int, image_path: str, job_c
         "pii_reject_boxes": pii_reject_boxes if job_conf.get("pii_debug") else [],
         "table_boxes": table_boxes if job_conf.get("pii_enabled") else [],
         "manual_boxes": [],
+        "timing_yolo_firme": t_yolo_firme,
+        "timing_yolo_tabelle": t_yolo_tabelle,
+        "timing_ocr": t_ocr,
         "timing_total": timing_total,
     }
     return doc_id, i, page_info
@@ -780,6 +988,7 @@ Session(app)
 app.register_blueprint(auth_bp)
 
 _init_db()
+_load_runtime_config_from_db()
 
 
 
@@ -942,6 +1151,36 @@ def _init_process_worker(model_path: str) -> None:
             _td.init_table_model()
     except Exception as exc:
         print(f"[PII][WARN] Worker table model init failed: {exc}", flush=True)
+
+
+class FirmePoolManager:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._executor: concurrent.futures.ProcessPoolExecutor | None = None
+        self._size = 0
+
+    def ensure_size(self, size: int) -> None:
+        size = max(1, min(48, int(size)))
+        with self._lock:
+            if self._executor is not None and self._size == size:
+                return
+            if self._executor is not None:
+                self._executor.shutdown(wait=True)
+                self._executor = None
+            self._executor = concurrent.futures.ProcessPoolExecutor(
+                max_workers=size,
+                initializer=_init_process_worker,
+                initargs=(model_firme_path,),
+            )
+            self._size = size
+
+    def get_executor(self, size: int) -> concurrent.futures.ProcessPoolExecutor:
+        self.ensure_size(size)
+        assert self._executor is not None
+        return self._executor
+
+
+_pool_manager = FirmePoolManager()
 
 
 def pdf_to_pil_images(pdf_path: str, dpi: int = 200) -> list[Image.Image]:
@@ -1193,104 +1432,108 @@ def _worker_loop():
                 total_pages += pdf_page_count(os.path.join(DOCS_FIRME_ROOT, doc["doc_id"], "original.pdf"))
             _set_job_progress(job_id, done_pages, total_pages)
 
+            runtime_cfg = _get_runtime_config()
             job_conf = {
                 "pii_enabled": bool(job.get("pii_enabled", 1)),
                 "pii_debug": bool(job.get("pii_debug", 0)),
                 "table_mode": job.get("table_mode", "full"),
+                "parallel_workers": int(runtime_cfg.get("parallel_workers") or 2),
+                "dpi": int(job.get("job_dpi") or runtime_cfg.get("dpi") or 200),
+                "yolo_imgsz": int(job.get("job_imgsz") or runtime_cfg.get("yolo_imgsz") or 640),
+                "yolo_conf": float(job.get("job_conf") or runtime_cfg.get("yolo_conf") or 0.25),
+                "yolo_iou": float(job.get("job_iou") or runtime_cfg.get("yolo_iou") or 0.45),
+                "ocr_lang": (job.get("job_ocr_lang") or runtime_cfg.get("ocr_lang") or "").strip(),
+                "ocr_config": (job.get("job_ocr_config") or runtime_cfg.get("ocr_config") or "").strip(),
             }
+
             timing_pages = int(job.get("timing_pages") or 0)
             timing_total = float(job.get("timing_total") or 0.0)
+            timing_yolo_firme_total = float(job.get("timing_yolo_firme_total") or 0.0)
+            timing_yolo_table_total = float(job.get("timing_yolo_table_total") or 0.0)
+            timing_ocr_total = float(job.get("timing_ocr_total") or 0.0)
+            pdf_to_img_total = float(job.get("pdf_to_img_total") or 0.0)
 
-            max_workers = int(os.environ.get("FIRME_PARALLEL_WORKERS", "2") or 2)
-            max_workers = max(1, min(os.cpu_count() or 1, max_workers))
+            max_workers = max(1, min(48, int(job_conf.get("parallel_workers") or 1)))
+            executor = _pool_manager.get_executor(max_workers) if max_workers > 1 else None
 
-            if max_workers > 1:
-                with concurrent.futures.ProcessPoolExecutor(
-                    max_workers=max_workers,
-                    initializer=_init_process_worker,
-                    initargs=(model_firme_path,),
-                ) as executor:
-                    for doc in documents_meta:
-                        doc_id = doc["doc_id"]
-                        filename = doc["filename"]
-                        doc_dir = os.path.join(DOCS_FIRME_ROOT, doc_id)
-                        pdf_path = os.path.join(doc_dir, "original.pdf")
+            def _handle_page_result(page_info: dict) -> None:
+                nonlocal timing_pages, timing_total, timing_yolo_firme_total, timing_yolo_table_total, timing_ocr_total, pdf_to_img_total, done_pages
+                _db_upsert_page(job_id, doc_id, page_info["index"], page_info)
+                if page_info.get("timing_total"):
+                    timing_pages += 1
+                    timing_total += float(page_info["timing_total"])
+                    timing_yolo_firme_total += float(page_info.get("timing_yolo_firme") or 0.0)
+                    timing_yolo_table_total += float(page_info.get("timing_yolo_tabelle") or 0.0)
+                    timing_ocr_total += float(page_info.get("timing_ocr") or 0.0)
+                _db_update_job(
+                    job_id,
+                    timing_pages=timing_pages,
+                    timing_total=timing_total,
+                    timing_yolo_firme_total=timing_yolo_firme_total,
+                    timing_yolo_table_total=timing_yolo_table_total,
+                    timing_ocr_total=timing_ocr_total,
+                    pdf_to_img_total=pdf_to_img_total,
+                )
+                done_pages += 1
+                _set_job_progress(job_id, done_pages, total_pages)
 
+            for doc in documents_meta:
+                doc_id = doc["doc_id"]
+                doc_dir = os.path.join(DOCS_FIRME_ROOT, doc_id)
+                pdf_path = os.path.join(doc_dir, "original.pdf")
+
+                t_conv_total = 0.0
+                futures: dict[concurrent.futures.Future, int] = {}
+                try:
+                    pdf_doc = fitz.open(pdf_path)
+                except Exception as exc:
+                    raise RuntimeError(f"Impossibile aprire PDF {pdf_path}: {exc}") from exc
+                try:
+                    page_count = pdf_doc.page_count
+                    zoom = float(job_conf.get("dpi") or 200) / 72
+                    mat = fitz.Matrix(zoom, zoom)
+
+                    for i in range(page_count):
                         t_conv_start = time.perf_counter()
-                        pages = pdf_to_pil_images(pdf_path, dpi=200)
-                        image_paths: list[str] = []
-                        for i, img in enumerate(pages):
-                            image_filename = f"page_{i}.png"
-                            image_path = os.path.join(doc_dir, image_filename)
-                            img.save(image_path, "PNG")
-                            image_paths.append(image_path)
-                        t_conv = time.perf_counter() - t_conv_start
-                        print(
-                            f"[TIMING] doc_id={doc_id} step=pdf_to_img pages={len(image_paths)} seconds={t_conv:.3f}",
-                            flush=True,
-                        )
-
-                        pages_info = []
-                        futures = [
-                            executor.submit(_process_page_task, doc_id, doc_dir, i, image_path, job_conf)
-                            for i, image_path in enumerate(image_paths)
-                        ]
-                        for fut in concurrent.futures.as_completed(futures):
-                            _, page_idx, page_info = fut.result()
-                            pages_info.append(page_info)
-                            _db_upsert_page(job_id, doc_id, page_idx, page_info)
-                            if page_info.get("timing_total"):
-                                timing_pages += 1
-                                timing_total += float(page_info["timing_total"])
-                                _db_update_job(job_id, timing_pages=timing_pages, timing_total=timing_total)
-                            done_pages += 1
-                            _set_job_progress(job_id, done_pages, total_pages)
-
-                        pages_info.sort(key=lambda p: p["index"])
-                        _db_update_document(
-                            doc_id,
-                            pages_count=len(pages_info),
-                            analyzed_at=time.time(),
-                        )
-            else:
-                for doc in documents_meta:
-                    doc_id = doc["doc_id"]
-                    filename = doc["filename"]
-                    doc_dir = os.path.join(DOCS_FIRME_ROOT, doc_id)
-                    pdf_path = os.path.join(doc_dir, "original.pdf")
-
-                    t_conv_start = time.perf_counter()
-                    pages = pdf_to_pil_images(pdf_path, dpi=200)
-                    image_paths = []
-                    for i, img in enumerate(pages):
+                        page = pdf_doc.load_page(i)
+                        pix = page.get_pixmap(matrix=mat, alpha=False)
                         image_filename = f"page_{i}.png"
                         image_path = os.path.join(doc_dir, image_filename)
-                        img.save(image_path, "PNG")
-                        image_paths.append(image_path)
-                    t_conv = time.perf_counter() - t_conv_start
+                        pix.save(image_path)
+                        t_conv = time.perf_counter() - t_conv_start
+                        t_conv_total += t_conv
+                        pdf_to_img_total += t_conv
+
+                        if executor:
+                            fut = executor.submit(_process_page_task, doc_id, doc_dir, i, image_path, job_conf)
+                            futures[fut] = i
+                            if len(futures) >= max_workers * 4:
+                                done = next(concurrent.futures.as_completed(futures))
+                                _, _, page_info = done.result()
+                                futures.pop(done, None)
+                                _handle_page_result(page_info)
+                        else:
+                            _, _, page_info = _process_page_task(doc_id, doc_dir, i, image_path, job_conf)
+                            _handle_page_result(page_info)
+                finally:
+                    pdf_doc.close()
+                if t_conv_total > 0:
                     print(
-                        f"[TIMING] doc_id={doc_id} step=pdf_to_img pages={len(image_paths)} seconds={t_conv:.3f}",
+                        f"[TIMING] doc_id={doc_id} step=pdf_to_img pages={page_count} seconds={t_conv_total:.3f}",
                         flush=True,
                     )
 
-                    pages_info = []
-                    for i, image_path in enumerate(image_paths):
-                        _, page_idx, page_info = _process_page_task(doc_id, doc_dir, i, image_path, job_conf)
-                        pages_info.append(page_info)
-                        _db_upsert_page(job_id, doc_id, page_idx, page_info)
-                        if page_info.get("timing_total"):
-                            timing_pages += 1
-                            timing_total += float(page_info["timing_total"])
-                            _db_update_job(job_id, timing_pages=timing_pages, timing_total=timing_total)
-                        done_pages += 1
-                        _set_job_progress(job_id, done_pages, total_pages)
+                if executor:
+                    for fut in concurrent.futures.as_completed(list(futures.keys())):
+                        _, _, page_info = fut.result()
+                        _handle_page_result(page_info)
+                    futures.clear()
 
-                    pages_info.sort(key=lambda p: p["index"])
-                    _db_update_document(
-                        doc_id,
-                        pages_count=len(pages_info),
-                        analyzed_at=time.time(),
-                    )
+                _db_update_document(
+                    doc_id,
+                    pages_count=page_count,
+                    analyzed_at=time.time(),
+                )
 
             _update_job(job_id, status="done")
         except Exception as exc:
@@ -1721,6 +1964,14 @@ def api_system_report():
     lines.append(f"load_avg: {stats.get('load_avg')}")
     lines.append(f"mem_total_gb: {stats.get('mem_total_gb')}")
     lines.append(f"mem_free_gb: {stats.get('mem_free_gb')}")
+    lines.append(f"swap_used_gb: {stats.get('swap_used_gb')}")
+    lines.append(f"cpu_limit: {metrics.get('cpu_limit')}")
+    lines.append(f"mem_limit_gb: {metrics.get('mem_limit_gb')}")
+    lines.append(f"pdf_to_img_total: {metrics.get('pdf_to_img_total')}")
+    lines.append(f"timing_yolo_firme_total: {metrics.get('timing_yolo_firme_total')}")
+    lines.append(f"timing_yolo_table_total: {metrics.get('timing_yolo_table_total')}")
+    lines.append(f"timing_ocr_total: {metrics.get('timing_ocr_total')}")
+    lines.append(f"bottleneck_hint: {metrics.get('bottleneck_hint')}")
     payload = "\n".join(str(l) for l in lines) + "\n"
     return send_file(
         io.BytesIO(payload.encode("utf-8")),
@@ -1728,6 +1979,109 @@ def api_system_report():
         as_attachment=True,
         download_name="parallelization-report.txt",
     )
+
+
+def _validate_runtime_config_payload(payload: dict) -> tuple[dict, list[str]]:
+    errors: list[str] = []
+    patch: dict = {}
+
+    def _set_int(key: str, min_v: int, max_v: int) -> None:
+        if key not in payload:
+            return
+        try:
+            val = int(payload[key])
+        except Exception:
+            errors.append(f"{key} deve essere un intero")
+            return
+        if val < min_v or val > max_v:
+            errors.append(f"{key} fuori range ({min_v}-{max_v})")
+            return
+        patch[key] = val
+
+    def _set_float(key: str, min_v: float, max_v: float) -> None:
+        if key not in payload:
+            return
+        try:
+            val = float(payload[key])
+        except Exception:
+            errors.append(f"{key} deve essere un numero")
+            return
+        if val < min_v or val > max_v:
+            errors.append(f"{key} fuori range ({min_v}-{max_v})")
+            return
+        patch[key] = val
+
+    _set_int("parallel_workers", 1, 48)
+    _set_int("dpi", 72, 400)
+    _set_int("yolo_imgsz", 320, 1280)
+    _set_float("yolo_conf", 0.0, 1.0)
+    _set_float("yolo_iou", 0.0, 1.0)
+
+    if "pii_enabled_default" in payload:
+        val = payload["pii_enabled_default"]
+        patch["pii_enabled_default"] = str(val).strip().lower() in ("1", "true", "on", "yes")
+    if "table_mode_default" in payload:
+        mode = str(payload["table_mode_default"]).strip().lower()
+        if mode not in ("full", "columns"):
+            errors.append("table_mode_default deve essere 'full' o 'columns'")
+        else:
+            patch["table_mode_default"] = mode
+    if "ocr_lang" in payload:
+        patch["ocr_lang"] = str(payload["ocr_lang"]).strip()
+    if "ocr_config" in payload:
+        patch["ocr_config"] = str(payload["ocr_config"]).strip()
+
+    return patch, errors
+
+
+@app.get("/api/firme/config")
+@login_required
+def api_firme_config_get():
+    user_id = _current_user_id()
+    if not _is_admin(user_id):
+        return jsonify({"error": "Accesso negato"}), 403
+    data = _get_runtime_config()
+    stats = _get_system_stats()
+    limits = _get_cgroup_limits()
+    data.update({
+        "cpu_count": stats.get("cpu_count"),
+        "mem_total_gb": stats.get("mem_total_gb"),
+        "mem_free_gb": stats.get("mem_free_gb"),
+        "swap_used_gb": stats.get("swap_used_gb"),
+        "load_avg": stats.get("load_avg"),
+        "cpu_limit": limits.get("cpu_limit"),
+        "mem_limit_gb": limits.get("mem_limit_gb"),
+        "table_detector": os.environ.get("PII_TABLE_DETECTOR", "morph"),
+    })
+    return jsonify(data)
+
+
+@app.post("/api/firme/config")
+@login_required
+def api_firme_config_post():
+    user_id = _current_user_id()
+    if not _is_admin(user_id):
+        return jsonify({"error": "Accesso negato"}), 403
+    payload = request.json or {}
+    patch, errors = _validate_runtime_config_payload(payload)
+    if errors:
+        return jsonify({"error": "Configurazione non valida", "details": errors}), 400
+    updated = _update_runtime_config(patch, updated_by=user_id)
+    if "parallel_workers" in patch:
+        _pool_manager.ensure_size(int(updated["parallel_workers"]))
+    return jsonify(updated)
+
+
+@app.post("/api/firme/config/reset")
+@login_required
+def api_firme_config_reset():
+    user_id = _current_user_id()
+    if not _is_admin(user_id):
+        return jsonify({"error": "Accesso negato"}), 403
+    defaults = _default_runtime_config()
+    updated = _update_runtime_config(defaults, updated_by=user_id)
+    _pool_manager.ensure_size(int(updated["parallel_workers"]))
+    return jsonify(updated)
 
 @app.route("/api/firme/analyze", methods=["POST"])
 @login_required
@@ -1758,11 +2112,17 @@ def api_firme_analyze():
     if not files:
         return jsonify({"error": "Nessun file PDF inviato"}), 400
 
-    pii_flag = (request.form.get("pii", "1") or "").strip().lower()
+    runtime_cfg = _get_runtime_config()
+    pii_flag = (request.form.get("pii") or "").strip().lower()
     pii_debug_flag = (request.form.get("pii_debug", "0") or "").strip().lower()
-    table_mode = (request.form.get("table_mode", "full") or "").strip().lower()
+    table_mode = (request.form.get("table_mode") or "").strip().lower()
     pii_debug = pii_debug_flag in ("1", "true", "on", "yes")
-    pii_enabled = pii_flag in ("1", "true", "on", "yes")
+    if pii_flag:
+        pii_enabled = pii_flag in ("1", "true", "on", "yes")
+    else:
+        pii_enabled = bool(runtime_cfg.get("pii_enabled_default", True))
+    if not table_mode:
+        table_mode = str(runtime_cfg.get("table_mode_default", "full")).lower()
 
     user_id = _current_user_id()
     if not user_id:
@@ -1783,11 +2143,42 @@ def api_firme_analyze():
 
     owner_email = _current_user_email() or user_id
     _db_insert_job(job_id, owner_email, "queued", "not_started")
+
+    def _parse_int_field(name: str) -> int:
+        raw = (request.form.get(name) or "").strip()
+        if not raw:
+            return 0
+        try:
+            return int(raw)
+        except Exception:
+            return 0
+
+    def _parse_float_field(name: str) -> float:
+        raw = (request.form.get(name) or "").strip()
+        if not raw:
+            return 0.0
+        try:
+            return float(raw)
+        except Exception:
+            return 0.0
+
+    job_dpi = _parse_int_field("dpi")
+    job_imgsz = _parse_int_field("yolo_imgsz")
+    job_conf = _parse_float_field("yolo_conf")
+    job_iou = _parse_float_field("yolo_iou")
+    job_ocr_lang = (request.form.get("ocr_lang") or "").strip()
+    job_ocr_config = (request.form.get("ocr_config") or "").strip()
     _db_update_job(
         job_id,
         pii_enabled=1 if pii_enabled else 0,
         pii_debug=1 if pii_debug else 0,
         table_mode=table_mode if table_mode in ("full", "columns") else "full",
+        job_dpi=job_dpi,
+        job_imgsz=job_imgsz,
+        job_conf=job_conf,
+        job_iou=job_iou,
+        job_ocr_lang=job_ocr_lang,
+        job_ocr_config=job_ocr_config,
     )
     _db_insert_job_acl(job_id, user_id, role="owner")
 
