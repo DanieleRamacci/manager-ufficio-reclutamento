@@ -698,5 +698,78 @@
     loadJobs();
     setInterval(loadJobs, 5000);
   </script>
+
+  <!-- Footer + Privacy modal -->
+  <style>
+    .site-footer { background:#f3f4f6; border-top:1px solid #e5e7eb; padding:14px 20px; position:fixed; left:0; right:0; bottom:0; color:#333; font-size:13px; z-index:20; }
+    .site-footer a { color:#0b3d91; text-decoration:none; margin-left:8px; }
+    .privacy-modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,0.45); display:none; align-items:center; justify-content:center; z-index:9999; }
+    .privacy-modal { background:#fff; padding:18px; border-radius:8px; max-width:640px; width:94%; box-shadow:0 8px 30px rgba(0,0,0,0.25); }
+    .privacy-modal h3 { margin-top:0; }
+    .privacy-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; }
+    .privacy-actions .btn.secondary { background:#ccc; color:#111; }
+    body { padding-bottom: 60px; }
+  </style>
+
+  <div class="site-footer" id="site-footer">
+    <strong>Ufficio Reclutamento CNR</strong> &middot; Sviluppato da Daniele Ramacci
+    <a href="privacy.html">Privacy Policy</a>
+  </div>
+
+  <div class="privacy-modal-backdrop" id="privacy-backdrop">
+    <div class="privacy-modal" role="dialog" aria-modal="true">
+      <h3>Privacy e responsabilità</h3>
+      <p>Per continuare, è necessario accettare i termini della <a href="privacy.html" target="_blank">Privacy Policy</a>.
+      Confermi di essere autorizzato a caricare e processare i documenti oggetto di questa procedura?</p>
+      <p style="font-size:12px;color:#666;">I documenti caricati verranno elaborati e conservati temporaneamente per il servizio di redazione firme.</p>
+      <div class="privacy-actions">
+        <button class="btn secondary" id="privacy-decline">Rifiuta</button>
+        <button class="btn" id="privacy-accept">Accetta e prosegui</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      const backdrop = document.getElementById('privacy-backdrop');
+      const acceptBtn = document.getElementById('privacy-accept');
+      const declineBtn = document.getElementById('privacy-decline');
+      function showModal(){ backdrop.style.display = 'flex'; document.body.style.overflow='hidden'; }
+      function hideModal(){ backdrop.style.display = 'none'; document.body.style.overflow=''; }
+      const accepted = localStorage.getItem('privacy_accepted');
+      if (!accepted) {
+        showModal();
+      }
+      acceptBtn.addEventListener('click', async ()=>{
+        acceptBtn.disabled = true;
+        acceptBtn.textContent = 'Registrazione...';
+        try {
+          const resp = await fetch('/api/privacy/consent', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+          });
+          if (!resp.ok) {
+            let txt = '';
+            try { const j = await resp.json(); txt = j.error || JSON.stringify(j); } catch(e){ txt = resp.status; }
+            alert('Errore registrazione consenso: ' + txt);
+            acceptBtn.disabled = false;
+            acceptBtn.textContent = 'Accetta e prosegui';
+            return;
+          }
+          localStorage.setItem('privacy_accepted','1');
+          hideModal();
+        } catch (err) {
+          alert('Errore di connessione: ' + err);
+          acceptBtn.disabled = false;
+          acceptBtn.textContent = 'Accetta e prosegui';
+        }
+      });
+      declineBtn.addEventListener('click', ()=>{
+        alert('Devi accettare la Privacy Policy per usare il servizio.');
+      });
+    })();
+  </script>
 </body>
 </html>

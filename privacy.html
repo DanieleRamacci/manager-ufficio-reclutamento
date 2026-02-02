@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <title>Privacy Policy & Consensi</title>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #f3f4f6; }
+    .notice { margin-top: 12px; color: #333; }
+    .small { font-size: 13px; color: #666; }
+    .login-hint { margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Privacy Policy</h1>
+  <p class="small">Questa pagina contiene la policy e l'elenco dei consensi raccolti dagli utenti che hanno accettato la Policy dal modal nella pagina di redazione firme.</p>
+
+  <section id="policy-text">
+    <h2>Informativa sintetica</h2>
+    <p>Caricando documenti su questo servizio, l'utente dichiara di essere autorizzato a trattare i dati contenuti nei documenti e accetta che i file siano temporaneamente elaborati per la redazione delle firme.</p>
+    <p class="small">I consensi sono registrati con email e timestamp e possono essere consultati dagli amministratori.</p>
+  </section>
+
+  <section id="consents-section">
+    <h2>Consensi registrati</h2>
+    <div id="consents-area">Caricamento...</div>
+  </section>
+
+  <script>
+    async function loadConsents(){
+      try{
+        const res = await fetch('/api/privacy/consents', { credentials: 'same-origin' });
+        if (res.status === 403) {
+          document.getElementById('consents-area').innerHTML =
+            '<div class="notice">Accesso riservato agli amministratori. Effettua il login con un account admin per visualizzare i consensi.</div>' +
+            '<div class="login-hint"><a href="/access.html">Pagina di login</a></div>';
+          return;
+        }
+        if (!res.ok) {
+          document.getElementById('consents-area').textContent = 'Errore nella lettura dei consensi.';
+          return;
+        }
+        const j = await res.json();
+        const list = j.consents || [];
+        if (!list.length) {
+          document.getElementById('consents-area').textContent = 'Nessun consenso registrato.';
+          return;
+        }
+        const tbl = document.createElement('table');
+        const thead = document.createElement('thead');
+        thead.innerHTML = '<tr><th>Email</th><th>Accettato il (UTC)</th><th>IP</th></tr>';
+        tbl.appendChild(thead);
+        const tbody = document.createElement('tbody');
+        list.forEach(c=>{
+          const tr = document.createElement('tr');
+          const td1 = document.createElement('td'); td1.textContent = c.email || '';
+          const td2 = document.createElement('td'); td2.textContent = c.accepted_at || '';
+          const td3 = document.createElement('td'); td3.textContent = c.ip || '';
+          tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+          tbody.appendChild(tr);
+        });
+        tbl.appendChild(tbody);
+        const area = document.getElementById('consents-area');
+        area.innerHTML = '';
+        area.appendChild(tbl);
+      }catch(e){
+        document.getElementById('consents-area').textContent = 'Errore di connessione: '+e;
+      }
+    }
+    loadConsents();
+  </script>
+</body>
+</html>

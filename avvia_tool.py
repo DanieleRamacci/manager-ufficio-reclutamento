@@ -2163,6 +2163,61 @@ def api_system_report():
     )
 
 
+@app.post("/api/privacy/consent")
+@login_required
+def api_privacy_consent():
+    """Registra il consenso dell'utente autenticato (email + timestamp).
+    Salva in `instance/consents.json` come array di oggetti {email, accepted_at, ip}.
+    """
+    user = _current_user_email() or _current_user_id()
+    if not user:
+        return jsonify({"error": "Utente non autenticato"}), 403
+    consent = {
+        "email": user,
+        "accepted_at": datetime.utcnow().isoformat() + "Z",
+        "ip": request.remote_addr,
+    }
+    os.makedirs(os.path.join(DIR, "instance"), exist_ok=True)
+    path = os.path.join(DIR, "instance", "consents.json")
+    try:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as fh:
+                data = json.load(fh) or []
+        else:
+            data = []
+    except Exception:
+        data = []
+    data.append(consent)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=2)
+    try:
+        os.replace(tmp, path)
+    except Exception:
+        # best-effort fallback
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+    return jsonify({"ok": True, "consent": consent})
+
+
+@app.get("/api/privacy/consents")
+@login_required
+def api_privacy_consents():
+    """Elenca i consensi registrati (solo admin)."""
+    user = _current_user_email() or _current_user_id()
+    if not _is_admin(user):
+        return jsonify({"error": "Accesso negato"}), 403
+    path = os.path.join(DIR, "instance", "consents.json")
+    if not os.path.exists(path):
+        return jsonify({"consents": []})
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh) or []
+    except Exception:
+        data = []
+    return jsonify({"consents": data})
+
+
 def _validate_runtime_config_payload(payload: dict) -> tuple[dict, list[str]]:
     errors: list[str] = []
     patch: dict = {}
