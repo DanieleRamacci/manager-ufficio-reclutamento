@@ -33,6 +33,7 @@
     .form-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
     .form-row label { font-size: 12px; display: flex; align-items: center; gap: 6px; }
     .form-row input, .form-row select { font-size: 12px; padding: 4px 6px; }
+    .admin-grid { display: none; }
   </style>
 </head>
 <body>
@@ -57,7 +58,7 @@
       <div id="upload-status" class="muted"></div>
     </div>
 
-    <div class="grid">
+    <div class="grid admin-grid" id="admin-grid">
       <div class="card">
         <h2>Risorse macchina</h2>
         <div id="stats-box" class="muted">Caricamento...</div>
@@ -110,7 +111,7 @@
     </div>
 
     <div class="card">
-      <h2>Job in corso</h2>
+      <h2>Processi di analisi in corso</h2>
       <table id="jobs-running">
         <thead>
           <tr>
@@ -127,7 +128,7 @@
     </div>
 
     <div class="card">
-      <h2>Job da editare</h2>
+      <h2>Processi da editare</h2>
       <table id="jobs-edit">
         <thead>
           <tr>
@@ -144,7 +145,7 @@
     </div>
 
     <div class="card">
-      <h2>Job completati</h2>
+      <h2>Processi completati</h2>
       <table id="jobs-done">
         <thead>
           <tr>
@@ -177,6 +178,7 @@
     const cfgPiiDefault = document.getElementById('cfg-pii-default');
     const cfgTableMode = document.getElementById('cfg-table-mode');
     const cfgReset = document.getElementById('cfg-reset');
+    const adminGrid = document.getElementById('admin-grid');
 
     function fmtDate(ts) {
       if (!ts) return '-';
@@ -191,6 +193,13 @@
     }
 
     let shareEditing = false;
+    let isAdminUser = false;
+    let adminIntervalsStarted = false;
+
+    function setAdminUI(isAdmin) {
+      if (!adminGrid) return;
+      adminGrid.style.display = isAdmin ? 'grid' : 'none';
+    }
 
     function renderJobs(list, isAdmin) {
       const tbodyRun = document.querySelector('#jobs-running tbody');
@@ -349,6 +358,15 @@
           tr.children[1].appendChild(buildOwnerCell());
           tr.children[2].appendChild(buildAclCell());
           const td = document.createElement('td');
+          if (job.redaction_status === 'done') {
+            const dlBtn = document.createElement('button');
+            dlBtn.className = 'btn secondary';
+            dlBtn.textContent = '⬇ Download';
+            dlBtn.onclick = () => {
+              window.location.href = `/api/firme/jobs/${job.job_id}/download`;
+            };
+            td.appendChild(dlBtn);
+          }
           const reeditBtn = document.createElement('button');
           reeditBtn.className = 'btn';
           reeditBtn.textContent = 'Riedita';
@@ -362,6 +380,7 @@
     }
 
     function loadStats() {
+      if (!isAdminUser) return;
       fetch('/api/system/stats')
         .then(r => r.json())
         .then(st => {
@@ -382,10 +401,20 @@
         .then(r => r.json())
         .then(res => {
           renderJobs(res.jobs || [], res.is_admin);
+          isAdminUser = !!res.is_admin;
+          setAdminUI(isAdminUser);
+          if (isAdminUser && !adminIntervalsStarted) {
+            adminIntervalsStarted = true;
+            loadStats();
+            loadMetrics();
+            loadConfig();
+            setInterval(loadMetrics, 5000);
+          }
         });
     }
 
     function loadMetrics() {
+      if (!isAdminUser) return;
       fetch('/api/system/metrics')
         .then(r => r.json())
         .then(m => {
@@ -415,6 +444,7 @@
     }
 
     function loadConfig() {
+      if (!isAdminUser) return;
       fetch('/api/firme/config')
         .then(r => r.json())
         .then(cfg => {
@@ -513,12 +543,8 @@
       });
     }
 
-    loadStats();
     loadJobs();
-    loadMetrics();
-    loadConfig();
     setInterval(loadJobs, 5000);
-    setInterval(loadMetrics, 5000);
   </script>
 </body>
 </html>

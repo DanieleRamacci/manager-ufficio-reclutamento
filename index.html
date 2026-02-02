@@ -52,6 +52,14 @@
       display: inline-block; background: #eef2ff; color: #3f51b5; border-radius: 999px;
       padding: 2px 8px; font-size: .85rem; margin-left: 8px;
     }
+    .tools-wrap { margin: 18px 0 24px; }
+    .tools-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 10px; }
+    .tools-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .tool-card { border: 1px solid #e5e5e5; border-radius: 8px; padding: 12px; background: #fff; }
+    .tool-card h3 { margin: 0 0 6px; font-size: 1rem; }
+    .tool-card p { margin: 0 0 10px; color: #555; font-size: .9rem; }
+    .tool-card a { display: inline-block; text-decoration: none; color: #0b5ed7; font-weight: 600; }
+    .tool-card a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -72,10 +80,51 @@
      <a href="firme-jobs.html" style="margin-right: 15px;">Riepilogo Job Firme</a>
 
 
- <!-- 🔹 Badge di stato globale -->
+<!-- 🔹 Badge di stato globale -->
   <span id="statusBadge" style="margin-left: 16px; font-size: 0.9em;"></span>
 </nav>
   </nav>
+
+  <section class="tools-wrap">
+    <div class="tools-title">Strumenti disponibili</div>
+    <div class="tools-grid">
+      <div class="tool-card">
+        <h3>Visualizzazione bandi</h3>
+        <p>Accesso al controllo bandi (questa pagina).</p>
+        <a href="#sec-main">Apri controllo bandi</a>
+      </div>
+      <div class="tool-card">
+        <h3>Oscuramento dati sensibili</h3>
+        <p>Gestione job e download PDF oscurati.</p>
+        <a href="firme-jobs.html">Apri dashboard firme</a>
+      </div>
+      <div class="tool-card">
+        <h3>Accessibilità URP</h3>
+        <p>Verifica stato accessibilità dei bandi.</p>
+        <a href="access.html">Apri accessibilità</a>
+      </div>
+      <div class="tool-card">
+        <h3>Verifica PDF</h3>
+        <p>Controllo criteri accessibilità dei PDF.</p>
+        <a href="verifica-access.html">Apri verifica PDF</a>
+      </div>
+      <div class="tool-card">
+        <h3>Mobilità</h3>
+        <p>Visualizza bandi mobilità/urp.</p>
+        <a href="mobilita-urp.html">Apri mobilità</a>
+      </div>
+      <div class="tool-card">
+        <h3>Report del mese</h3>
+        <p>Report e statistiche mensili.</p>
+        <a href="report-mese.html">Apri report</a>
+      </div>
+      <div class="tool-card">
+        <h3>Stato avanzamento</h3>
+        <p>Monitor aggiornamento URP/SOL/Mobilità.</p>
+        <a href="stato-avanzamento.html">Apri stato avanzamento</a>
+      </div>
+    </div>
+  </section>
 
     <div class="update-buttons">
       <button onclick="aggiornaURP()">🔄 Aggiorna URP</button>
