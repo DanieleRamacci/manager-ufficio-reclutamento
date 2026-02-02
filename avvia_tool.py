@@ -2224,6 +2224,67 @@ def api_firme_result(job_id: str):
         })
     return jsonify({"documents": documents})
 
+# download PDF oscurati già generati (da immagini redatte salvate su disco)
+@app.get("/api/firme/jobs/<job_id>/download")
+@login_required
+def api_firme_job_download(job_id: str):
+    user_id = _current_user_id()
+    job = _db_get_job(job_id)
+    if not job:
+        return jsonify({"error": "Job non trovato"}), 404
+    if not _db_job_user_can_access(job_id, user_id):
+        return jsonify({"error": "Accesso negato"}), 403
+    if job.get("redaction_status") != "done":
+        return jsonify({"error": "PDF oscurato non disponibile"}), 400
+
+    docs = _db_get_job_documents(job_id)
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+        for doc in docs:
+            doc_id = doc.get("doc_id")
+            if not doc_id:
+                continue
+            doc_dir = os.path.join(DOCS_FIRME_ROOT, doc_id)
+            if not os.path.isdir(doc_dir):
+                continue
+            redacted_files = []
+            for name in os.listdir(doc_dir):
+                if not (name.startswith("redacted_page_") and name.endswith(".png")):
+                    continue
+                try:
+                    idx = int(name[len("redacted_page_"):-4])
+                except Exception:
+                    continue
+                redacted_files.append((idx, name))
+            if not redacted_files:
+                continue
+            redacted_files.sort(key=lambda x: x[0])
+            redacted_paths = [os.path.join(doc_dir, name) for _, name in redacted_files]
+            pdf_buffer = io.BytesIO()
+            try:
+                pdf_buffer.write(img2pdf.convert(redacted_paths))
+            except Exception as e:
+                print(f"[FIRME][ERR] img2pdf.convert failed for doc_id={doc_id}: {e}", flush=True)
+                continue
+            pdf_buffer.seek(0)
+
+            filename = (doc.get("filename") or f"documento_{doc_id}.pdf").strip()
+            safe_name = secure_filename(filename)
+            if not safe_name.lower().endswith(".pdf"):
+                safe_name += ".pdf"
+            zipf.writestr(safe_name, pdf_buffer.read())
+
+    zip_buffer.seek(0)
+    if zip_buffer.getbuffer().nbytes == 0:
+        return jsonify({"error": "Nessun PDF oscurato disponibile per il download"}), 400
+
+    return send_file(
+        zip_buffer,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=f"pdf_oscurati_{job_id}.zip"
+    )
+
 #aggiunto log
 
 @app.post("/api/firme/confirm")
@@ -2455,6 +2516,45 @@ def rdp_tool():
     return send_from_directory(DIR, "rdp-tool.html")
 
 
+# ======== Debug temporaneo (rimuovere dopo diagnosi) ========
+@app.get("/_debug/route-check")
+def debug_route_check():
+    """Diagnostica minimale per capire versioni/route/file in prod."""
+    try:
+        version_path = os.path.join(DIR, "version.json")
+        version_info = None
+        if os.path.exists(version_path):
+            try:
+                with open(version_path, "r", encoding="utf-8") as f:
+                    version_info = json.load(f)
+            except Exception as exc:
+                version_info = {"error": str(exc)}
+
+        expected_files = [
+            "index.html",
+            "firme-jobs.html",
+            "redazione-firme.html",
+            "stato-avanzamento.html",
+        ]
+        files = {name: os.path.isfile(os.path.join(DIR, name)) for name in expected_files}
+
+        routes = []
+        for rule in app.url_map.iter_rules():
+            routes.append({"rule": str(rule), "methods": sorted(list(rule.methods or []))})
+
+        return jsonify({
+            "ok": True,
+            "time": datetime.utcnow().isoformat() + "Z",
+            "cwd": DIR,
+            "index_file": INDEX_FILE,
+            "files": files,
+            "version": version_info,
+            "routes": routes,
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 # Static/JSON protetti (invece di static_folder pubblico)
 @app.route("/_static/<path:fname>", methods=["GET", "HEAD"])
 @login_required
@@ -2471,9 +2571,10 @@ def protected_static(fname):
     return send_from_directory(DIR, fname)
 
 
-# Catch-all SPA PROTETTO (tutto ciò che non è /api/*)
+# Catch-all: non fare fallback a index (mostra errori reali)
 @app.route("/<path:fname>")
-def serve_or_index(fname):
+@login_required
+def serve_or_404(fname):
     # harden: assicurati che sia una stringa
     if not isinstance(fname, str):
         abort(400)
@@ -2486,8 +2587,8 @@ def serve_or_index(fname):
     if os.path.isfile(fullpath):
         return send_from_directory(DIR, fname)
 
-    # fallback SPA
-    return send_from_directory(DIR, INDEX_FILE)
+    # nessun fallback: errore esplicito
+    abort(404, description=f"Risorsa non trovata: {fname}")
 
 # ========= API =========
 
