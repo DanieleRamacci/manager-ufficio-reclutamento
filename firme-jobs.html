@@ -47,6 +47,8 @@
       <h2>Nuovo job</h2>
       <form id="upload-form">
         <input type="file" id="pdf-input" name="pdf" accept="application/pdf" multiple required>
+        <input type="text" id="job-label" name="job_label" placeholder="Etichetta (es. Bando 367.471)" style="margin-left: 8px;">
+        <input type="text" id="job-note" name="job_note" placeholder="Nota/parte (es. parte 1)" style="margin-left: 8px;">
         <label style="margin-left: 8px;">
           <input type="checkbox" id="pii-toggle" checked> OCR/PII
         </label>
@@ -116,6 +118,8 @@
         <thead>
           <tr>
             <th>Job ID</th>
+            <th>Etichetta</th>
+            <th>Nota</th>
             <th>Owner</th>
             <th>Autorizzati</th>
             <th>Progresso</th>
@@ -133,6 +137,8 @@
         <thead>
           <tr>
             <th>Job ID</th>
+            <th>Etichetta</th>
+            <th>Nota</th>
             <th>Owner</th>
             <th>Autorizzati</th>
             <th>Stato</th>
@@ -150,6 +156,8 @@
         <thead>
           <tr>
             <th>Job ID</th>
+            <th>Etichetta</th>
+            <th>Nota</th>
             <th>Owner</th>
             <th>Autorizzati</th>
             <th>Aggiornato</th>
@@ -166,6 +174,8 @@
     const uploadStatus = document.getElementById('upload-status');
     const piiToggle = document.getElementById('pii-toggle');
     const tableColumnsOnlyToggle = document.getElementById('table-columns-only-toggle');
+    const jobLabelInput = document.getElementById('job-label');
+    const jobNoteInput = document.getElementById('job-note');
     const configForm = document.getElementById('config-form');
     const configStatus = document.getElementById('config-status');
     const cfgWorkers = document.getElementById('cfg-workers');
@@ -209,6 +219,16 @@
       tbodyEdit.innerHTML = '';
       tbodyDone.innerHTML = '';
 
+      list.sort((a, b) => {
+        const la = (a.job_label || '').toLowerCase();
+        const lb = (b.job_label || '').toLowerCase();
+        if (la && !lb) return -1;
+        if (!la && lb) return 1;
+        if (la < lb) return -1;
+        if (la > lb) return 1;
+        return (b.created_at || 0) - (a.created_at || 0);
+      });
+
       list.forEach(job => {
         const isRunning = job.status === 'queued' || job.status === 'running';
         const isDone = job.status === 'done';
@@ -232,6 +252,26 @@
             .then(() => loadJobs());
         };
         actions.appendChild(delBtn);
+
+        const metaBtn = document.createElement('button');
+        metaBtn.className = 'btn secondary';
+        metaBtn.textContent = 'Etichetta/nota';
+        metaBtn.onclick = () => {
+          const newLabel = prompt('Etichetta job:', job.job_label || '') || '';
+          const newNote = prompt('Nota/parte:', job.job_note || '') || '';
+          fetch(`/api/firme/jobs/${job.job_id}/meta`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({job_label: newLabel.trim(), job_note: newNote.trim()}),
+          }).then(r => r.json()).then(res => {
+            if (res.error) {
+              alert('Errore: ' + res.error);
+              return;
+            }
+            loadJobs();
+          });
+        };
+        actions.appendChild(metaBtn);
 
         function buildOwnerCell() {
           const wrapper = document.createElement('div');
@@ -332,9 +372,9 @@
         }
 
         if (isRunning) {
-          tr.innerHTML = `<td>${job.job_id}</td><td></td><td></td><td>${job.progress.done}/${job.progress.total}</td><td>${fmtEta(job.eta_sec)}</td>`;
-          tr.children[1].appendChild(buildOwnerCell());
-          tr.children[2].appendChild(buildAclCell());
+          tr.innerHTML = `<td>${job.job_id}</td><td>${job.job_label || '-'}</td><td>${job.job_note || '-'}</td><td></td><td></td><td>${job.progress.done}/${job.progress.total}</td><td>${fmtEta(job.eta_sec)}</td>`;
+          tr.children[3].appendChild(buildOwnerCell());
+          tr.children[4].appendChild(buildAclCell());
           const td = document.createElement('td');
           const monitorBtn = document.createElement('button');
           monitorBtn.className = 'btn secondary';
@@ -345,18 +385,18 @@
           tr.appendChild(td);
           tbodyRun.appendChild(tr);
         } else if (needsEdit) {
-          tr.innerHTML = `<td>${job.job_id}</td><td></td><td></td><td><span class="badge edit">da editare</span></td><td>${fmtDate(job.updated_at)}</td>`;
-          tr.children[1].appendChild(buildOwnerCell());
-          tr.children[2].appendChild(buildAclCell());
+          tr.innerHTML = `<td>${job.job_id}</td><td>${job.job_label || '-'}</td><td>${job.job_note || '-'}</td><td></td><td></td><td><span class="badge edit">da editare</span></td><td>${fmtDate(job.updated_at)}</td>`;
+          tr.children[3].appendChild(buildOwnerCell());
+          tr.children[4].appendChild(buildAclCell());
           const td = document.createElement('td');
           td.appendChild(resumeBtn);
           td.appendChild(actions);
           tr.appendChild(td);
           tbodyEdit.appendChild(tr);
         } else {
-          tr.innerHTML = `<td>${job.job_id}</td><td></td><td></td><td>${fmtDate(job.updated_at)}</td>`;
-          tr.children[1].appendChild(buildOwnerCell());
-          tr.children[2].appendChild(buildAclCell());
+          tr.innerHTML = `<td>${job.job_id}</td><td>${job.job_label || '-'}</td><td>${job.job_note || '-'}</td><td></td><td></td><td>${fmtDate(job.updated_at)}</td>`;
+          tr.children[3].appendChild(buildOwnerCell());
+          tr.children[4].appendChild(buildAclCell());
           const td = document.createElement('td');
           if (job.redaction_status === 'done') {
             const dlBtn = document.createElement('button');
@@ -474,6 +514,8 @@
       if (!files.length) return;
       const formData = new FormData();
       for (const f of files) formData.append('pdf', f);
+      if (jobLabelInput && jobLabelInput.value) formData.append('job_label', jobLabelInput.value);
+      if (jobNoteInput && jobNoteInput.value) formData.append('job_note', jobNoteInput.value);
       formData.append('pii', piiToggle.checked ? '1' : '0');
       formData.append('table_mode', tableColumnsOnlyToggle.checked ? 'columns' : 'full');
       uploadStatus.textContent = 'Job in creazione...';

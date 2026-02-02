@@ -199,6 +199,8 @@ def _init_db() -> None:
     _ensure_column(conn, "jobs", "job_iou", "job_iou REAL DEFAULT 0")
     _ensure_column(conn, "jobs", "job_ocr_lang", "job_ocr_lang TEXT DEFAULT ''")
     _ensure_column(conn, "jobs", "job_ocr_config", "job_ocr_config TEXT DEFAULT ''")
+    _ensure_column(conn, "jobs", "job_label", "job_label TEXT DEFAULT ''")
+    _ensure_column(conn, "jobs", "job_note", "job_note TEXT DEFAULT ''")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS job_acl (
@@ -307,15 +309,22 @@ def _db_set_progress(job_id: str, done: int, total: int) -> None:
     _db_update_job(job_id, progress_done=int(done), progress_total=int(total))
 
 
-def _db_insert_job(job_id: str, owner_email: str, status: str, redaction_status: str) -> None:
+def _db_insert_job(
+    job_id: str,
+    owner_email: str,
+    status: str,
+    redaction_status: str,
+    job_label: str = "",
+    job_note: str = "",
+) -> None:
     now = time.time()
     conn = _db_conn()
     conn.execute(
         """
-        INSERT INTO jobs(job_id, owner_email, status, redaction_status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO jobs(job_id, owner_email, status, redaction_status, job_label, job_note, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (job_id, owner_email, status, redaction_status, now, now),
+        (job_id, owner_email, status, redaction_status, job_label, job_note, now, now),
     )
     conn.commit()
     conn.close()
@@ -1807,6 +1816,8 @@ def api_firme_jobs():
         out.append({
             "job_id": j.get("job_id"),
             "owner_email": owner_email,
+            "job_label": j.get("job_label") or "",
+            "job_note": j.get("job_note") or "",
             "authorized": acl_list,
             "status": j.get("status"),
             "redaction_status": j.get("redaction_status"),
@@ -1817,6 +1828,23 @@ def api_firme_jobs():
             "eta_sec": eta,
         })
     return jsonify({"jobs": out, "is_admin": include_all})
+
+
+@app.post("/api/firme/jobs/<job_id>/meta")
+@login_required
+def api_firme_job_meta(job_id: str):
+    user_id = _current_user_id()
+    if not _db_job_user_can_access(job_id, user_id):
+        return jsonify({"error": "Accesso negato"}), 403
+    payload = request.json or {}
+    label = (payload.get("job_label") or "").strip()
+    note = (payload.get("job_note") or "").strip()
+    if len(label) > 120:
+        return jsonify({"error": "Etichetta troppo lunga (max 120)"}), 400
+    if len(note) > 200:
+        return jsonify({"error": "Nota troppo lunga (max 200)"}), 400
+    _db_update_job(job_id, job_label=label, job_note=note)
+    return jsonify({"ok": True, "job_label": label, "job_note": note})
 
 
 @app.get("/api/firme/jobs/<job_id>")
@@ -2116,6 +2144,8 @@ def api_firme_analyze():
     pii_flag = (request.form.get("pii") or "").strip().lower()
     pii_debug_flag = (request.form.get("pii_debug", "0") or "").strip().lower()
     table_mode = (request.form.get("table_mode") or "").strip().lower()
+    job_label = (request.form.get("job_label") or "").strip()
+    job_note = (request.form.get("job_note") or "").strip()
     pii_debug = pii_debug_flag in ("1", "true", "on", "yes")
     if pii_flag:
         pii_enabled = pii_flag in ("1", "true", "on", "yes")
@@ -2142,7 +2172,7 @@ def api_firme_analyze():
         _db_insert_document(doc_id, job_id, pdf_file.filename)
 
     owner_email = _current_user_email() or user_id
-    _db_insert_job(job_id, owner_email, "queued", "not_started")
+    _db_insert_job(job_id, owner_email, "queued", "not_started", job_label=job_label, job_note=job_note)
 
     def _parse_int_field(name: str) -> int:
         raw = (request.form.get(name) or "").strip()
