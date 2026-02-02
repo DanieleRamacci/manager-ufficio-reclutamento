@@ -9,6 +9,7 @@ import concurrent.futures
 import subprocess
 import json
 import sqlite3
+import requests
 from datetime import datetime, timedelta
 from flask import Flask
 from flask_session import Session
@@ -1827,7 +1828,162 @@ def api_firme_jobs():
             "avg_page_sec": avg_page,
             "eta_sec": eta,
         })
-    return jsonify({"jobs": out, "is_admin": include_all})
+    return jsonify({"jobs": out, "is_admin": include_all, "current_user_email": _current_user_email()})
+
+
+@app.get("/api/bandi/search")
+@login_required
+def api_bandi_search():
+    """Search bandi (from SOL_JSON or live API). Returns list of {codice, titolo}.
+
+    Example: /api/bandi/search?q=367.60
+    Example (live): /api/bandi/search?q=367.60&live=1
+    """
+    q = (request.args.get('q') or '').strip()
+    q_low = q.lower()
+    limit = int(request.args.get('limit') or 50)
+    # se ?live=1 viene richiesta la ricerca live sull'endpoint Selezioni Online
+    live = str(request.args.get('live') or '').lower() in ("1", "true", "yes")
+    SEARCH_URL = "https://selezionionline.cnr.it/jconon/rest/search"
+    TREE_UUID = "713d4376-4cbd-43b6-ad14-9401b5029c51"
+    
+    print(f"[DEBUG] api_bandi_search: q='{q}', live={live}, limit={limit}")
+
+    try:
+        if live:
+            print(f"[DEBUG] Modalità LIVE - interrogando {SEARCH_URL}")
+            # Costruisci una query CMIS per cercare il codice o titolo
+            cmis_query = f"""
+SELECT * FROM jconon_call:folder root
+WHERE (
+    (root.jconon_call:codice LIKE '%{q}%' OR root.cmis:name LIKE '%{q}%')
+    AND IN_TREE (root,'{TREE_UUID}')
+)
+ORDER BY jconon_call:data_fine_invio_domande_index DESC
+""".strip()
+            
+            # chiamata live all'endpoint di Selezioni Online con query CMIS
+            params = {
+                "guest": "true",
+                "ajax": "true",
+                "maxItems": limit,
+                "skipCount": 0,
+                "fetchCmisObject": "true",
+                "calculateTotalNumItems": "true",
+                "q": cmis_query
+            }
+            headers = {"Accept": "application/json"}
+            try:
+                resp = requests.get(SEARCH_URL, params=params, headers=headers, timeout=20)
+                resp.raise_for_status()
+                payload = resp.json()
+                print(f"[DEBUG] Risposta live: {len(payload.get('items', []))} items ricevuti")
+            except Exception as e:
+                print(f"[DEBUG] Errore richiesta live: {e}")
+                return jsonify({"error": f"Errore richiesta live: {e}"}), 500
+
+            items = payload.get('items') or []
+            results = []
+            for it in items:
+                codice = it.get('jconon_call:codice') or ''
+                titolo = it.get('cmis:name') or ''
+                if codice or titolo:
+                    results.append({"codice": codice, "titolo": titolo})
+                if len(results) >= limit:
+                    break
+            print(f"[DEBUG] Ritornando {len(results)} risultati (live)")
+            return jsonify({"results": results})
+        else:
+            print(f"[DEBUG] Modalità CACHE - lettura JSON locale")
+            # ricerca locale dal file JSON
+            data_path = os.path.join(DIR, SOL_JSON)
+            if not os.path.exists(data_path):
+                return jsonify({"error": "Fonte bandi non trovata"}), 404
+            with open(data_path, 'r', encoding='utf-8') as fh:
+                arr = json.load(fh)
+            
+            print(f"[DEBUG] JSON caricato: {len(arr)} bandi totali")
+
+            results = []
+            if not q:
+                # return top recent
+                for item in arr[:limit]:
+                    results.append({"codice": item.get('codice'), "titolo": item.get('titolo')})
+                return jsonify({"results": results})
+
+            for item in arr:
+                codice = (item.get('codice') or '')
+                titolo = (item.get('titolo') or '')
+                if q_low in codice.lower() or q_low in titolo.lower():
+                    results.append({"codice": codice, "titolo": titolo})
+                    if len(results) >= limit:
+                        break
+            
+            print(f"[DEBUG] Ritornando {len(results)} risultati (cache)")
+            return jsonify({"results": results})
+    except Exception as e:
+        print(f"[DEBUG] Errore interno: {e}")
+        return jsonify({"error": f"Errore interno: {e}"}), 500
+
+
+@app.get("/api/bandi/test-live")
+def api_bandi_test_live():
+    """Test endpoint per verificare se la ricerca live funziona. No auth required."""
+    q = request.args.get('q') or '367.471'
+    SEARCH_URL = "https://selezionionline.cnr.it/jconon/rest/search"
+    TREE_UUID = "713d4376-4cbd-43b6-ad14-9401b5029c51"
+    
+    # Costruisci una query CMIS per cercare il codice (es. 367.471)
+    # Questa query cerca il bando con codice contente la stringa
+    cmis_query = f"""
+SELECT * FROM jconon_call:folder root
+WHERE (
+    (root.jconon_call:codice LIKE '%{q}%' OR root.cmis:name LIKE '%{q}%')
+    AND IN_TREE (root,'{TREE_UUID}')
+)
+ORDER BY jconon_call:data_fine_invio_domande_index DESC
+""".strip()
+    
+    params = {
+        "guest": "true",
+        "ajax": "true",
+        "maxItems": 50,
+        "skipCount": 0,
+        "fetchCmisObject": "true",
+        "calculateTotalNumItems": "true",
+        "q": cmis_query
+    }
+    headers = {"Accept": "application/json"}
+    
+    try:
+        resp = requests.get(SEARCH_URL, params=params, headers=headers, timeout=20)
+        resp.raise_for_status()
+        payload = resp.json()
+        items = payload.get('items') or []
+        
+        results = []
+        for it in items[:10]:
+            codice = it.get('jconon_call:codice') or ''
+            titolo = it.get('cmis:name') or ''
+            results.append({
+                "codice": codice, 
+                "titolo": titolo,
+            })
+        
+        return jsonify({
+            "status": "ok",
+            "query": q,
+            "cmis_query": cmis_query,
+            "items_found": len(items),
+            "results": results
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "query": q,
+            "cmis_query": cmis_query
+        }), 500
 
 
 @app.post("/api/firme/jobs/<job_id>/meta")
@@ -1838,13 +1994,10 @@ def api_firme_job_meta(job_id: str):
         return jsonify({"error": "Accesso negato"}), 403
     payload = request.json or {}
     label = (payload.get("job_label") or "").strip()
-    note = (payload.get("job_note") or "").strip()
     if len(label) > 120:
         return jsonify({"error": "Etichetta troppo lunga (max 120)"}), 400
-    if len(note) > 200:
-        return jsonify({"error": "Nota troppo lunga (max 200)"}), 400
-    _db_update_job(job_id, job_label=label, job_note=note)
-    return jsonify({"ok": True, "job_label": label, "job_note": note})
+    _db_update_job(job_id, job_label=label)
+    return jsonify({"ok": True, "job_label": label})
 
 
 @app.get("/api/firme/jobs/<job_id>")
@@ -1889,7 +2042,8 @@ def api_firme_job_save(job_id: str):
                 continue
             page["index"] = page_idx
             _db_upsert_page(job_id, doc_id, page_idx, page)
-    _db_update_job(job_id, redaction_status="in_progress")
+    # Segnala che le modifiche dell'utente sono state salvate (stato "saved")
+    _db_update_job(job_id, redaction_status="saved")
     return jsonify({"ok": True})
 
 
@@ -2315,12 +2469,214 @@ def api_firme_job_download(job_id: str):
         download_name=f"pdf_oscurati_{job_id}.zip"
     )
 
-#aggiunto log
+@app.post("/api/firme/generate")
+@login_required
+def api_firme_generate():
+    """
+    Genera PDF oscurati e scarica ZIP senza finalizzare il job.
+    
+    Il job rimane in stato EDITABILE, permettendo all'utente di:
+    - Modificare ancora i box manualmente
+    - Salvare le modifiche
+    - Rigenerare lo ZIP tutte le volte che vuole
+    
+    Questo endpoint è identico a /api/firme/confirm ma NON:
+    - Non aggiorna redaction_status a 'done'
+    - Non registra l'export in job_exports
+    
+    Perfetto per un flusso iterativo dove l'utente genera multiple versioni.
+    """
+    try:
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({"error": "JSON mancante in /api/firme/generate"}), 400
+
+        docs_data = data.get("documents", [])
+        job_id = data.get("job_id")
+        if not docs_data:
+            return jsonify({"error": "Nessun documento da elaborare"}), 400
+
+        print(f"[FIRME] Genera PDF oscurati per {len(docs_data)} documenti (job={job_id}, no finalize)", flush=True)
+        user_id = _current_user_id()
+        if not user_id:
+            return jsonify({"error": "Utente non autenticato"}), 403
+
+        # Recupera job_label per il nome ZIP
+        job_label = ""
+        if job_id:
+            conn = _db_conn()
+            row = conn.execute("SELECT job_label FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
+            conn.close()
+            if row:
+                job_label = row["job_label"] or ""
+        
+        # Estrai numero bando da job_label (es. "Bando 367.471" -> "367471")
+        import re
+        numero_bando = ""
+        if job_label:
+            match = re.search(r'(\d{3})[\.\s]?(\d{3})', job_label)
+            if match:
+                numero_bando = match.group(1) + match.group(2)
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for doc_entry in docs_data:
+                doc_id = doc_entry.get("doc_id")
+                pages_data = doc_entry.get("pages", [])
+                filename = (doc_entry.get("filename") or f"documento_{doc_id}.pdf").strip()
+
+                if not doc_id:
+                    print("[FIRME][WARN] doc_id mancante in una voce di documents", flush=True)
+                    continue
+                if not _is_doc_owned_by_user(doc_id, user_id):
+                    return jsonify({"error": "Accesso negato al documento"}), 403
+                if not job_id:
+                    conn = _db_conn()
+                    row = conn.execute("SELECT job_id FROM job_documents WHERE doc_id = ?", (doc_id,)).fetchone()
+                    conn.close()
+                    if row:
+                        job_id = row["job_id"]
+
+                doc_dir = os.path.join(DOCS_FIRME_ROOT, doc_id)
+                if not os.path.isdir(doc_dir):
+                    print(f"[FIRME][WARN] Cartella documento non trovata: {doc_dir}", flush=True)
+                    continue
+
+                redacted_image_paths = []
+
+                for page_info in pages_data:
+                    page_index = page_info.get("page_index")
+                    boxes = page_info.get("boxes", [])
+
+                    if page_index is None:
+                        print(f"[FIRME][WARN] page_index mancante per doc_id={doc_id}", flush=True)
+                        continue
+
+                    image_path = os.path.join(doc_dir, f"page_{page_index}.png")
+                    if not os.path.exists(image_path):
+                        print(f"[FIRME][WARN] Immagine pagina non trovata: {image_path}", flush=True)
+                        continue
+
+                    img = Image.open(image_path)
+                    width, height = img.size
+                    draw = ImageDraw.Draw(img)
+
+                    # Oscuriamo tutte le box (se presenti)
+                    for b in boxes:
+                        x_norm = float(b["x"])
+                        y_norm = float(b["y"])
+                        w_norm = float(b["w"])
+                        h_norm = float(b["h"])
+
+                        x1 = int(x_norm * width)
+                        y1 = int(y_norm * height)
+                        x2 = int((x_norm + w_norm) * width)
+                        y2 = int((y_norm + h_norm) * height)
+
+                        draw.rectangle([x1, y1, x2, y2], fill="black")
+
+                    redacted_image_path = os.path.join(doc_dir, f"redacted_page_{page_index}.png")
+                    img.save(redacted_image_path, "PNG")
+                    redacted_image_paths.append(redacted_image_path)
+                    if job_id:
+                        stored_page = dict(page_info)
+                        stored_page["index"] = page_index
+                        stored_page["manual_boxes"] = [
+                            {"x": b["x"], "y": b["y"], "w": b["w"], "h": b["h"]}
+                            for b in boxes
+                        ]
+                        edited = page_info.get("edited_boxes")
+                        if isinstance(edited, list):
+                            stored_page["edited_boxes"] = edited
+                        _db_upsert_page(job_id, doc_id, page_index, stored_page)
+
+                if not redacted_image_paths:
+                    print(f"[FIRME][WARN] Nessuna pagina redatta per doc_id={doc_id}", flush=True)
+                    continue
+
+                # Ordina le pagine per index numerico
+                redacted_image_paths.sort(
+                    key=lambda p: int(os.path.basename(p).split("_")[-1].split(".")[0])
+                )
+
+                try:
+                    t_write_start = time.perf_counter()
+                    pdf_buffer = io.BytesIO()
+                    pdf_buffer.write(img2pdf.convert(redacted_image_paths))
+                    pdf_buffer.seek(0)
+                    t_write = time.perf_counter() - t_write_start
+                    print(
+                        f"[TIMING] doc_id={doc_id} step=write_pdf pages={len(redacted_image_paths)} seconds={t_write:.3f}",
+                        flush=True,
+                    )
+                except Exception as e:
+                    print(f"[FIRME][ERR] Errore in img2pdf.convert per doc_id={doc_id}: {e}", flush=True)
+                    continue
+
+                safe_name = os.path.basename(filename)
+                if not safe_name.lower().endswith(".pdf"):
+                    safe_name += ".pdf"
+                
+                # Aggiungi suffisso "-oscurato.pdf" al nome PDF
+                base_name = safe_name[:-4] if safe_name.endswith(".pdf") else safe_name
+                safe_name_oscurato = f"{base_name}-oscurato.pdf"
+
+                print(f"[FIRME] Aggiungo al ZIP: {safe_name_oscurato} ({len(redacted_image_paths)} pagine)", flush=True)
+                zipf.writestr(safe_name_oscurato, pdf_buffer.read())
+
+        zip_buffer.seek(0)
+
+        # Genera il nome del ZIP con il numero bando
+        if numero_bando:
+            zip_name = f"{numero_bando}-oscurati.zip"
+        else:
+            zip_name = "pdf_oscurati.zip"
+
+        # ⚠️ DIFFERENZA DA /api/firme/confirm:
+        # NON aggiornare job status a 'done'
+        # NON registrare l'export in job_exports
+        # Il job rimane editabile per rigenerare il ZIP con modifiche future
+        # Opzionale: puoi loggare la generazione per tracking
+        print(f"[FIRME] ZIP generato per job_id={job_id} (job rimane editabile)", flush=True)
+
+        # Se non abbiamo scritto niente nello ZIP -> errore esplicito
+        if zip_buffer.getbuffer().nbytes == 0:
+            print("[FIRME][ERR] ZIP vuoto: nessun PDF oscurato generato", flush=True)
+            return jsonify({"error": "Nessun PDF oscurato generato (nessuna pagina utile)."}), 400
+
+        return send_file(
+            zip_buffer,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=zip_name
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Errore interno durante la generazione ZIP: {e}"}), 500
 
 @app.post("/api/firme/confirm")
 @login_required
 def api_firme_confirm():
     """
+    LEGACY ENDPOINT - Genera PDF oscurati, finalizza il job, e rende non-editabile.
+    
+    ⚠️ USO CONSIGLIATO: /api/firme/generate (nuovo, permette editing continuo)
+    
+    Questo endpoint è stato usato nel vecchio flusso where:
+    - User edita box
+    - Clicca "Conferma e genera"
+    - Job diventa "finalizzato" e non più editabile
+    - Export è registrato in job_exports per tracking
+    
+    NUOVO FLUSSO (consigliato):
+    - User edita box
+    - Clicca "Genera PDF oscurati" → chiama /api/firme/generate
+    - Job rimane sempre editabile
+    - User può modificare e rigenerare ZIP infinite volte
+    
+    Se mantenuto per backward compatibility, questo endpoint:
     Riceve:
     {
       "documents": [

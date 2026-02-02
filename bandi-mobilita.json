@@ -95,41 +95,23 @@
     "numero_protocollo": "319033",
     "graduatoria_presente": false,
     "data_pubblicazione_graduatoria": null,
-    "estratto": "Tipologia:\nConcorsi e Selezioni\n-\nBandi Pubblici - Mobilità\nProtocollo 319033\ndel  28-08-2025\nBANDO DI MOBILITÀ ESTERNA VOLONTARIA, PER TITOLI E COLLOQUIO, AI SENSI\nDELL’ART. 30 D.LGS N. 165/2001, PER LA COPERTURA DI N. 1 POSIZIONE, CON\nCONTRATTO DI LAVORO A TEMPO PIENO E INDETERMINATO PROFILO DI\nFUNZIONARIO DI AMMINISTRAZIONE - V LIVELLO PROFESSIONALE – PRESSO L’\nAREA TERRITORIALE DI RICERCA DI ROMA 1 DEL CONSIGLIO NAZIONALE DELLE\nRICERCHE - MONTELIBRETTI\nBANDO N. 365.197 FA AREA ROMA 1\nAllegati\nCommissione [ANNULLATA]\n- Protocollo 514270\ndel 12-12-2025\nPagina aggiornata il 23-01-2026 10:01:03\nQuesta pagina ti è stata utile?\nSì\nNo\nSelect one\nIl contenuto della pagina non è chiaro\nLe informazioni sono incomplete",
+    "estratto": "Tipologia:\nConcorsi e Selezioni\n-\nBandi Pubblici - Mobilità\nProtocollo 319033\ndel  28-08-2025\nBANDO DI MOBILITÀ ESTERNA VOLONTARIA, PER TITOLI E COLLOQUIO, AI SENSI\nDELL’ART. 30 D.LGS N. 165/2001, PER LA COPERTURA DI N. 1 POSIZIONE, CON\nCONTRATTO DI LAVORO A TEMPO PIENO E INDETERMINATO PROFILO DI\nFUNZIONARIO DI AMMINISTRAZIONE - V LIVELLO PROFESSIONALE – PRESSO L’\nAREA TERRITORIALE DI RICERCA DI ROMA 1 DEL CONSIGLIO NAZIONALE DELLE\nRICERCHE - MONTELIBRETTI\nBANDO N. 365.197 FA AREA ROMA 1\nAllegati\nCommissione [ANNULLATA]\n- Protocollo 514270\ndel 12-12-2025\nCommissione\n- Protocollo 37168\ndel 29-01-2026\nPagina aggiornata il 30-01-2026 13:01:58\nQuesta pagina ti è stata utile?\nSì\nNo\nSelect one\nIl contenuto della pagina non è chiaro\nLe informazioni sono incomplete",
     "allegati": [
       {
         "titolo": "Commissione [ANNULLATA]",
         "link": "https://www.urp.cnr.it/system/files?file=2025-12/365.197-FA-nomina-commissione-signed.pdf",
         "protocollo": "514270",
         "data": "12-12-2025"
+      },
+      {
+        "titolo": "Commissione",
+        "link": "https://www.urp.cnr.it/system/files?file=2026-01/provvedimento-nomina-commissione-365.197-FA_signed.pdf",
+        "protocollo": "37168",
+        "data": "29-01-2026"
       }
     ],
     "tipologia": "mobilità",
     "codice": "BANDO N. 365.197 FA AREA ROMA 1"
-  },
-  {
-    "url": "https://www.urp.cnr.it/node/30525",
-    "data_pubblicazione_bando": "07-07-2025",
-    "numero_protocollo": "253106",
-    "graduatoria_presente": false,
-    "data_pubblicazione_graduatoria": null,
-    "estratto": "Tipologia:\nConcorsi e Selezioni\n-\nBandi Pubblici - Mobilità\nProtocollo 253106\ndel  07-07-2025\nBANDO DI MOBILITÀ ESTERNA VOLONTARIA, PER TITOLI E COLLOQUIO, AI SENSI DELL’ART. 30 D.LGS N. 165/2001, PER LA COPERTURA DI N. 1 POSIZIONE, CON CONTRATTO DI LAVORO A TEMPO PIENO E INDETERMINATO PROFILO DI COLLABORATORE ENTI DI RICERCA - VI LIVELLO PROFESSIONALE – PRESSO L’UNITA’ PIANIFICAZIONE, PROGRAMMAZIONE E BIBLIOTECA CENTRALE DELLA DIREZIONE CENTRALE SERVIZI ALLA RICERCA – DEL CONSIGLIO NAZIONALE DELLE RICERCHE\nBANDO N. 365.196 CTER UPPBC\nAllegati\nRettifica bando\n- Protocollo 266295\ndel 14-07-2025\nConclusione procedura\n- Protocollo 475634\ndel 25-11-2025\nPagina aggiornata il 26-11-2025 07:11:59\nQuesta pagina ti è stata utile?\nSì\nNo\nSelect one\nIl contenuto della pagina non è chiaro\nLe informazioni sono incomplete",
-    "allegati": [
-      {
-        "titolo": "Rettifica bando",
-        "link": "https://www.urp.cnr.it/system/files?file=2025-07/Rettifica-Bando-365.196-CTER-UPPBC_signed.pdf",
-        "protocollo": "266295",
-        "data": "14-07-2025"
-      },
-      {
-        "titolo": "Conclusione procedura",
-        "link": "https://www.urp.cnr.it/system/files?file=2025-11/Bando-365.196-Provvedimento-esito-negativo_signed.pdf",
-        "protocollo": "475634",
-        "data": "25-11-2025"
-      }
-    ],
-    "tipologia": "mobilità",
-    "codice": "BANDO N. 365.196 CTER UPPBC"
   },
   {
     "url": "https://www.urp.cnr.it/node/30523",
@@ -160,6 +142,30 @@
     ],
     "tipologia": "mobilità",
     "codice": "BANDO N. 365.195 FA ISMAR"
+  },
+  {
+    "url": "https://www.urp.cnr.it/node/30525",
+    "data_pubblicazione_bando": "07-07-2025",
+    "numero_protocollo": "253106",
+    "graduatoria_presente": false,
+    "data_pubblicazione_graduatoria": null,
+    "estratto": "Tipologia:\nConcorsi e Selezioni\n-\nBandi Pubblici - Mobilità\nProtocollo 253106\ndel  07-07-2025\nBANDO DI MOBILITÀ ESTERNA VOLONTARIA, PER TITOLI E COLLOQUIO, AI SENSI DELL’ART. 30 D.LGS N. 165/2001, PER LA COPERTURA DI N. 1 POSIZIONE, CON CONTRATTO DI LAVORO A TEMPO PIENO E INDETERMINATO PROFILO DI COLLABORATORE ENTI DI RICERCA - VI LIVELLO PROFESSIONALE – PRESSO L’UNITA’ PIANIFICAZIONE, PROGRAMMAZIONE E BIBLIOTECA CENTRALE DELLA DIREZIONE CENTRALE SERVIZI ALLA RICERCA – DEL CONSIGLIO NAZIONALE DELLE RICERCHE\nBANDO N. 365.196 CTER UPPBC\nAllegati\nRettifica bando\n- Protocollo 266295\ndel 14-07-2025\nConclusione procedura\n- Protocollo 475634\ndel 25-11-2025\nPagina aggiornata il 26-11-2025 07:11:59\nQuesta pagina ti è stata utile?\nSì\nNo\nSelect one\nIl contenuto della pagina non è chiaro\nLe informazioni sono incomplete",
+    "allegati": [
+      {
+        "titolo": "Rettifica bando",
+        "link": "https://www.urp.cnr.it/system/files?file=2025-07/Rettifica-Bando-365.196-CTER-UPPBC_signed.pdf",
+        "protocollo": "266295",
+        "data": "14-07-2025"
+      },
+      {
+        "titolo": "Conclusione procedura",
+        "link": "https://www.urp.cnr.it/system/files?file=2025-11/Bando-365.196-Provvedimento-esito-negativo_signed.pdf",
+        "protocollo": "475634",
+        "data": "25-11-2025"
+      }
+    ],
+    "tipologia": "mobilità",
+    "codice": "BANDO N. 365.196 CTER UPPBC"
   },
   {
     "url": "https://www.urp.cnr.it/node/29157",
@@ -348,42 +354,6 @@
     "codice": "AVVISO 01-COMANDO-2024 IBB"
   },
   {
-    "url": "https://www.urp.cnr.it/node/18219",
-    "data_pubblicazione_bando": "30-10-2024",
-    "numero_protocollo": "412067",
-    "graduatoria_presente": true,
-    "data_pubblicazione_graduatoria": "18-04-2025",
-    "estratto": "Tipologia:\nConcorsi e Selezioni\n-\nBandi Pubblici - Mobilità\nProtocollo 412067\ndel  30-10-2024\nBANDO DI MOBILITÀ ESTERNA VOLONTARIA, PER TITOLI E COLLOQUIO, AI SENSI\nDELL’ART. 30 D.LGS N. 165/2001, PER LA COPERTURA DI N. 1 POSIZIONE, CON\nCONTRATTO DI LAVORO A TEMPO PIENO E INDETERMINATO PROFILO DI\nCOLLABORATORE ENTI DI RICERCA - VI LIVELLO PROFESSIONALE – PRESSO\nL’AREA TERRITORIALE DI RICERCA DI COSENZA – DEL CONSIGLIO NAZIONALE DELLE\nRICERCHE\nBANDO N. 365.191 CTER ADR CS\nAllegati\nErrata corrige Bando\n- Protocollo 415273\ndel 31-10-2024\nCommissione\n- Protocollo 19100\ndel 23-01-2025\nCriteri di valutazione\n- Protocollo 56952\ndel 27-02-2025\nGraduatoria\n- Protocollo 133289\ndel 18-04-2025\nPagina aggiornata il 18-04-2025 16:04:30\nQuesta pagina ti è stata utile?\nSì\nNo\nSelect one\nIl contenuto della pagina non è chiaro\nLe informazioni sono incomplete",
-    "allegati": [
-      {
-        "titolo": "Errata corrige Bando",
-        "link": "https://www.urp.cnr.it/system/files?file=2024-10/Errata-corrige-Bando-365.191-CTER-ADR-CS_signed.pdf",
-        "protocollo": "415273",
-        "data": "31-10-2024"
-      },
-      {
-        "titolo": "Commissione",
-        "link": "https://www.urp.cnr.it/system/files?file=2025-01/365.191-CTER-ATR-CS-nomina-commissione-e-segretario-Mobilita_signed.pdf",
-        "protocollo": "19100",
-        "data": "23-01-2025"
-      },
-      {
-        "titolo": "Criteri di valutazione",
-        "link": "https://www.urp.cnr.it/system/files?file=2025-02/criteri_365-191_Redacted.pdf",
-        "protocollo": "56952",
-        "data": "27-02-2025"
-      },
-      {
-        "titolo": "Graduatoria",
-        "link": "https://www.urp.cnr.it/system/files?file=2025-04/Bando-365.191-CTER-ATR-CS-Accertamento-e-nomina-vincitore_signed.pdf",
-        "protocollo": "133289",
-        "data": "18-04-2025"
-      }
-    ],
-    "tipologia": "mobilità",
-    "codice": "BANDO N. 365.191 CTER ADR CS"
-  },
-  {
     "url": "https://www.urp.cnr.it/node/18220",
     "data_pubblicazione_bando": "30-10-2024",
     "numero_protocollo": "412070",
@@ -420,34 +390,40 @@
     "codice": "BANDO N. 365.192 CTER ISTI"
   },
   {
-    "url": "https://www.urp.cnr.it/node/16989",
-    "data_pubblicazione_bando": "14-10-2024",
-    "numero_protocollo": "379748",
+    "url": "https://www.urp.cnr.it/node/18219",
+    "data_pubblicazione_bando": "30-10-2024",
+    "numero_protocollo": "412067",
     "graduatoria_presente": true,
-    "data_pubblicazione_graduatoria": "05-05-2025",
-    "estratto": "Tipologia:\nConcorsi e Selezioni\n-\nBandi Pubblici - Mobilità\nProtocollo 379748\ndel  14-10-2024\nBANDO DI MOBILITÀ ESTERNA VOLONTARIA, PER TITOLI E COLLOQUIO, AI SENSI\nDELL’ART. 30 D.LGS N. 165/2001, PER LA COPERTURA DI N. 1 POSIZIONE, CON\nCONTRATTO DI LAVORO A TEMPO PIENO E INDETERMINATO PROFILO DI\nFUNZIONARIO DI AMMINISTRAZIONE - V LIVELLO PROFESSIONALE – PRESSO IL\nCENTRO INTERDIPARTIMENTALE PER L’ETICA E L’INTEGRITA’ NELLA RICERCA DEL\nCONSIGLIO NAZIONALE DELLE RICERCHE - ROMA\nBANDO N. 365.189 FA CID ETHICS\nAllegati\nCommissione\n- Protocollo 19099\ndel 23-01-2025\nCriteri di valutazione\n- Protocollo 72608\ndel 11-03-2025\nGraduatoria\n- Protocollo 149827\ndel 05-05-2025\nPagina aggiornata il 06-05-2025 08:05:55\nQuesta pagina ti è stata utile?\nSì\nNo\nSelect one\nIl contenuto della pagina non è chiaro\nLe informazioni sono incomplete",
+    "data_pubblicazione_graduatoria": "18-04-2025",
+    "estratto": "Tipologia:\nConcorsi e Selezioni\n-\nBandi Pubblici - Mobilità\nProtocollo 412067\ndel  30-10-2024\nBANDO DI MOBILITÀ ESTERNA VOLONTARIA, PER TITOLI E COLLOQUIO, AI SENSI\nDELL’ART. 30 D.LGS N. 165/2001, PER LA COPERTURA DI N. 1 POSIZIONE, CON\nCONTRATTO DI LAVORO A TEMPO PIENO E INDETERMINATO PROFILO DI\nCOLLABORATORE ENTI DI RICERCA - VI LIVELLO PROFESSIONALE – PRESSO\nL’AREA TERRITORIALE DI RICERCA DI COSENZA – DEL CONSIGLIO NAZIONALE DELLE\nRICERCHE\nBANDO N. 365.191 CTER ADR CS\nAllegati\nErrata corrige Bando\n- Protocollo 415273\ndel 31-10-2024\nCommissione\n- Protocollo 19100\ndel 23-01-2025\nCriteri di valutazione\n- Protocollo 56952\ndel 27-02-2025\nGraduatoria\n- Protocollo 133289\ndel 18-04-2025\nPagina aggiornata il 18-04-2025 16:04:30\nQuesta pagina ti è stata utile?\nSì\nNo\nSelect one\nIl contenuto della pagina non è chiaro\nLe informazioni sono incomplete",
     "allegati": [
       {
+        "titolo": "Errata corrige Bando",
+        "link": "https://www.urp.cnr.it/system/files?file=2024-10/Errata-corrige-Bando-365.191-CTER-ADR-CS_signed.pdf",
+        "protocollo": "415273",
+        "data": "31-10-2024"
+      },
+      {
         "titolo": "Commissione",
-        "link": "https://www.urp.cnr.it/system/files?file=2025-01/365.189-nomina-commissione-e-segretario-Mobilita-Funzionario_signed.pdf",
-        "protocollo": "19099",
+        "link": "https://www.urp.cnr.it/system/files?file=2025-01/365.191-CTER-ATR-CS-nomina-commissione-e-segretario-Mobilita_signed.pdf",
+        "protocollo": "19100",
         "data": "23-01-2025"
       },
       {
         "titolo": "Criteri di valutazione",
-        "link": "https://www.urp.cnr.it/system/files?file=2025-03/365.189-FA-CID-ETHICS-Stralcio-criteri_signed.pdf",
-        "protocollo": "72608",
-        "data": "11-03-2025"
+        "link": "https://www.urp.cnr.it/system/files?file=2025-02/criteri_365-191_Redacted.pdf",
+        "protocollo": "56952",
+        "data": "27-02-2025"
       },
       {
         "titolo": "Graduatoria",
-        "link": "https://www.urp.cnr.it/system/files?file=2025-05/Bando-365.189-FA-CID-ETHICS-Accertamento-e-nomina-vincitore_signed.pdf",
-        "protocollo": "149827",
-        "data": "05-05-2025"
+        "link": "https://www.urp.cnr.it/system/files?file=2025-04/Bando-365.191-CTER-ATR-CS-Accertamento-e-nomina-vincitore_signed.pdf",
+        "protocollo": "133289",
+        "data": "18-04-2025"
       }
     ],
     "tipologia": "mobilità",
-    "codice": "BANDO N. 365.189 FA CID ETHICS"
+    "codice": "BANDO N. 365.191 CTER ADR CS"
   },
   {
     "url": "https://www.urp.cnr.it/node/16990",
@@ -478,6 +454,36 @@
     ],
     "tipologia": "mobilità",
     "codice": "BANDO N. 365.190 CA"
+  },
+  {
+    "url": "https://www.urp.cnr.it/node/16989",
+    "data_pubblicazione_bando": "14-10-2024",
+    "numero_protocollo": "379748",
+    "graduatoria_presente": true,
+    "data_pubblicazione_graduatoria": "05-05-2025",
+    "estratto": "Tipologia:\nConcorsi e Selezioni\n-\nBandi Pubblici - Mobilità\nProtocollo 379748\ndel  14-10-2024\nBANDO DI MOBILITÀ ESTERNA VOLONTARIA, PER TITOLI E COLLOQUIO, AI SENSI\nDELL’ART. 30 D.LGS N. 165/2001, PER LA COPERTURA DI N. 1 POSIZIONE, CON\nCONTRATTO DI LAVORO A TEMPO PIENO E INDETERMINATO PROFILO DI\nFUNZIONARIO DI AMMINISTRAZIONE - V LIVELLO PROFESSIONALE – PRESSO IL\nCENTRO INTERDIPARTIMENTALE PER L’ETICA E L’INTEGRITA’ NELLA RICERCA DEL\nCONSIGLIO NAZIONALE DELLE RICERCHE - ROMA\nBANDO N. 365.189 FA CID ETHICS\nAllegati\nCommissione\n- Protocollo 19099\ndel 23-01-2025\nCriteri di valutazione\n- Protocollo 72608\ndel 11-03-2025\nGraduatoria\n- Protocollo 149827\ndel 05-05-2025\nPagina aggiornata il 06-05-2025 08:05:55\nQuesta pagina ti è stata utile?\nSì\nNo\nSelect one\nIl contenuto della pagina non è chiaro\nLe informazioni sono incomplete",
+    "allegati": [
+      {
+        "titolo": "Commissione",
+        "link": "https://www.urp.cnr.it/system/files?file=2025-01/365.189-nomina-commissione-e-segretario-Mobilita-Funzionario_signed.pdf",
+        "protocollo": "19099",
+        "data": "23-01-2025"
+      },
+      {
+        "titolo": "Criteri di valutazione",
+        "link": "https://www.urp.cnr.it/system/files?file=2025-03/365.189-FA-CID-ETHICS-Stralcio-criteri_signed.pdf",
+        "protocollo": "72608",
+        "data": "11-03-2025"
+      },
+      {
+        "titolo": "Graduatoria",
+        "link": "https://www.urp.cnr.it/system/files?file=2025-05/Bando-365.189-FA-CID-ETHICS-Accertamento-e-nomina-vincitore_signed.pdf",
+        "protocollo": "149827",
+        "data": "05-05-2025"
+      }
+    ],
+    "tipologia": "mobilità",
+    "codice": "BANDO N. 365.189 FA CID ETHICS"
   },
   {
     "url": "https://www.urp.cnr.it/node/13775",

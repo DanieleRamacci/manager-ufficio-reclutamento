@@ -9,6 +9,8 @@
       font-family: sans-serif;
       margin: 20px;
     }
+    header { background: #0b3d91; color: #fff; padding: 16px 24px; }
+    header a { color: #fff; margin-right: 12px; text-decoration: none; }
     .document-block {
       border: 2px solid #444;
       padding: 10px;
@@ -173,27 +175,21 @@
   </style>
 </head>
 <body>
-      <nav style="margin-bottom: 20px;">
-    <a href="index.html" style="margin-right: 15px;">Controllo Bandi</a>
-    <a href="access.html" style="margin-right: 15px;">Accessibilità URP</a>
-    <a href="verifica-access.html" style="margin-right: 15px;">Verifica PDF</a>
-
-    <a href="mobilita-urp.html" style="margin-right: 15px;">mobilità</a>
-    <a href="report-mese.html" style="margin-right: 15px;">Report del Mese</a>
-    <a href="stato-avanzamento.html" style="margin-right: 15px;">Stato avanzamento</a>
-    <a href="redazione-firme.html" style="margin-right: 15px;">Redazione Firme AI</a>
-    <a href="firme-jobs.html" style="margin-right: 15px; font-weight: 600;">Riepilogo Job</a>
-
-
- <!-- 🔹 Badge di stato globale -->
+  <header>
+    <a href="index.html">Home</a>
+    <a href="redazione-firme.html">Redazione Firme</a>
+    <strong>Riepilogo Job</strong>
+  </header>
+  <!-- 🔹 Badge di stato globale -->
   <span id="statusBadge" style="margin-left: 16px; font-size: 0.9em;"></span>
-</nav>
   <h1>Redazione firme documenti</h1>
   <div id="sidebar-nav" class="sidebar-nav">
     <div class="sidebar-actions">
       <button id="save-job-btn" disabled>Salva modifiche</button>
-      <a href="firme-jobs.html" class="sidebar-link">Riepilogo job</a>
+      <a href="firme-jobs.html" class="sidebar-link">Vai alla dashboard</a>
       <span id="job-id-label" class="sidebar-job-id"></span>
+      <span id="job-progressive" class="sidebar-job-id"></span>
+      <span id="job-label-display" class="sidebar-job-id"></span>
     </div>
   </div>
 
@@ -203,7 +199,7 @@
   <div id="pages-wrapper"></div>
 
   <div class="controls">
-    <button id="confirm-btn" disabled>Conferma e genera PDF oscurati</button>
+    <button id="confirm-btn" disabled>Genera PDF oscurati</button>
     <span id="confirm-spinner" style="margin-left: 10px; display: none;">⏳ Generazione ZIP...</span>
   </div>
 
@@ -223,6 +219,8 @@
 
     let currentJobId = null;
     let pollTimer = null;
+    const jobProgressiveEl = document.getElementById('job-progressive');
+    const jobLabelDisplayEl = document.getElementById('job-label-display');
 
     function stopPolling() {
       if (pollTimer) {
@@ -275,7 +273,30 @@
           }
           const job = res.job || {};
           const docs = res.documents || [];
-          jobIdLabel.textContent = `Job: ${jobId}`;
+          
+          // Estrai numero bando da job_label
+          let numeroBando = '';
+          if (job.job_label) {
+            const match = job.job_label.match(/(\d{3})[\.\s]?(\d{3})/);
+            if (match) {
+              numeroBando = match[1] + match[2];
+            }
+          }
+          
+          jobIdLabel.textContent = numeroBando ? `Bando: ${numeroBando}` : `Job: ${jobId}`;
+          // show job label text
+          if (jobLabelDisplayEl) jobLabelDisplayEl.textContent = job.job_label || '';
+          // compute progressive number by fetching jobs list
+          if (jobProgressiveEl) {
+            fetch('/api/firme/jobs')
+              .then(r => r.json())
+              .then(listRes => {
+                const jobs = listRes.jobs || [];
+                const idx = jobs.findIndex(j => j.job_id === jobId);
+                if (idx >= 0) jobProgressiveEl.textContent = `#${idx + 1}`;
+                else jobProgressiveEl.textContent = '';
+              }).catch(() => { jobProgressiveEl.textContent = ''; });
+          }
           currentJobId = jobId;
           localStorage.setItem('pii_job_id', jobId);
 
@@ -299,8 +320,21 @@
     function startPolling(jobId) {
       currentJobId = jobId;
       localStorage.setItem('pii_job_id', jobId);
+      // Mostra Job ID di default, verrà aggiornato quando caricheremo job_label
       jobIdLabel.textContent = `Job: ${jobId}`;
       stopPolling();
+      // Carica il job per ottenere job_label
+      fetch(`/api/firme/jobs/${jobId}`)
+        .then(r => r.json())
+        .then(res => {
+          const job = res.job || {};
+          if (job.job_label) {
+            const match = job.job_label.match(/(\d{3})[\.\s]?(\d{3})/);
+            if (match) {
+              jobIdLabel.textContent = `Bando: ${match[1]}${match[2]}`;
+            }
+          }
+        });
       pollTimer = setInterval(() => {
         fetch(`/api/firme/status/${jobId}`)
           .then(r => r.json())
@@ -827,7 +861,7 @@ img.onload = function () {
     return;
   }
 
-  statusEl.textContent = 'Generazione PDF oscurati e preparazione ZIP...';
+    statusEl.textContent = 'Salvataggio modifiche e generazione PDF oscurati...';
   confirmBtn.disabled = true;
   if (confirmSpinner) {
     confirmSpinner.style.display = 'inline-block';
@@ -873,7 +907,7 @@ img.onload = function () {
     }))
   };
 
-  fetch('/api/firme/confirm', {
+  fetch('/api/firme/generate', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(payload)
@@ -911,7 +945,7 @@ img.onload = function () {
     a.remove();
     window.URL.revokeObjectURL(url);
 
-    statusEl.textContent = 'ZIP scaricato correttamente. Il job resta disponibile per ulteriori modifiche.';
+    statusEl.textContent = '✅ ZIP scaricato. Puoi modificare ancora e rigenerare tutte le volte che vuoi.';
     confirmBtn.disabled = false;
     if (confirmSpinner) {
       confirmSpinner.style.display = 'none';

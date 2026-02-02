@@ -64,8 +64,10 @@ def build_pii_boxes(pii: dict, tokens: list[dict], width: int, height: int) -> l
         add_box(item, "EMAIL", "high")
     for item in pii.get("phones", []):
         add_box(item, "PHONE", "high")
+    # Oscura SOLO date di nascita (context="birth"), non le date generiche del documento
     for item in pii.get("birth_dates", []):
-        add_box(item, "DATE", "high")
+        if item.get("context") == "birth":
+            add_box(item, "DATE_BIRTH", "high")
     for item in pii.get("doc_numbers", []):
         add_box(item, item.get("type", "DOC"), item.get("confidence"))
 

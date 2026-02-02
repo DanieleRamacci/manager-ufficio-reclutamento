@@ -19,10 +19,13 @@
     .badge.running { background: #ffe08a; }
     .badge.done { background: #c6f6d5; }
     .badge.edit { background: #bee3f8; }
+    .badge.saved { background: #c6f6d5; color: #085c1a; }
     .btn { background: #0b3d91; color: #fff; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+      .btn { background: #0b3d91; color: #fff; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+      .btn[disabled] { opacity: 0.6; cursor: not-allowed; }
     .btn.secondary { background: #666; }
     .btn.danger { background: #c53030; }
-    .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+      .row-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .owner-cell { display: flex; align-items: center; gap: 6px; }
     .share-toggle { background: #e2e8f0; border: 1px solid #cbd5e0; color: #1a202c; padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 12px; }
     .share-panel { display: none; margin-top: 6px; }
@@ -34,6 +37,18 @@
     .form-row label { font-size: 12px; display: flex; align-items: center; gap: 6px; }
     .form-row input, .form-row select { font-size: 12px; padding: 4px 6px; }
     .admin-grid { display: none; }
+    /* collapse section for admin */
+    .collapse-header { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 12px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 16px; font-weight: bold; }
+    .collapse-header:hover { background: #f0f0f0; }
+    .collapse-icon { display: inline-block; width: 20px; text-align: center; transition: transform 0.2s; }
+    .collapse-icon.closed { transform: rotate(-90deg); }
+    .collapse-content { display: none; }
+    .collapse-content.open { display: block; }
+    /* suggestions dropdown for job-label */
+    .suggestions { position: relative; }
+    .suggestions-list { position: absolute; left: 0; right: 0; background: #fff; border: 1px solid #ddd; max-height: 220px; overflow-y: auto; z-index: 50; border-radius: 4px; box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
+    .suggestion-item { padding: 8px 10px; cursor: pointer; font-size: 13px; border-bottom: 1px solid #f0f0f0; }
+    .suggestion-item:hover { background: #f5f7ff; }
   </style>
 </head>
 <body>
@@ -47,8 +62,15 @@
       <h2>Nuovo job</h2>
       <form id="upload-form">
         <input type="file" id="pdf-input" name="pdf" accept="application/pdf" multiple required>
-        <input type="text" id="job-label" name="job_label" placeholder="Etichetta (es. Bando 367.471)" style="margin-left: 8px;">
-        <input type="text" id="job-note" name="job_note" placeholder="Nota/parte (es. parte 1)" style="margin-left: 8px;">
+        <div style="display:inline-block; position:relative; margin-left:8px;">
+          <input type="text" id="job-label" name="job_label" placeholder="Etichetta (es. Bando 367.471)" style="">
+          <div id="bando-suggestions" class="suggestions">
+            <div class="suggestions-list" id="bando-suggestions-list" style="display:none;"></div>
+          </div>
+        </div>
+        <label style="margin-left: 8px;">
+          <input type="checkbox" id="live-search-toggle" checked> 🔄 Ricerca Live
+        </label>
         <label style="margin-left: 8px;">
           <input type="checkbox" id="pii-toggle" checked> OCR/PII
         </label>
@@ -60,54 +82,61 @@
       <div id="upload-status" class="muted"></div>
     </div>
 
-    <div class="grid admin-grid" id="admin-grid">
-      <div class="card">
-        <h2>Risorse macchina</h2>
-        <div id="stats-box" class="muted">Caricamento...</div>
-      </div>
-      <div class="card">
-        <h2>Legenda</h2>
-        <div class="muted">
-          <div><span class="badge running">in corso</span> Analisi in esecuzione</div>
-          <div><span class="badge edit">da editare</span> Analisi finita, serve revisione</div>
-          <div><span class="badge done">completato</span> Export già eseguito</div>
+    <!-- Collapse section for Admin tools -->
+    <div class="collapse-header" id="admin-collapse-header">
+      <span class="collapse-icon closed">▶</span>
+      <span>⚙️ Strumenti Admin</span>
+    </div>
+    <div class="collapse-content" id="admin-collapse-content">
+      <div class="grid admin-grid" id="admin-grid">
+        <div class="card">
+          <h2>Risorse macchina</h2>
+          <div id="stats-box" class="muted">Caricamento...</div>
         </div>
-      </div>
-      <div class="card">
-        <h2>Monitor parallelizzazione</h2>
-        <div id="metrics-box" class="muted">Caricamento...</div>
-        <div style="margin-top: 8px;">
-          <a id="metrics-download" class="btn secondary" href="/api/system/report.txt" download>Scarica report txt</a>
+        <div class="card">
+          <h2>Legenda</h2>
+          <div class="muted">
+            <div><span class="badge running">in corso</span> Analisi in esecuzione</div>
+            <div><span class="badge edit">da editare</span> Analisi finita, serve revisione</div>
+            <div><span class="badge done">completato</span> Export già eseguito</div>
+          </div>
         </div>
-        <div id="config-box" style="margin-top: 16px;">
-          <div class="muted" style="margin-bottom: 8px;">Config runtime (admin)</div>
-          <form id="config-form" class="inline-form">
-            <div class="form-row">
-              <label>Workers <input type="number" id="cfg-workers" min="1" max="48"></label>
-              <label>DPI <input type="number" id="cfg-dpi" min="72" max="400"></label>
-              <label>ImgSz <input type="number" id="cfg-imgsz" min="320" max="1280"></label>
-              <label>Conf <input type="number" id="cfg-conf" step="0.01" min="0" max="1"></label>
-              <label>IoU <input type="number" id="cfg-iou" step="0.01" min="0" max="1"></label>
-            </div>
-            <div class="form-row">
-              <label>OCR lang <input type="text" id="cfg-ocr-lang"></label>
-              <label>OCR config <input type="text" id="cfg-ocr-config" style="width: 320px;"></label>
-            </div>
-            <div class="form-row">
-              <label><input type="checkbox" id="cfg-pii-default"> PII attivo di default</label>
-              <label>Tabella default
-                <select id="cfg-table-mode">
-                  <option value="full">full</option>
-                  <option value="columns">columns</option>
-                </select>
-              </label>
-            </div>
-            <div class="form-row">
-              <button class="btn" type="submit">Salva config</button>
-              <button class="btn secondary" type="button" id="cfg-reset">Reset</button>
-              <span id="config-status" class="muted"></span>
-            </div>
-          </form>
+        <div class="card">
+          <h2>Monitor parallelizzazione</h2>
+          <div id="metrics-box" class="muted">Caricamento...</div>
+          <div style="margin-top: 8px;">
+            <a id="metrics-download" class="btn secondary" href="/api/system/report.txt" download>Scarica report txt</a>
+          </div>
+          <div id="config-box" style="margin-top: 16px;">
+            <div class="muted" style="margin-bottom: 8px;">Config runtime (admin)</div>
+            <form id="config-form" class="inline-form">
+              <div class="form-row">
+                <label>Workers <input type="number" id="cfg-workers" min="1" max="48"></label>
+                <label>DPI <input type="number" id="cfg-dpi" min="72" max="400"></label>
+                <label>ImgSz <input type="number" id="cfg-imgsz" min="320" max="1280"></label>
+                <label>Conf <input type="number" id="cfg-conf" step="0.01" min="0" max="1"></label>
+                <label>IoU <input type="number" id="cfg-iou" step="0.01" min="0" max="1"></label>
+              </div>
+              <div class="form-row">
+                <label>OCR lang <input type="text" id="cfg-ocr-lang"></label>
+                <label>OCR config <input type="text" id="cfg-ocr-config" style="width: 320px;"></label>
+              </div>
+              <div class="form-row">
+                <label><input type="checkbox" id="cfg-pii-default"> PII attivo di default</label>
+                <label>Tabella default
+                  <select id="cfg-table-mode">
+                    <option value="full">full</option>
+                    <option value="columns">columns</option>
+                  </select>
+                </label>
+              </div>
+              <div class="form-row">
+                <button class="btn" type="submit">Salva config</button>
+                <button class="btn secondary" type="button" id="cfg-reset">Reset</button>
+                <span id="config-status" class="muted"></span>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
     </div>
@@ -117,9 +146,8 @@
       <table id="jobs-running">
         <thead>
           <tr>
-            <th>Job ID</th>
+            <th>#</th>
             <th>Etichetta</th>
-            <th>Nota</th>
             <th>Owner</th>
             <th>Autorizzati</th>
             <th>Progresso</th>
@@ -136,30 +164,11 @@
       <table id="jobs-edit">
         <thead>
           <tr>
-            <th>Job ID</th>
+            <th>#</th>
             <th>Etichetta</th>
-            <th>Nota</th>
             <th>Owner</th>
             <th>Autorizzati</th>
             <th>Stato</th>
-            <th>Aggiornato</th>
-            <th>Azioni</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-
-    <div class="card">
-      <h2>Processi completati</h2>
-      <table id="jobs-done">
-        <thead>
-          <tr>
-            <th>Job ID</th>
-            <th>Etichetta</th>
-            <th>Nota</th>
-            <th>Owner</th>
-            <th>Autorizzati</th>
             <th>Aggiornato</th>
             <th>Azioni</th>
           </tr>
@@ -205,6 +214,79 @@
     let shareEditing = false;
     let isAdminUser = false;
     let adminIntervalsStarted = false;
+    let currentUserEmail = null;
+
+    // Collapse handler for Admin section
+    const adminCollapseHeader = document.getElementById('admin-collapse-header');
+    const adminCollapseContent = document.getElementById('admin-collapse-content');
+    const adminCollapseIcon = adminCollapseHeader.querySelector('.collapse-icon');
+    
+    adminCollapseHeader.addEventListener('click', () => {
+      adminCollapseContent.classList.toggle('open');
+      adminCollapseIcon.classList.toggle('closed');
+    });
+
+    // Autocomplete for job-label using server-side bandi list
+    const bandoListEl = document.getElementById('bando-suggestions-list');
+    const liveSearchToggle = document.getElementById('live-search-toggle');
+    let bandoTimeout = null;
+    let lastSearchQuery = null;  // Track the most recent search query
+    jobLabelInput.addEventListener('input', (e) => {
+      const q = (e.target.value || '').trim();
+      if (bandoTimeout) clearTimeout(bandoTimeout);
+      if (!q) { bandoListEl.style.display = 'none'; return; }
+      bandoTimeout = setTimeout(() => {
+        lastSearchQuery = q;  // Update the last search query
+        const useLive = liveSearchToggle && liveSearchToggle.checked;
+        const url = `/api/bandi/search?q=${encodeURIComponent(q)}&limit=10${useLive ? '&live=1' : ''}`;
+        console.log(`[SEARCH] Query: "${q}", Live: ${useLive}, URL: ${url}`);
+        fetch(url)
+          .then(r => {
+            console.log(`[SEARCH] Response status: ${r.status}`);
+            return r.json();
+          })
+          .then(res => {
+            // Only process if this is still the most recent search
+            if (q !== lastSearchQuery) {
+              console.log(`[SEARCH] Ignoring stale response for "${q}" (current: "${lastSearchQuery}")`);
+              return;
+            }
+            console.log(`[SEARCH] Results received:`, res);
+            const items = res.results || [];
+            bandoListEl.innerHTML = '';
+            if (!items.length) { 
+              console.log(`[SEARCH] No items found`);
+              bandoListEl.style.display = 'none'; 
+              return; 
+            }
+            console.log(`[SEARCH] Showing ${items.length} items`);
+            items.forEach(it => {
+              const div = document.createElement('div');
+              div.className = 'suggestion-item';
+              div.innerHTML = `<strong>${it.codice}</strong> — ${it.titolo}`;
+              div.addEventListener('click', () => {
+                // Prefill job-label with standard titolo (user asked numero bando): use titolo
+                jobLabelInput.value = it.titolo || it.codice || '';
+                bandoListEl.style.display = 'none';
+              });
+              bandoListEl.appendChild(div);
+            });
+            bandoListEl.style.display = 'block';
+          })
+          .catch(err => { 
+            console.error(`[SEARCH] Fetch error:`, err);
+            bandoListEl.style.display = 'none'; 
+          });
+      }, 600);
+    });
+    // click outside closes suggestions
+    document.addEventListener('click', (ev) => {
+      if (!ev.target.closest || !document.getElementById('bando-suggestions')) return;
+      const container = document.getElementById('bando-suggestions');
+      if (container && !container.contains(ev.target) && ev.target !== jobLabelInput) {
+        bandoListEl.style.display = 'none';
+      }
+    });
 
     function setAdminUI(isAdmin) {
       if (!adminGrid) return;
@@ -214,10 +296,8 @@
     function renderJobs(list, isAdmin) {
       const tbodyRun = document.querySelector('#jobs-running tbody');
       const tbodyEdit = document.querySelector('#jobs-edit tbody');
-      const tbodyDone = document.querySelector('#jobs-done tbody');
       tbodyRun.innerHTML = '';
       tbodyEdit.innerHTML = '';
-      tbodyDone.innerHTML = '';
 
       list.sort((a, b) => {
         const la = (a.job_label || '').toLowerCase();
@@ -229,6 +309,19 @@
         return (b.created_at || 0) - (a.created_at || 0);
       });
 
+      let runCounter = 0, editCounter = 0;
+      const labelColors = {};
+      const colors = ['#f0f4ff', '#fff4f0', '#f0fff4', '#fff9f0', '#f4f0ff'];
+      let colorIndex = 0;
+      
+      list.forEach(job => {
+        const label = job.job_label || '';
+        if (label && !labelColors[label]) {
+          labelColors[label] = colors[colorIndex % colors.length];
+          colorIndex++;
+        }
+      });
+      
       list.forEach(job => {
         const isRunning = job.status === 'queued' || job.status === 'running';
         const isDone = job.status === 'done';
@@ -255,14 +348,13 @@
 
         const metaBtn = document.createElement('button');
         metaBtn.className = 'btn secondary';
-        metaBtn.textContent = 'Etichetta/nota';
+        metaBtn.textContent = 'Etichetta';
         metaBtn.onclick = () => {
           const newLabel = prompt('Etichetta job:', job.job_label || '') || '';
-          const newNote = prompt('Nota/parte:', job.job_note || '') || '';
           fetch(`/api/firme/jobs/${job.job_id}/meta`, {
             method: 'POST',
             headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({job_label: newLabel.trim(), job_note: newNote.trim()}),
+            body: JSON.stringify({job_label: newLabel.trim()}),
           }).then(r => r.json()).then(res => {
             if (res.error) {
               alert('Errore: ' + res.error);
@@ -272,6 +364,22 @@
           });
         };
         actions.appendChild(metaBtn);
+
+        // Controllo permessi: solo owner, admin o utente autorizzato può modificare/eliminare/aprire editor
+        (function(){
+          const current = (currentUserEmail || '').toLowerCase();
+          const owner = (job.owner_email || '').toLowerCase();
+          const acl = Array.isArray(job.authorized) ? job.authorized.map(a => (a||'').toLowerCase()) : [];
+          const allowed = isAdminUser || (current && (current === owner)) || (current && acl.includes(current));
+          if (!allowed) {
+            resumeBtn.disabled = true;
+            delBtn.disabled = true;
+            metaBtn.disabled = true;
+            resumeBtn.title = 'Solo il proprietario o un amministratore possono aprire l\'editor';
+            delBtn.title = 'Solo il proprietario o un amministratore possono eliminare questo job';
+            metaBtn.title = 'Solo il proprietario o un amministratore possono modificare l\'etichetta';
+          }
+        })();
 
         function buildOwnerCell() {
           const wrapper = document.createElement('div');
@@ -372,9 +480,11 @@
         }
 
         if (isRunning) {
-          tr.innerHTML = `<td>${job.job_id}</td><td>${job.job_label || '-'}</td><td>${job.job_note || '-'}</td><td></td><td></td><td>${job.progress.done}/${job.progress.total}</td><td>${fmtEta(job.eta_sec)}</td>`;
-          tr.children[3].appendChild(buildOwnerCell());
-          tr.children[4].appendChild(buildAclCell());
+          runCounter++;
+          tr.innerHTML = `<td>${runCounter}</td><td>${job.job_label || '-'}</td><td></td><td></td><td>${job.progress.done}/${job.progress.total}</td><td>${fmtEta(job.eta_sec)}</td>`;
+          tr.style.backgroundColor = labelColors[job.job_label] || '#fff';
+          tr.children[2].appendChild(buildOwnerCell());
+          tr.children[3].appendChild(buildAclCell());
           const td = document.createElement('td');
           const monitorBtn = document.createElement('button');
           monitorBtn.className = 'btn secondary';
@@ -385,36 +495,23 @@
           tr.appendChild(td);
           tbodyRun.appendChild(tr);
         } else if (needsEdit) {
-          tr.innerHTML = `<td>${job.job_id}</td><td>${job.job_label || '-'}</td><td>${job.job_note || '-'}</td><td></td><td></td><td><span class="badge edit">da editare</span></td><td>${fmtDate(job.updated_at)}</td>`;
-          tr.children[3].appendChild(buildOwnerCell());
-          tr.children[4].appendChild(buildAclCell());
+          editCounter++;
+          tr.innerHTML = `<td>${editCounter}</td><td>${job.job_label || '-'}</td><td></td><td></td><td></td><td>${fmtDate(job.updated_at)}</td>`;
+          tr.style.backgroundColor = labelColors[job.job_label] || '#fff';
+          tr.children[2].appendChild(buildOwnerCell());
+          tr.children[3].appendChild(buildAclCell());
+          // Status badge: 'salvato' se redaction_status === 'saved', altrimenti 'da editare'
+          const statusCell = tr.children[4];
+          if (job.redaction_status === 'saved' || job.saved) {
+            statusCell.innerHTML = '<span class="badge saved">salvato</span>';
+          } else {
+            statusCell.innerHTML = '<span class="badge edit">da editare</span>';
+          }
           const td = document.createElement('td');
           td.appendChild(resumeBtn);
           td.appendChild(actions);
           tr.appendChild(td);
           tbodyEdit.appendChild(tr);
-        } else {
-          tr.innerHTML = `<td>${job.job_id}</td><td>${job.job_label || '-'}</td><td>${job.job_note || '-'}</td><td></td><td></td><td>${fmtDate(job.updated_at)}</td>`;
-          tr.children[3].appendChild(buildOwnerCell());
-          tr.children[4].appendChild(buildAclCell());
-          const td = document.createElement('td');
-          if (job.redaction_status === 'done') {
-            const dlBtn = document.createElement('button');
-            dlBtn.className = 'btn secondary';
-            dlBtn.textContent = '⬇ Download';
-            dlBtn.onclick = () => {
-              window.location.href = `/api/firme/jobs/${job.job_id}/download`;
-            };
-            td.appendChild(dlBtn);
-          }
-          const reeditBtn = document.createElement('button');
-          reeditBtn.className = 'btn';
-          reeditBtn.textContent = 'Riedita';
-          reeditBtn.onclick = () => { window.location.href = `redazione-firme.html?job_id=${job.job_id}`; };
-          td.appendChild(reeditBtn);
-          td.appendChild(actions);
-          tr.appendChild(td);
-          tbodyDone.appendChild(tr);
         }
       });
     }
@@ -440,6 +537,7 @@
       fetch('/api/firme/jobs')
         .then(r => r.json())
         .then(res => {
+          currentUserEmail = res.current_user_email || null;
           renderJobs(res.jobs || [], res.is_admin);
           isAdminUser = !!res.is_admin;
           setAdminUI(isAdminUser);
@@ -512,6 +610,15 @@
       e.preventDefault();
       const files = document.getElementById('pdf-input').files;
       if (!files.length) return;
+      
+      // Validazione: etichetta obbligatoria
+      const label = (jobLabelInput && jobLabelInput.value || '').trim();
+      if (!label) {
+        uploadStatus.textContent = '⚠️ Errore: inserisci il codice bando (cerca con ricerca live o inserisci manualmente)';
+        uploadStatus.style.color = '#d63031';
+        return;
+      }
+      
       const formData = new FormData();
       for (const f of files) formData.append('pdf', f);
       if (jobLabelInput && jobLabelInput.value) formData.append('job_label', jobLabelInput.value);
@@ -519,14 +626,17 @@
       formData.append('pii', piiToggle.checked ? '1' : '0');
       formData.append('table_mode', tableColumnsOnlyToggle.checked ? 'columns' : 'full');
       uploadStatus.textContent = 'Job in creazione...';
+      uploadStatus.style.color = 'inherit';
       fetch('/api/firme/analyze', {method:'POST', body: formData})
         .then(r => r.json())
         .then(res => {
           if (res.error) {
             uploadStatus.textContent = 'Errore: ' + res.error;
+            uploadStatus.style.color = '#d63031';
             return;
           }
           uploadStatus.textContent = 'Job avviato.';
+          uploadStatus.style.color = '#00b894';
           window.location.href = `redazione-firme.html?job_id=${res.job_id}`;
         });
     });
