@@ -35,17 +35,20 @@
       font-size: 11px;
       padding: 4px 6px;
       border-radius: 6px;
-      z-index: 3;
+      z-index: 1;
       box-shadow: 0 1px 4px rgba(0,0,0,0.15);
     }
     .page-image {
       display: block;
+      position: relative;
+      z-index: 0;
       max-width: 800px;
     }
     .page-canvas {
       position: absolute;
       top: 0;
       left: 0;
+      z-index: 2;
     }
     .controls {
       margin: 20px 0;
@@ -169,6 +172,7 @@
     /* per evitare che la sidebar copra il contenuto */
     body {
       margin-right: 260px;
+      padding-bottom: 90px;
     }
 
 
