@@ -190,6 +190,7 @@
   <div id="sidebar-nav" class="sidebar-nav">
     <div class="sidebar-actions">
       <button id="save-job-btn" disabled>Salva modifiche</button>
+      <button id="refresh-images-btn">Ricarica immagini</button>
       <a href="firme-jobs.html" class="sidebar-link">Vai alla dashboard</a>
       <span id="job-id-label" class="sidebar-job-id"></span>
       <span id="job-progressive" class="sidebar-job-id"></span>
@@ -216,6 +217,7 @@
     const pagesWrapper = document.getElementById('pages-wrapper');
     const confirmBtn = document.getElementById('confirm-btn');
     const saveJobBtn = document.getElementById('save-job-btn');
+    const refreshImagesBtn = document.getElementById('refresh-images-btn');
     const jobIdLabel = document.getElementById('job-id-label');
     const resultEl = document.getElementById('result');
     const sidebarNav = document.getElementById('sidebar-nav');
@@ -556,6 +558,7 @@
           container.id = `doc-${doc.doc_id}-page-${page.index}`;
 
           const img = document.createElement('img');
+          img.dataset.baseSrc = page.image_url;
           img.src = page.image_url;
           img.className = 'page-image';
           img.alt = `Pagina ${page.index} (${doc.filename})`;
@@ -859,171 +862,132 @@ img.onload = function () {
 }
 
 
-  confirmBtn.addEventListener('click', function () {
-  if (!documentsState.length) {
-    alert('Nessun documento in memoria.');
-    return;
-  }
-
-    statusEl.textContent = 'Salvataggio modifiche e generazione PDF oscurati...';
-  confirmBtn.disabled = true;
-  if (confirmSpinner) {
-    confirmSpinner.style.display = 'inline-block';
-  }
-  resultEl.innerHTML = '';
-
-  // riepilogo locale (non dal server)
-  const riepilogo = document.createElement('ul');
-  documentsState.forEach(doc => {
-    const li = document.createElement('li');
-    li.textContent = doc.filename || ('Documento ID: ' + doc.doc_id);
-    riepilogo.appendChild(li);
-  });
-  resultEl.innerHTML = '<h2>Documenti elaborati:</h2>';
-  resultEl.appendChild(riepilogo);
-
-  const payload = {
-    job_id: currentJobId,
-    documents: documentsState.map(doc => ({
-      doc_id: doc.doc_id,
-      filename: doc.filename,
-      pages: doc.pages.map(p => ({
-        page_index: p.page_index,
-        edited_boxes: p.boxes.map(b => ({
-          x: b.x,
-          y: b.y,
-          w: b.w,
-          h: b.h,
-          auto: !!b.auto,
-          source: b.source,
-          score: b.score,
-          label: b.label,
-          confidence: b.confidence,
-          skip_redact: !!b.skip_redact
-        })),
-        boxes: p.boxes.filter(b => !b.skip_redact).map(b => ({
-          x: b.x,
-          y: b.y,
-          w: b.w,
-          h: b.h
+  function buildSavePayload() {
+    return {
+      documents: documentsState.map(doc => ({
+        doc_id: doc.doc_id,
+        filename: doc.filename,
+        pages: doc.pages.map(p => ({
+          index: p.page_index,
+          image_url: p.image_url,
+          width: p.width,
+          height: p.height,
+          auto_boxes: p.auto_boxes || [],
+          pii_boxes: p.pii_boxes || [],
+          pii_reject_boxes: p.pii_reject_boxes || [],
+          table_boxes: p.table_boxes || [],
+          manual_boxes: p.boxes.filter(b => !b.skip_redact && !b.auto).map(b => ({
+            x: b.x,
+            y: b.y,
+            w: b.w,
+            h: b.h
+          })),
+          edited_boxes: p.boxes.map(b => ({
+            x: b.x,
+            y: b.y,
+            w: b.w,
+            h: b.h,
+            auto: !!b.auto,
+            source: b.source,
+            score: b.score,
+            label: b.label,
+            confidence: b.confidence,
+            skip_redact: !!b.skip_redact
+          })),
+          page_index: p.page_index
         }))
       }))
-    }))
-  };
+    };
+  }
 
-  fetch('/api/firme/generate', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(payload)
-  })
-  .then(async response => {
-    if (!response.ok) {
-      // Provo a leggere JSON di errore dal server
-      let msg = 'Errore HTTP ' + response.status;
-      try {
-        const text = await response.text();
-        if (text) {
-          try {
-            const j = JSON.parse(text);
-            if (j.error) msg = j.error;
-          } catch (_) {
-            msg = text;
-          }
-        }
-      } catch (e) {
-        console.error('Errore leggendo il body di errore:', e);
+  function saveCurrentJob() {
+    if (!currentJobId) {
+      return Promise.reject(new Error('Nessun job attivo.'));
+    }
+    const payload = buildSavePayload();
+    return fetch(`/api/firme/jobs/${currentJobId}/save`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(res => {
+      if (res.error) {
+        throw new Error(res.error);
       }
-      throw new Error(msg);
-    }
-    return response.blob();
-  })
-  .then(blob => {
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    const now = new Date();
-    const stamp = now.toISOString().slice(0,19).replace(/[:T]/g,'-');
-    a.download = `export-edited-${stamp}.zip`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
+      return res;
+    });
+  }
 
-    statusEl.textContent = '✅ ZIP scaricato. Puoi modificare ancora e rigenerare tutte le volte che vuoi.';
-    confirmBtn.disabled = false;
-    if (confirmSpinner) {
-      confirmSpinner.style.display = 'none';
+  confirmBtn.addEventListener('click', function () {
+    if (!documentsState.length) {
+      alert('Nessun documento in memoria.');
+      return;
     }
-  })
-  .catch(err => {
-    console.error(err);
-    statusEl.textContent = 'Errore durante la generazione/scaricamento dello ZIP: ' + err.message;
-    confirmBtn.disabled = false;
-    if (confirmSpinner) {
-      confirmSpinner.style.display = 'none';
+    if (!currentJobId) {
+      alert('Nessun job attivo.');
+      return;
     }
+
+    statusEl.textContent = 'Salvataggio modifiche e avvio generazione PDF oscurati...';
+    confirmBtn.disabled = true;
+    if (confirmSpinner) {
+      confirmSpinner.style.display = 'inline-block';
+    }
+    resultEl.innerHTML = '';
+
+    const riepilogo = document.createElement('ul');
+    documentsState.forEach(doc => {
+      const li = document.createElement('li');
+      li.textContent = doc.filename || ('Documento ID: ' + doc.doc_id);
+      riepilogo.appendChild(li);
+    });
+    resultEl.innerHTML = '<h2>Documenti elaborati:</h2>';
+    resultEl.appendChild(riepilogo);
+
+    saveCurrentJob()
+      .then(() => fetch(`/api/firme/jobs/${currentJobId}/export`, { method: 'POST' }))
+      .then(r => r.json())
+      .then(res => {
+        if (res.error) {
+          throw new Error(res.error);
+        }
+        localStorage.setItem('firme_export_job', currentJobId);
+        window.location.href = `firme-jobs.html#job-${currentJobId}`;
+      })
+      .catch(err => {
+        console.error(err);
+        statusEl.textContent = 'Errore durante la generazione dei PDF: ' + err.message;
+        confirmBtn.disabled = false;
+        if (confirmSpinner) {
+          confirmSpinner.style.display = 'none';
+        }
+      });
   });
-});
 
 if (saveJobBtn) {
   saveJobBtn.addEventListener('click', function () {
-  if (!currentJobId) {
-    alert('Nessun job attivo.');
-    return;
-  }
-  const payload = {
-    documents: documentsState.map(doc => ({
-      doc_id: doc.doc_id,
-      filename: doc.filename,
-      pages: doc.pages.map(p => ({
-        index: p.page_index,
-        image_url: p.image_url,
-        width: p.width,
-        height: p.height,
-        auto_boxes: p.auto_boxes || [],
-        pii_boxes: p.pii_boxes || [],
-        pii_reject_boxes: p.pii_reject_boxes || [],
-        table_boxes: p.table_boxes || [],
-        manual_boxes: p.boxes.filter(b => !b.skip_redact && !b.auto).map(b => ({
-          x: b.x,
-          y: b.y,
-          w: b.w,
-          h: b.h
-        })),
-        edited_boxes: p.boxes.map(b => ({
-          x: b.x,
-          y: b.y,
-          w: b.w,
-          h: b.h,
-          auto: !!b.auto,
-          source: b.source,
-          score: b.score,
-          label: b.label,
-          confidence: b.confidence,
-          skip_redact: !!b.skip_redact
-        })),
-        page_index: p.page_index
-      }))
-    }))
-  };
-  fetch(`/api/firme/jobs/${currentJobId}/save`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(payload)
-  })
-  .then(r => r.json())
-  .then(res => {
-    if (res.error) {
-      statusEl.textContent = 'Errore salvataggio: ' + res.error;
-      return;
-    }
-    statusEl.textContent = 'Modifiche salvate.';
-  })
-  .catch(err => {
-    console.error(err);
-    statusEl.textContent = 'Errore salvataggio.';
+    saveCurrentJob()
+      .then(() => { statusEl.textContent = 'Modifiche salvate.'; })
+      .catch(err => {
+        console.error(err);
+        statusEl.textContent = 'Errore salvataggio: ' + err.message;
+      });
   });
-});
+}
+
+if (refreshImagesBtn) {
+  refreshImagesBtn.addEventListener('click', function () {
+    const stamp = Date.now();
+    document.querySelectorAll('.page-image').forEach(img => {
+      const base = img.dataset.baseSrc || img.src;
+      img.dataset.baseSrc = base;
+      const url = new URL(base, window.location.origin);
+      url.searchParams.set('v', String(stamp));
+      img.src = url.toString();
+    });
+    statusEl.textContent = 'Immagini ricaricate dal server.';
+  });
 }
 
 

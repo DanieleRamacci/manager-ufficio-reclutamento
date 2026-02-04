@@ -20,12 +20,15 @@
     .badge.done { background: #c6f6d5; }
     .badge.edit { background: #bee3f8; }
     .badge.saved { background: #c6f6d5; color: #085c1a; }
+    .badge.export { background: #e9d8fd; color: #44337a; }
+    .badge.export-error { background: #fed7d7; color: #822727; }
     .btn { background: #0b3d91; color: #fff; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
       .btn { background: #0b3d91; color: #fff; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; }
       .btn[disabled] { opacity: 0.6; cursor: not-allowed; }
     .btn.secondary { background: #666; }
     .btn.danger { background: #c53030; }
       .row-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .row-highlight { outline: 2px solid #0b3d91; }
     .owner-cell { display: flex; align-items: center; gap: 6px; }
     .share-toggle { background: #e2e8f0; border: 1px solid #cbd5e0; color: #1a202c; padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 12px; }
     .share-panel { display: none; margin-top: 6px; }
@@ -327,6 +330,7 @@
         const isDone = job.status === 'done';
         const needsEdit = isDone && job.redaction_status !== 'done';
         const tr = document.createElement('tr');
+        tr.id = `job-${job.job_id}`;
         const actions = document.createElement('div');
         actions.className = 'row-actions';
 
@@ -507,8 +511,34 @@
           } else {
             statusCell.innerHTML = '<span class="badge edit">da editare</span>';
           }
+          if (job.export_status === 'queued' || job.export_status === 'running') {
+            statusCell.innerHTML += ' <span class="badge export">pdf in generazione</span>';
+          } else if (job.export_status === 'done') {
+            statusCell.innerHTML += ' <span class="badge done">zip pronto</span>';
+          } else if (job.export_status === 'error') {
+            statusCell.innerHTML += ' <span class="badge export-error">errore export</span>';
+          }
           const td = document.createElement('td');
           td.appendChild(resumeBtn);
+          if (job.export_status === 'queued' || job.export_status === 'running') {
+            const expBtn = document.createElement('button');
+            expBtn.className = 'btn secondary';
+            expBtn.textContent = 'Generazione PDF...';
+            expBtn.disabled = true;
+            td.appendChild(expBtn);
+          } else if (job.export_status === 'done') {
+            const dl = document.createElement('a');
+            dl.className = 'btn secondary';
+            dl.textContent = 'Scarica ZIP';
+            dl.href = `/api/firme/jobs/${job.job_id}/export/download`;
+            dl.download = job.export_zip_name || 'pdf_oscurati.zip';
+            td.appendChild(dl);
+          } else if (job.export_status === 'error') {
+            const err = document.createElement('div');
+            err.className = 'muted';
+            err.textContent = 'Errore export';
+            td.appendChild(err);
+          }
           td.appendChild(actions);
           tr.appendChild(td);
           tbodyEdit.appendChild(tr);
@@ -541,6 +571,22 @@
           renderJobs(res.jobs || [], res.is_admin);
           isAdminUser = !!res.is_admin;
           setAdminUI(isAdminUser);
+          const stored = localStorage.getItem('firme_export_job');
+          if (stored) {
+            localStorage.removeItem('firme_export_job');
+            if (!location.hash) {
+              location.hash = `job-${stored}`;
+            }
+          }
+          const hash = (location.hash || '').replace('#', '');
+          if (hash) {
+            const row = document.getElementById(hash);
+            if (row) {
+              row.classList.add('row-highlight');
+              row.scrollIntoView({block: 'center'});
+              setTimeout(() => row.classList.remove('row-highlight'), 4000);
+            }
+          }
           if (isAdminUser && !adminIntervalsStarted) {
             adminIntervalsStarted = true;
             loadStats();

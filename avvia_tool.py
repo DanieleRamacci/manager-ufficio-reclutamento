@@ -202,6 +202,10 @@ def _init_db() -> None:
     _ensure_column(conn, "jobs", "job_ocr_config", "job_ocr_config TEXT DEFAULT ''")
     _ensure_column(conn, "jobs", "job_label", "job_label TEXT DEFAULT ''")
     _ensure_column(conn, "jobs", "job_note", "job_note TEXT DEFAULT ''")
+    _ensure_column(conn, "jobs", "export_status", "export_status TEXT DEFAULT ''")
+    _ensure_column(conn, "jobs", "export_updated_at", "export_updated_at REAL DEFAULT 0")
+    _ensure_column(conn, "jobs", "export_error", "export_error TEXT DEFAULT ''")
+    _ensure_column(conn, "jobs", "export_zip_name", "export_zip_name TEXT DEFAULT ''")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS job_acl (
@@ -517,6 +521,148 @@ def _assemble_job_documents(job_id: str) -> list[dict]:
             "pages": pages,
         })
     return documents
+
+
+def _export_docs_data_from_db(job_id: str) -> list[dict]:
+    docs_data = []
+    for doc in _db_get_job_documents(job_id):
+        pages = _db_get_job_pages(job_id, doc["doc_id"])
+        clean_pages = []
+        for p in pages:
+            page_index = p.get("index")
+            if page_index is None:
+                page_index = p.get("page_index")
+            if page_index is None:
+                continue
+            boxes = p.get("boxes")
+            if not isinstance(boxes, list):
+                boxes = p.get("manual_boxes") or []
+            clean_pages.append({
+                "page_index": page_index,
+                "boxes": boxes,
+                "edited_boxes": p.get("edited_boxes") if isinstance(p.get("edited_boxes"), list) else [],
+            })
+        docs_data.append({
+            "doc_id": doc.get("doc_id"),
+            "filename": doc.get("filename"),
+            "pages": clean_pages,
+        })
+    return docs_data
+
+
+def _generate_export_zip(job_id: str, user_id: str) -> tuple[str, str]:
+    job = _db_get_job(job_id)
+    if not job:
+        raise RuntimeError("Job non trovato")
+    if not _db_job_user_can_access(job_id, user_id):
+        raise RuntimeError("Accesso negato")
+
+    docs_data = _export_docs_data_from_db(job_id)
+    if not docs_data:
+        raise RuntimeError("Nessun documento da elaborare")
+
+    job_label = job.get("job_label") or ""
+    import re
+    numero_bando = ""
+    if job_label:
+        match = re.search(r"(\d{3})[\.\s]?(\d{3})", job_label)
+        if match:
+            numero_bando = match.group(1) + match.group(2)
+
+    export_dir = os.path.join(EXPORTS_FIRME_ROOT, job_id)
+    os.makedirs(export_dir, exist_ok=True)
+
+    zip_name = f"{numero_bando}-oscurati.zip" if numero_bando else "pdf_oscurati.zip"
+    final_path = os.path.join(export_dir, zip_name)
+    tmp_path = final_path + ".tmp"
+
+    for name in os.listdir(export_dir):
+        if name.endswith(".zip"):
+            try:
+                os.remove(os.path.join(export_dir, name))
+            except Exception:
+                pass
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+        for doc_entry in docs_data:
+            doc_id = doc_entry.get("doc_id")
+            pages_data = doc_entry.get("pages", [])
+            filename = (doc_entry.get("filename") or f"documento_{doc_id}.pdf").strip()
+
+            if not doc_id:
+                continue
+            if not _is_doc_owned_by_user(doc_id, user_id):
+                raise RuntimeError("Accesso negato al documento")
+
+            doc_dir = os.path.join(DOCS_FIRME_ROOT, doc_id)
+            if not os.path.isdir(doc_dir):
+                continue
+
+            redacted_image_paths = []
+            for page_info in pages_data:
+                page_index = page_info.get("page_index")
+                boxes = page_info.get("boxes", [])
+                if page_index is None:
+                    continue
+
+                image_path = os.path.join(doc_dir, f"page_{page_index}.png")
+                if not os.path.exists(image_path):
+                    continue
+
+                img = Image.open(image_path)
+                width, height = img.size
+                draw = ImageDraw.Draw(img)
+
+                for b in boxes:
+                    x_norm = float(b["x"])
+                    y_norm = float(b["y"])
+                    w_norm = float(b["w"])
+                    h_norm = float(b["h"])
+                    x1 = int(x_norm * width)
+                    y1 = int(y_norm * height)
+                    x2 = int((x_norm + w_norm) * width)
+                    y2 = int((y_norm + h_norm) * height)
+                    draw.rectangle([x1, y1, x2, y2], fill="black")
+
+                redacted_image_path = os.path.join(doc_dir, f"redacted_page_{page_index}.png")
+                img.save(redacted_image_path, "PNG")
+                redacted_image_paths.append(redacted_image_path)
+
+                stored_page = dict(page_info)
+                stored_page["index"] = page_index
+                stored_page["manual_boxes"] = [
+                    {"x": b["x"], "y": b["y"], "w": b["w"], "h": b["h"]}
+                    for b in boxes
+                ]
+                _db_upsert_page(job_id, doc_id, page_index, stored_page)
+
+            if not redacted_image_paths:
+                continue
+
+            redacted_image_paths.sort(
+                key=lambda p: int(os.path.basename(p).split("_")[-1].split(".")[0])
+            )
+
+            pdf_buffer = io.BytesIO()
+            pdf_buffer.write(img2pdf.convert(redacted_image_paths))
+            pdf_buffer.seek(0)
+
+            safe_name = os.path.basename(filename)
+            if not safe_name.lower().endswith(".pdf"):
+                safe_name += ".pdf"
+            base_name = safe_name[:-4] if safe_name.endswith(".pdf") else safe_name
+            safe_name_oscurato = f"{base_name}-oscurato.pdf"
+            zipf.writestr(safe_name_oscurato, pdf_buffer.read())
+
+    zip_buffer.seek(0)
+    if zip_buffer.getbuffer().nbytes == 0:
+        raise RuntimeError("Nessun PDF oscurato generato (nessuna pagina utile).")
+
+    with open(tmp_path, "wb") as handle:
+        handle.write(zip_buffer.read())
+    os.replace(tmp_path, final_path)
+    return final_path, zip_name
 
 
 def _get_system_stats(job: dict | None = None) -> dict:
@@ -1011,6 +1157,8 @@ print(f"[Oscuramento] Avvio versione: {APP_VERSION}")
 # cartella dove salvare PDF e immagini per la redazione firme
 DOCS_FIRME_ROOT = os.path.join(DIR, "docs_firme")
 os.makedirs(DOCS_FIRME_ROOT, exist_ok=True)
+EXPORTS_FIRME_ROOT = os.path.join(DIR, "exports_firme")
+os.makedirs(EXPORTS_FIRME_ROOT, exist_ok=True)
 
 # Token Hugging Face (meglio in .env: HUGGINGFACE_TOKEN=hf_...)
 HUGGINGFACE_TOKEN = os.environ.get("HUGGINGFACE_TOKEN")
@@ -1822,6 +1970,10 @@ def api_firme_jobs():
             "authorized": acl_list,
             "status": j.get("status"),
             "redaction_status": j.get("redaction_status"),
+            "export_status": j.get("export_status") or "",
+            "export_updated_at": j.get("export_updated_at") or 0,
+            "export_error": j.get("export_error") or "",
+            "export_zip_name": j.get("export_zip_name") or "",
             "progress": {"done": j.get("progress_done", 0), "total": j.get("progress_total", 0)},
             "created_at": j.get("created_at"),
             "updated_at": j.get("updated_at"),
@@ -2062,6 +2214,9 @@ def api_firme_job_delete(job_id: str):
         doc_dir = os.path.join(DOCS_FIRME_ROOT, doc["doc_id"])
         if os.path.isdir(doc_dir):
             shutil.rmtree(doc_dir, ignore_errors=True)
+    export_dir = os.path.join(EXPORTS_FIRME_ROOT, job_id)
+    if os.path.isdir(export_dir):
+        shutil.rmtree(export_dir, ignore_errors=True)
     _db_delete_job(job_id)
     return jsonify({"ok": True})
 
@@ -2462,6 +2617,84 @@ def api_firme_result(job_id: str):
             "pages": pages,
         })
     return jsonify({"documents": documents})
+
+# avvia generazione ZIP in background (non blocca il client)
+def _run_export_job(job_id: str, user_id: str) -> None:
+    try:
+        _db_update_job(
+            job_id,
+            export_status="running",
+            export_error="",
+            export_zip_name="",
+            export_updated_at=time.time(),
+        )
+        final_path, zip_name = _generate_export_zip(job_id, user_id)
+        if not os.path.exists(final_path):
+            raise RuntimeError("ZIP non trovato dopo la generazione")
+        _db_update_job(
+            job_id,
+            export_status="done",
+            export_error="",
+            export_zip_name=zip_name,
+            export_updated_at=time.time(),
+        )
+    except Exception as exc:
+        _db_update_job(
+            job_id,
+            export_status="error",
+            export_error=str(exc),
+            export_updated_at=time.time(),
+        )
+
+
+@app.post("/api/firme/jobs/<job_id>/export")
+@login_required
+def api_firme_job_export(job_id: str):
+    user_id = _current_user_id()
+    job = _db_get_job(job_id)
+    if not job:
+        return jsonify({"error": "Job non trovato"}), 404
+    if not _db_job_user_can_access(job_id, user_id):
+        return jsonify({"error": "Accesso negato"}), 403
+    if job.get("status") != "done":
+        return jsonify({"error": "Job non completato"}), 400
+    if job.get("export_status") == "running":
+        return jsonify({"status": "running"}), 202
+
+    _db_update_job(
+        job_id,
+        export_status="queued",
+        export_error="",
+        export_zip_name="",
+        export_updated_at=time.time(),
+    )
+    t = threading.Thread(target=_run_export_job, args=(job_id, user_id), daemon=True)
+    t.start()
+    return jsonify({"status": "queued"})
+
+
+@app.get("/api/firme/jobs/<job_id>/export/download")
+@login_required
+def api_firme_job_export_download(job_id: str):
+    user_id = _current_user_id()
+    job = _db_get_job(job_id)
+    if not job:
+        return jsonify({"error": "Job non trovato"}), 404
+    if not _db_job_user_can_access(job_id, user_id):
+        return jsonify({"error": "Accesso negato"}), 403
+    if job.get("export_status") != "done":
+        return jsonify({"error": "ZIP non disponibile"}), 400
+    zip_name = job.get("export_zip_name") or "pdf_oscurati.zip"
+    export_dir = os.path.join(EXPORTS_FIRME_ROOT, job_id)
+    zip_path = os.path.join(export_dir, os.path.basename(zip_name))
+    if not os.path.exists(zip_path):
+        return jsonify({"error": "ZIP non trovato"}), 404
+    return send_file(
+        zip_path,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=os.path.basename(zip_name),
+    )
 
 # download PDF oscurati già generati (da immagini redatte salvate su disco)
 @app.get("/api/firme/jobs/<job_id>/download")
@@ -3006,10 +3239,17 @@ def protected_static(fname):
             doc_id = parts[1]
             user_id = _current_user_id()
             if _is_admin(user_id):
-                return send_from_directory(DIR, fname)
+                resp = send_from_directory(DIR, fname)
+                resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+                resp.headers["Pragma"] = "no-cache"
+                return resp
             if not _is_doc_owned_by_user(doc_id, user_id):
                 abort(403)
-    return send_from_directory(DIR, fname)
+    resp = send_from_directory(DIR, fname)
+    if fname.startswith("docs_firme/"):
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
+    return resp
 
 
 # Catch-all: non fare fallback a index (mostra errori reali)
