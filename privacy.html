@@ -23,7 +23,7 @@
     <p class="small">I consensi sono registrati con email e timestamp e possono essere consultati dagli amministratori.</p>
   </section>
 
-  <section id="consents-section">
+  <section id="consents-section" style="display:none;">
     <h2>Consensi registrati</h2>
     <div id="consents-area">Caricamento...</div>
   </section>
@@ -33,15 +33,16 @@
       try{
         const res = await fetch('/api/privacy/consents', { credentials: 'same-origin' });
         if (res.status === 403) {
-          document.getElementById('consents-area').innerHTML =
-            '<div class="notice">Accesso riservato agli amministratori. Effettua il login con un account admin per visualizzare i consensi.</div>' +
-            '<div class="login-hint"><a href="/access.html">Pagina di login</a></div>';
+          const section = document.getElementById('consents-section');
+          if (section) section.style.display = 'none';
           return;
         }
         if (!res.ok) {
           document.getElementById('consents-area').textContent = 'Errore nella lettura dei consensi.';
           return;
         }
+        const section = document.getElementById('consents-section');
+        if (section) section.style.display = 'block';
         const j = await res.json();
         const list = j.consents || [];
         if (!list.length) {
