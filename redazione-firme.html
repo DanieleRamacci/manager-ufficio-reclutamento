@@ -437,6 +437,16 @@
       documentsState = [];
 
       documents.forEach((doc, docIdx) => {
+        const pages = (doc.pages || []).map(p => {
+          const pageIndex = (p.index !== undefined && p.index !== null)
+            ? p.index
+            : (p.page_index !== undefined && p.page_index !== null ? p.page_index : p.pageIndex);
+          const imageUrl = p.image_url || (pageIndex !== undefined && pageIndex !== null
+            ? `/_static/docs_firme/${doc.doc_id}/page_${pageIndex}.png`
+            : '');
+          return Object.assign({}, p, { index: pageIndex, image_url: imageUrl });
+        });
+
         const docState = {
           doc_id: doc.doc_id,
           filename: doc.filename || '',
@@ -467,7 +477,7 @@
         const pagesManual = [];
 
         // analizziamo i box auto per capire quali pagine sono “high”/“low”
-        doc.pages.forEach(page => {
+        pages.forEach(page => {
           if (!page.auto_boxes || !page.auto_boxes.length) {
             return;
           }
@@ -507,7 +517,7 @@
         }
 
         // Tabelle rilevate
-        doc.pages.forEach(page => {
+        pages.forEach(page => {
           if (page.table_boxes && page.table_boxes.length) {
             pagesTable.push(page.index);
           }
@@ -551,7 +561,7 @@
         }
 
         // --- rendering delle pagine ---
-        doc.pages.forEach(page => {
+        pages.forEach(page => {
           const container = document.createElement('div');
           container.className = 'page-container';
           container.dataset.pageIndex = page.index;
@@ -980,8 +990,15 @@ if (refreshImagesBtn) {
   refreshImagesBtn.addEventListener('click', function () {
     const stamp = Date.now();
     document.querySelectorAll('.page-image').forEach(img => {
-      const base = img.dataset.baseSrc || img.src;
-      img.dataset.baseSrc = base;
+      const dataBase = img.dataset.baseSrc;
+      const attrSrc = img.getAttribute('src');
+      let base = dataBase && dataBase !== 'undefined' && dataBase !== 'null' ? dataBase : attrSrc;
+      if (!base || base === 'undefined' || base === 'null') {
+        return;
+      }
+      if (!img.dataset.baseSrc || img.dataset.baseSrc === 'undefined' || img.dataset.baseSrc === 'null') {
+        img.dataset.baseSrc = base;
+      }
       const url = new URL(base, window.location.origin);
       url.searchParams.set('v', String(stamp));
       img.src = url.toString();
