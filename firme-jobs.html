@@ -512,7 +512,7 @@
             statusCell.innerHTML = '<span class="badge edit">da editare</span>';
           }
           if (job.export_status === 'queued' || job.export_status === 'running') {
-            statusCell.innerHTML += ' <span class="badge export">pdf in generazione</span>';
+            statusCell.innerHTML += ' <span class="badge export">generazione PDF oscurato</span>';
           } else if (job.export_status === 'done') {
             statusCell.innerHTML += ' <span class="badge done">zip pronto</span>';
           } else if (job.export_status === 'error') {
@@ -523,7 +523,7 @@
           if (job.export_status === 'queued' || job.export_status === 'running') {
             const expBtn = document.createElement('button');
             expBtn.className = 'btn secondary';
-            expBtn.textContent = 'Generazione PDF...';
+            expBtn.textContent = 'Generazione PDF oscurato...';
             expBtn.disabled = true;
             td.appendChild(expBtn);
           } else if (job.export_status === 'done') {
