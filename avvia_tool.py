@@ -1943,14 +1943,19 @@ def api_firme_jobs():
     user_id = _current_user_id()
     if not user_id:
         return jsonify({"error": "Utente non autenticato"}), 403
+    current_user = _current_user_email() or user_id
     include_all = _is_admin(user_id)
     jobs_list = _db_list_jobs(user_id, include_all=include_all)
     out = []
     for j in jobs_list:
-        acl_list = _db_get_job_acl(j.get("job_id")) if include_all else []
+        job_id = j.get("job_id")
+        acl_list = _db_get_job_acl(job_id) if include_all else []
         owner_email = j.get("owner_email") or ""
+        owner_full, owner_local = _normalize_user_id(owner_email)
+        user_full, user_local = _normalize_user_id(current_user)
+        is_owner = owner_full == user_full or (owner_local and owner_local == user_local)
+        can_access = _db_job_user_can_access(job_id, current_user)
         if acl_list and owner_email:
-            owner_full, owner_local = _normalize_user_id(owner_email)
             acl_list = [
                 a for a in acl_list
                 if _normalize_user_id(a)[0] != owner_full and _normalize_user_id(a)[1] != owner_local
@@ -1963,11 +1968,15 @@ def api_firme_jobs():
             remaining = max(0, int(j.get("progress_total") or 0) - int(j.get("progress_done") or 0))
             eta = remaining * avg_page
         out.append({
-            "job_id": j.get("job_id"),
+            "job_id": job_id,
             "owner_email": owner_email,
             "job_label": j.get("job_label") or "",
             "job_note": j.get("job_note") or "",
             "authorized": acl_list,
+            "can_edit": can_access,
+            # Requisito funzionale: un utente condiviso deve poter fare le stesse azioni del creator.
+            "can_delete": can_access,
+            "is_owner": is_owner,
             "status": j.get("status"),
             "redaction_status": j.get("redaction_status"),
             "export_status": j.get("export_status") or "",
@@ -2203,12 +2212,13 @@ def api_firme_job_save(job_id: str):
 @login_required
 def api_firme_job_delete(job_id: str):
     user_id = _current_user_id()
+    current_user = _current_user_email() or user_id
     job = _db_get_job(job_id)
     if not job:
         return jsonify({"error": "Job non trovato"}), 404
-    if not user_id:
+    if not current_user:
         return jsonify({"error": "Utente non autenticato"}), 403
-    if not (_is_admin(user_id) or (job.get("owner_email") or "").lower() == user_id.lower()):
+    if not _db_job_user_can_access(job_id, current_user):
         return jsonify({"error": "Accesso negato"}), 403
     for doc in _db_get_job_documents(job_id):
         doc_dir = os.path.join(DOCS_FIRME_ROOT, doc["doc_id"])

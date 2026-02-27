@@ -377,19 +377,19 @@
         };
         actions.appendChild(metaBtn);
 
-        // Controllo permessi: solo owner, admin o utente autorizzato può modificare/eliminare/aprire editor
+        // Permessi espliciti dal backend (evita mismatch UI su utenti condivisi non-admin)
         (function(){
-          const current = (currentUserEmail || '').toLowerCase();
-          const owner = (job.owner_email || '').toLowerCase();
-          const acl = Array.isArray(job.authorized) ? job.authorized.map(a => (a||'').toLowerCase()) : [];
-          const allowed = isAdminUser || (current && (current === owner)) || (current && acl.includes(current));
-          if (!allowed) {
+          const canEdit = (typeof job.can_edit === 'boolean') ? job.can_edit : true;
+          const canDelete = (typeof job.can_delete === 'boolean') ? job.can_delete : canEdit;
+          if (!canEdit) {
             resumeBtn.disabled = true;
-            delBtn.disabled = true;
             metaBtn.disabled = true;
-            resumeBtn.title = 'Solo il proprietario o un amministratore possono aprire l\'editor';
-            delBtn.title = 'Solo il proprietario o un amministratore possono eliminare questo job';
-            metaBtn.title = 'Solo il proprietario o un amministratore possono modificare l\'etichetta';
+            resumeBtn.title = 'Non hai i permessi per aprire l\'editor';
+            metaBtn.title = 'Non hai i permessi per modificare l\'etichetta';
+          }
+          if (!canDelete) {
+            delBtn.disabled = true;
+            delBtn.title = 'Non hai i permessi per eliminare questo job';
           }
         })();
 
@@ -578,8 +578,8 @@
         .then(r => r.json())
         .then(res => {
           currentUserEmail = res.current_user_email || null;
-          renderJobs(res.jobs || [], res.is_admin);
           isAdminUser = !!res.is_admin;
+          renderJobs(res.jobs || [], res.is_admin);
           setAdminUI(isAdminUser);
           const stored = localStorage.getItem('firme_export_job');
           if (stored) {
