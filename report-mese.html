@@ -503,7 +503,7 @@
           code: normalizeCode(codice),
           title: String(titolo || "").trim(),
           tipologia: inferTipologiaFromText(`${tipologiaRaw} ${titolo}`, false),
-          date,
+          date: data,
           source: "sol_excel_bandi"
         };
       }).filter(x => x.code || x.title);
@@ -531,7 +531,7 @@
           code: normalizeCode(codice),
           title: String(titolo || "").trim(),
           tipologia: inferTipologiaFromText(`${tipologiaRaw} ${titolo}`, true),
-          date,
+          date: data,
           source: "sol_excel_graduatorie"
         };
       }).filter(x => x.code || x.title);
