@@ -2,286 +2,851 @@
 <html lang="it">
 <head>
   <meta charset="UTF-8" />
-  <title>Report mensile – precedente & corrente</title>
+  <title>Monitoraggio Mensile</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; color:#222; }
-    a.link { color:#0b5ed7; text-decoration:none; }
-    a.link:hover { text-decoration:underline; }
-    .muted { color:#666; }
-    .small { font-size:.9rem; }
-    .pill { display:inline-block; background:#eef2ff; color:#3f51b5; border-radius:999px; padding:2px 8px; font-size:.85rem; margin-left:8px; }
-    .hr { height:1px; background:#e5e5e5; border:0; margin:18px 0; }
-    table { width:100%; border-collapse:collapse; margin-top:8px; }
-    th, td { border:1px solid #ddd; padding:8px; text-align:left; vertical-align:top; }
-    th { background:#f7f7f7; }
-    details { border:1px solid #e5e5e5; border-radius:10px; padding:0 12px 12px; background:#fff; margin:12px 0; }
-    summary { list-style:none; cursor:pointer; padding:12px 0; display:flex; gap:12px; align-items:center; }
-    summary::-webkit-details-marker { display:none; }
-    .chev { transition:transform .15s ease; font-weight:700; color:#555; }
-    details[open] .chev { transform:rotate(90deg); }
-    .sum-title { font-size:1.05rem; font-weight:700; }
-    .sum-meta { margin-left:auto; color:#666; font-size:.9rem; display:flex; gap:10px; }
-    .section-title { font-size:1.1rem; font-weight:800; margin:18px 0 8px; }
+    :root {
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --line: #d9e1ec;
+      --ink: #152033;
+      --muted: #5d6a7d;
+      --brand: #0f4aa3;
+      --ok: #1f8f5f;
+      --warn: #b36f00;
+      --danger: #c0352b;
+      --tag: #eef4ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(180deg, #f5f9ff 0%, var(--bg) 180px);
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    }
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 20px; }
+    nav { margin: 8px 0 20px; display: flex; flex-wrap: wrap; gap: 8px; }
+    nav a {
+      text-decoration: none;
+      color: #0b3c84;
+      background: #eaf1ff;
+      border: 1px solid #cddcf8;
+      padding: 7px 10px;
+      border-radius: 8px;
+      font-size: .92rem;
+    }
+    h1 { margin: 4px 0 6px; font-size: 1.7rem; }
+    .muted { color: var(--muted); }
+    .grid { display: grid; gap: 14px; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: 0 4px 14px rgba(16, 34, 72, 0.05);
+    }
+    .card h2, .card h3 { margin: 0 0 10px; font-size: 1.06rem; }
+    .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    label { font-size: .92rem; color: #22314a; }
+    input, select, button {
+      font: inherit;
+      border: 1px solid #b9c6da;
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: #fff;
+      color: var(--ink);
+    }
+    button {
+      cursor: pointer;
+      border-color: #0b489f;
+      background: var(--brand);
+      color: #fff;
+      font-weight: 600;
+    }
+    button.ghost { background: #fff; color: #0b3e88; }
+    button.warn { background: #a15d00; border-color: #8d5200; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: .78rem;
+      background: var(--tag);
+      color: #25477b;
+      border: 1px solid #ccdcf7;
+      white-space: nowrap;
+    }
+    .status-ok { background: #e8f7f0; color: #125f3d; border-color: #b8e6cf; }
+    .status-warn { background: #fff4df; color: #7b4f00; border-color: #f4d392; }
+    .status-bad { background: #ffe8e6; color: #80261f; border-color: #f2b2ad; }
+    .status-neutral { background: #eef2f7; color: #41566f; border-color: #d5e0ec; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid var(--line); padding: 7px; text-align: left; vertical-align: top; }
+    th { background: #f2f6fc; font-size: .86rem; }
+    td { font-size: .88rem; }
+    .table-wrap { overflow: auto; max-height: 420px; }
+    .kpi { font-size: 1.4rem; font-weight: 700; margin-top: 4px; }
+    .split { display: grid; grid-template-columns: 2.2fr 1fr; gap: 14px; }
+    .search-list {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      max-height: 260px;
+      overflow: auto;
+      background: #fff;
+    }
+    .search-item {
+      padding: 9px;
+      border-bottom: 1px solid #e6edf7;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+    }
+    .search-item:last-child { border-bottom: none; }
+    .search-title { font-weight: 600; }
+    .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .82rem; }
+    .mb8 { margin-bottom: 8px; }
+    .mb12 { margin-bottom: 12px; }
+    .mb16 { margin-bottom: 16px; }
+    .hidden { display: none; }
+    @media (max-width: 980px) {
+      .grid-2, .grid-3, .split { grid-template-columns: 1fr; }
+      .wrap { padding: 14px; }
+    }
   </style>
 </head>
 <body>
+  <div class="wrap">
+    <nav>
+      <a href="index.html">Controllo Bandi</a>
+      <a href="access.html">Accessibilità URP</a>
+      <a href="verifica-access.html">Verifica PDF</a>
+      <a href="mobilita-urp.html">Mobilità</a>
+      <a href="report-mese.html">Monitoraggio Mese</a>
+    </nav>
 
-  <nav style="margin-bottom: 20px;">
-    <a href="index.html" style="margin-right: 15px;">Controllo Bandi</a>
-    <a href="access.html" style="margin-right: 15px;">Accessibilità URP</a>
-    <a href="verifica-access.html" style="margin-right: 15px;">Verifica PDF</a>
+    <h1>Monitoraggio Mensile URP/SOL</h1>
+    <div class="muted mb16">Crea un progetto per mese, importa file Excel SOL, confronta con URP/SOL e completa manualmente i mancanti.</div>
 
-    <a href="mobilita-urp.html" style="margin-right: 15px;">mobilità</a>
-    <a href="report-mese.html" style="margin-right: 15px;">Report del Mese</a>
+    <div class="card mb16">
+      <h2>1) Crea o apri progetto monitoraggio</h2>
+      <div class="row mb12">
+        <label for="projectMonth">Mese di riferimento:</label>
+        <input id="projectMonth" type="month" />
+        <button id="btnCreateProject">Apri progetto</button>
+        <select id="existingProjects"></select>
+        <button id="btnLoadProject" class="ghost">Carica progetto salvato</button>
+      </div>
+      <div id="projectInfo" class="muted">Nessun progetto caricato.</div>
+    </div>
 
-  </nav>
-  <h1>Report mensile
-    <span id="lblPrev" class="pill muted"></span>
-    <span id="lblCurr" class="pill muted"></span>
-  </h1>
-  <div class="small muted">Dati da <code>bandi-completi-urp.json</code> e <code>bandi-mobilita.json</code></div>
+    <div id="workspace" class="hidden">
+      <div class="grid grid-3 mb16">
+        <div class="card">
+          <div class="muted">Record monitoraggio</div>
+          <div id="kpiRows" class="kpi">0</div>
+        </div>
+        <div class="card">
+          <div class="muted">Match automatici URP/SOL</div>
+          <div id="kpiMatches" class="kpi">0</div>
+        </div>
+        <div class="card">
+          <div class="muted">Mancanti o da verificare</div>
+          <div id="kpiMissing" class="kpi">0</div>
+        </div>
+      </div>
 
-  <!-- ============================
-       BLOCCO: MESE PRECEDENTE
-       ============================ -->
-  <div class="section-title">Mese precedente</div>
+      <div class="grid grid-2 mb16">
+        <div class="card">
+          <h3>2) Import file SOL</h3>
+          <div class="mb8 row">
+            <label for="fileBandi">Excel bandi pubblicati (.xls/.xlsx):</label>
+            <input id="fileBandi" type="file" accept=".xls,.xlsx,.csv" />
+            <button id="btnImportBandi">Importa bandi</button>
+          </div>
+          <div class="mb8 row">
+            <label for="fileGraduatorie">Excel graduatorie/punteggi (.xls/.xlsx):</label>
+            <input id="fileGraduatorie" type="file" accept=".xls,.xlsx,.csv" />
+            <button id="btnImportGraduatorie">Importa graduatorie</button>
+          </div>
+          <div id="importLog" class="muted"></div>
+        </div>
 
-  <!-- Bandi (mese precedente) -->
-  <details>
-    <summary>
-      <span class="chev">▶</span>
-      <span class="sum-title">Bandi pubblicati</span>
-      <span class="pill" id="cnt-bandi-prev">0</span>
-      <span class="sum-meta muted"><span>Data: <b>data_pubblicazione_bando</b></span></span>
-    </summary>
-    <table>
-      <thead><tr><th>Categoria</th><th>Codice</th><th>Titolo</th><th>Link URP</th><th>Protocollo</th><th>Data bando</th></tr></thead>
-      <tbody id="tb-bandi-prev"></tbody>
-    </table>
-  </details>
+        <div class="card">
+          <h3>3) Aggiunta manuale da lista SOL</h3>
+          <div class="row mb8">
+            <input id="searchBando" type="text" placeholder="Cerca codice o titolo bando SOL..." style="flex:1; min-width:220px;" />
+            <select id="manualTipologia">
+              <option value="scorrimenti_pubblicati">Scorrimenti pubblicati</option>
+              <option value="graduatorie_scorrimenti">Graduatorie scorrimenti</option>
+              <option value="mobilita_bandi_pubblicati">Mobilità - bandi pubblicati</option>
+              <option value="mobilita_graduatorie">Mobilità - graduatorie</option>
+              <option value="ti_bandi_pubblicati">Tempo indeterminato - bandi pubblicati</option>
+              <option value="ti_graduatorie">Tempo indeterminato - graduatorie</option>
+            </select>
+          </div>
+          <div class="search-list" id="searchResults"></div>
+        </div>
+      </div>
 
-  <!-- Graduatorie (mese precedente) -->
-  <details>
-    <summary>
-      <span class="chev">▶</span>
-      <span class="sum-title">Graduatorie pubblicate</span>
-      <span class="pill" id="cnt-grad-prev">0</span>
-      <span class="sum-meta muted"><span>Data: <b>data_pubblicazione_graduatoria</b></span></span>
-    </summary>
-    <table>
-      <thead><tr><th>Categoria</th><th>Codice</th><th>Titolo</th><th>Link URP</th><th>Protocollo</th><th>Data graduatoria</th></tr></thead>
-      <tbody id="tb-grad-prev"></tbody>
-    </table>
-  </details>
+      <div class="split mb16">
+        <div class="card">
+          <h3>4) Quadro monitoraggio per tipologia</h3>
+          <div class="row mb8">
+            <label for="filterTipologia">Tipologia:</label>
+            <select id="filterTipologia"></select>
+            <label for="filterStato">Stato controllo:</label>
+            <select id="filterStato">
+              <option value="">Tutti</option>
+              <option value="da_verificare">Da verificare</option>
+              <option value="confermato">Confermato</option>
+              <option value="mancante">Mancante</option>
+            </select>
+            <input id="filterText" type="text" placeholder="Filtro testo" />
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tipologia</th>
+                  <th>Codice</th>
+                  <th>Titolo</th>
+                  <th>Evento</th>
+                  <th>Fonte</th>
+                  <th>Match</th>
+                  <th>Stato</th>
+                  <th>Note</th>
+                  <th>Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="tbMonitoraggio"></tbody>
+            </table>
+          </div>
+        </div>
 
-  <!-- Scorrimenti (mese precedente) -->
-  <details>
-    <summary>
-      <span class="chev">▶</span>
-      <span class="sum-title">Scorrimenti/Utilizzi</span>
-      <span class="pill" id="cnt-scorri-prev">0</span>
-      <span class="sum-meta muted"><span>Data: <b>data_scorrimento_utilizzo</b></span></span>
-    </summary>
-    <table>
-      <thead><tr><th>Categoria</th><th>Codice</th><th>Titolo</th><th>Link URP</th><th>Protocollo</th><th>Data scorr./utilizzo</th></tr></thead>
-      <tbody id="tb-scorri-prev"></tbody>
-    </table>
-  </details>
+        <div class="card">
+          <h3>5) Riepilogo categorie</h3>
+          <div id="summaryByType" class="muted"></div>
+          <hr />
+          <h3>Aggiunta manuale veloce</h3>
+          <div class="mb8">
+            <input id="manualCode" type="text" placeholder="Codice bando" class="mb8" style="width:100%;" />
+            <input id="manualTitle" type="text" placeholder="Titolo" class="mb8" style="width:100%;" />
+            <select id="manualEvent" class="mb8" style="width:100%;">
+              <option value="pubblicazione_bando">Pubblicazione bando</option>
+              <option value="pubblicazione_graduatoria">Pubblicazione graduatoria</option>
+              <option value="scorrimento">Scorrimento</option>
+            </select>
+            <button id="btnAddManual" style="width:100%;">Aggiungi riga manuale</button>
+          </div>
+        </div>
+      </div>
 
-  <!-- Mobilità (mese precedente) -->
-  <details>
-    <summary>
-      <span class="chev">▶</span>
-      <span class="sum-title">Mobilità/Comandi</span>
-      <span class="pill" id="cnt-mob-prev">0</span>
-      <span class="sum-meta muted"><span>Fonte: <b>bandi-mobilita.json</b></span></span>
-    </summary>
-    <table>
-      <thead><tr><th>Titolo</th><th>Link</th><th>Data</th><th>Altri dati</th></tr></thead>
-      <tbody id="tb-mob-prev"></tbody>
-    </table>
-  </details>
-
-  <hr class="hr">
-
-  <!-- ============================
-       BLOCCO: MESE CORRENTE
-       ============================ -->
-  <div class="section-title">Mese corrente</div>
-
-  <!-- Bandi (mese corrente) -->
-  <details>
-    <summary>
-      <span class="chev">▶</span>
-      <span class="sum-title">Bandi pubblicati</span>
-      <span class="pill" id="cnt-bandi-curr">0</span>
-      <span class="sum-meta muted"><span>Data: <b>data_pubblicazione_bando</b></span></span>
-    </summary>
-    <table>
-      <thead><tr><th>Categoria</th><th>Codice</th><th>Titolo</th><th>Link URP</th><th>Protocollo</th><th>Data bando</th></tr></thead>
-      <tbody id="tb-bandi-curr"></tbody>
-    </table>
-  </details>
-
-  <!-- Graduatorie (mese corrente) -->
-  <details>
-    <summary>
-      <span class="chev">▶</span>
-      <span class="sum-title">Graduatorie pubblicate</span>
-      <span class="pill" id="cnt-grad-curr">0</span>
-      <span class="sum-meta muted"><span>Data: <b>data_pubblicazione_graduatoria</b></span></span>
-    </summary>
-    <table>
-      <thead><tr><th>Categoria</th><th>Codice</th><th>Titolo</th><th>Link URP</th><th>Protocollo</th><th>Data graduatoria</th></tr></thead>
-      <tbody id="tb-grad-curr"></tbody>
-    </table>
-  </details>
-
-  <!-- Scorrimenti (mese corrente) -->
-  <details>
-    <summary>
-      <span class="chev">▶</span>
-      <span class="sum-title">Scorrimenti/Utilizzi</span>
-      <span class="pill" id="cnt-scorri-curr">0</span>
-      <span class="sum-meta muted"><span>Data: <b>data_scorrimento_utilizzo</b></span></span>
-    </summary>
-    <table>
-      <thead><tr><th>Categoria</th><th>Codice</th><th>Titolo</th><th>Link URP</th><th>Protocollo</th><th>Data scorr./utilizzo</th></tr></thead>
-      <tbody id="tb-scorri-curr"></tbody>
-    </table>
-  </details>
-
-  <!-- Mobilità (mese corrente) -->
-  <details>
-    <summary>
-      <span class="chev">▶</span>
-      <span class="sum-title">Mobilità/Comandi</span>
-      <span class="pill" id="cnt-mob-curr">0</span>
-      <span class="sum-meta muted"><span>Fonte: <b>bandi-mobilita.json</b></span></span>
-    </summary>
-    <table>
-      <thead><tr><th>Titolo</th><th>Link</th><th>Data</th><th>Altri dati</th></tr></thead>
-      <tbody id="tb-mob-curr"></tbody>
-    </table>
-  </details>
+      <div class="card">
+        <h3>Tabelle importate (separate)</h3>
+        <div class="grid grid-2">
+          <div>
+            <div class="mb8"><b>Bandi importati SOL</b> <span id="cntBandiImp" class="pill">0</span></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Codice</th><th>Titolo</th><th>Tipologia</th><th>Data</th></tr></thead>
+                <tbody id="tbBandiImport"></tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <div class="mb8"><b>Graduatorie importate SOL</b> <span id="cntGradImp" class="pill">0</span></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Codice</th><th>Titolo</th><th>Tipologia</th><th>Data</th></tr></thead>
+                <tbody id="tbGradImport"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script>
-    // ===== Helpers data/mese =====
-    function monthLabelFrom(y, m) {
-      const d = new Date(y, Number(m)-1, 1);
-      return d.toLocaleDateString('it-IT', { month:'long', year:'numeric' });
-    }
-    function getCurrYM() {
-      const d = new Date();
-      return { y: d.getFullYear(), m: String(d.getMonth()+1).padStart(2,'0') };
-    }
-    function getPrevYM() {
-      const d = new Date(); d.setMonth(d.getMonth()-1);
-      return { y: d.getFullYear(), m: String(d.getMonth()+1).padStart(2,'0') };
-    }
-    function parseYMDFlexible(s) {
-      if (!s || typeof s !== "string") return null;
-      const t = s.trim();
-      let m = t.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-      if (m) return { y:+m[3], m:m[2], d:m[1] };
-      m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (m) return { y:+m[1], m:m[2], d:m[3] };
-      return null;
-    }
-    function isInYM(dateStr, Y, M) {
-      const dt = parseYMDFlexible(dateStr);
-      return !!dt && dt.y === Number(Y) && String(dt.m) === String(M);
+    const STORAGE_KEY = "urp_sol_monitoring_projects_v1";
+    const TIPOLOGIE = [
+      { key: "scorrimenti_pubblicati", label: "Scorrimenti pubblicati" },
+      { key: "graduatorie_scorrimenti", label: "Graduatorie scorrimenti" },
+      { key: "mobilita_bandi_pubblicati", label: "Mobilità - bandi pubblicati" },
+      { key: "mobilita_graduatorie", label: "Mobilità - graduatorie" },
+      { key: "ti_bandi_pubblicati", label: "Tempo indeterminato - bandi pubblicati" },
+      { key: "ti_graduatorie", label: "Tempo indeterminato - graduatorie" }
+    ];
+
+    const STATO_OPTIONS = [
+      { value: "da_verificare", label: "Da verificare" },
+      { value: "confermato", label: "Confermato" },
+      { value: "mancante", label: "Mancante" }
+    ];
+
+    let allSOL = [];
+    let allURP = [];
+    let currentProject = null;
+
+    function normalizeText(v) {
+      return String(v || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
     }
 
-    // ===== IO =====
-    async function fetchJSONBest(url1, url2) {
-      try { const r = await fetch(url1); if (r.ok) return await r.json(); } catch(e){}
-      if (url2) { const r2 = await fetch(url2); if (r2.ok) return await r2.json(); }
-      return null;
+    function parseDateAny(v) {
+      const t = String(v || "").trim();
+      if (!t) return "";
+      let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+      m = t.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+      if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+      m = t.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+      return t;
     }
 
-    // ===== URP flatten =====
-    let urpList = [];
-    function flattenURP(data) {
-      const out = [];
-      if (Array.isArray(data)) return data.map(b => ({ categoria: b.categoria || (b.fonte||""), ...b }));
-      for (const [cat, li] of Object.entries(data||{})) {
-        if (Array.isArray(li)) li.forEach(b => out.push({ categoria: cat, ...b }));
+    function getProjects() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
       }
-      return out;
-    }
-    function estraiCodiceBandoUI(item) {
-      const prefer = (item.codice_bando && String(item.codice_bando).trim()) || "";
-      if (prefer) return prefer;
-      const joined = ((item.titolo_bando||"") + " // " + (item.estratto||"")).toLowerCase();
-      let m = joined.match(/\bbando\s*n\.?\s*([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)/i);
-      if (!m) m = joined.match(/\bcodice\s+bando\s+([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)/i);
-      if (!m) m = joined.match(/\b([0-9]{3}\.[0-9]+(?:\s+[a-zà-ù]+)?)\b/i);
-      return m ? m[1].toUpperCase() : "--";
-    }
-    function rowURP(b, key) {
-      return `<tr>
-        <td>${b.categoria || ""}</td>
-        <td>${estraiCodiceBandoUI(b)}</td>
-        <td>${b.titolo_bando || ""}</td>
-        <td>${b.url ? `<a class="link" href="${b.url}" target="_blank">apri</a>` : "--"}</td>
-        <td>${b.numero_protocollo || ""}</td>
-        <td>${b[key] || ""}</td>
-      </tr>`;
     }
 
-    // ===== MOB =====
-    let mobList = [];
-    function getMobDate(m) { return m.data_pubblicazione || m.data || m.data_iso || m.pubblicazione || ""; }
-    function getMobTitle(m) { return m.titolo || m.title || m.descrizione || m.description || "(senza titolo)"; }
-    function getMobUrl(m) { return m.url || m.link || ""; }
-    function rowMOB(m) {
-      const d = getMobDate(m), url = getMobUrl(m);
-      const other = Object.keys(m).filter(k => !["titolo","title","descrizione","description","url","link","data","data_iso","data_pubblicazione","pubblicazione"].includes(k));
-      const rest = other.length ? `<code class="small muted">${other.map(k=>`${k}: ${JSON.stringify(m[k])}`).join(" · ")}</code>` : "";
-      return `<tr><td>${getMobTitle(m)}</td><td>${url ? `<a class="link" href="${url}" target="_blank">apri</a>` : "--"}</td><td>${d}</td><td>${rest}</td></tr>`;
+    function saveProjects(list) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
     }
 
-    // ===== Render per mese (prev & curr) =====
-    function renderURPMonth(Y, M, suffix) {
-      const r1 = urpList.filter(b => isInYM(b.data_pubblicazione_bando, Y, M)).map(b => rowURP(b, "data_pubblicazione_bando")).join("");
-      document.getElementById("tb-bandi-"+suffix).innerHTML = r1 || "";
-      document.getElementById("cnt-bandi-"+suffix).textContent = String((r1.match(/<tr>/g)||[]).length);
-
-      const r2 = urpList.filter(b => isInYM(b.data_pubblicazione_graduatoria, Y, M)).map(b => rowURP(b, "data_pubblicazione_graduatoria")).join("");
-      document.getElementById("tb-grad-"+suffix).innerHTML = r2 || "";
-      document.getElementById("cnt-grad-"+suffix).textContent = String((r2.match(/<tr>/g)||[]).length);
-
-      const r3 = urpList.filter(b => isInYM(b.data_scorrimento_utilizzo, Y, M)).map(b => rowURP(b, "data_scorrimento_utilizzo")).join("");
-      document.getElementById("tb-scorri-"+suffix).innerHTML = r3 || "";
-      document.getElementById("cnt-scorri-"+suffix).textContent = String((r3.match(/<tr>/g)||[]).length);
-    }
-    function renderMOBMonth(Y, M, suffix) {
-      const rows = mobList.filter(m => isInYM(getMobDate(m), Y, M)).map(rowMOB).join("");
-      document.getElementById("tb-mob-"+suffix).innerHTML = rows || "";
-      document.getElementById("cnt-mob-"+suffix).textContent = String((rows.match(/<tr>/g)||[]).length);
+    function tipologiaLabel(k) {
+      const x = TIPOLOGIE.find(t => t.key === k);
+      return x ? x.label : k;
     }
 
-    // ===== Init =====
-    const curr = getCurrYM();
-    const prev = getPrevYM();
-    document.getElementById("lblPrev").textContent = "Precedente: " + monthLabelFrom(prev.y, prev.m);
-    document.getElementById("lblCurr").textContent = "Corrente: " + monthLabelFrom(curr.y, curr.m);
+    function inferTipologiaFromText(text, forGraduatoria = false) {
+      const t = normalizeText(text);
+      const isMob = t.includes("mobilita") || t.includes("mobilità");
+      if (forGraduatoria) {
+        if (isMob) return "mobilita_graduatorie";
+        if (t.includes("scorr") || t.includes("utilizzo")) return "graduatorie_scorrimenti";
+        return "ti_graduatorie";
+      }
+      if (isMob) return "mobilita_bandi_pubblicati";
+      if (t.includes("scorr") || t.includes("utilizzo")) return "scorrimenti_pubblicati";
+      return "ti_bandi_pubblicati";
+    }
 
-    (async function init(){
-      const urp = await fetchJSONBest("/_static/bandi-completi-urp.json", "bandi-completi-urp.json");
-      urpList = flattenURP(urp || []);
-      const mob = await fetchJSONBest("/_static/bandi-mobilita.json", "bandi-mobilita.json");
-      mobList = Array.isArray(mob) ? mob : [];
+    function inferEventoFromTipologia(tipologia) {
+      if (tipologia.includes("scorr")) return "scorrimento";
+      if (tipologia.includes("graduatorie")) return "pubblicazione_graduatoria";
+      return "pubblicazione_bando";
+    }
 
-      // render blocco mese precedente
-      renderURPMonth(prev.y, prev.m, "prev");
-      renderMOBMonth(prev.y, prev.m, "prev");
+    function updateProjectSelect() {
+      const select = document.getElementById("existingProjects");
+      const list = getProjects().sort((a, b) => (a.month < b.month ? 1 : -1));
+      select.innerHTML = list.map(p => `<option value="${p.id}">${p.month} - ${p.name}</option>`).join("");
+      if (!list.length) select.innerHTML = "<option value=''>Nessun progetto</option>";
+    }
 
-      // render blocco mese corrente
-      renderURPMonth(curr.y, curr.m, "curr");
-      renderMOBMonth(curr.y, curr.m, "curr");
+    function ensureProjectShape(p) {
+      p.rows = Array.isArray(p.rows) ? p.rows : [];
+      p.imports = p.imports || { bandi: [], graduatorie: [] };
+      return p;
+    }
+
+    function saveCurrentProject() {
+      if (!currentProject) return;
+      const list = getProjects();
+      const idx = list.findIndex(x => x.id === currentProject.id);
+      if (idx >= 0) list[idx] = currentProject;
+      else list.push(currentProject);
+      saveProjects(list);
+      updateProjectSelect();
+    }
+
+    function createProject(monthValue) {
+      const month = monthValue || "";
+      if (!month) {
+        alert("Seleziona un mese.");
+        return;
+      }
+      const list = getProjects();
+      const id = `monitor-${month}`;
+      let p = list.find(x => x.id === id);
+      if (!p) {
+        p = {
+          id,
+          month,
+          name: `Monitoraggio ${month}`,
+          createdAt: new Date().toISOString(),
+          rows: [],
+          imports: { bandi: [], graduatorie: [] }
+        };
+        list.push(p);
+        saveProjects(list);
+      }
+      currentProject = ensureProjectShape(p);
+      renderAll();
+      updateProjectSelect();
+    }
+
+    function loadSelectedProject() {
+      const id = document.getElementById("existingProjects").value;
+      const p = getProjects().find(x => x.id === id);
+      if (!p) return;
+      currentProject = ensureProjectShape(p);
+      renderAll();
+    }
+
+    function setWorkspaceVisible(v) {
+      document.getElementById("workspace").classList.toggle("hidden", !v);
+    }
+
+    function projectRows() {
+      return currentProject ? currentProject.rows : [];
+    }
+
+    function normalizeCode(v) {
+      return String(v || "").toUpperCase().replace(/\s+/g, " ").trim();
+    }
+
+    function findMatches(row) {
+      const code = normalizeCode(row.code);
+      const title = normalizeText(row.title);
+      const urpHit = allURP.find(x => {
+        const c = normalizeCode(x.codice_bando || x.codice || "");
+        const t = normalizeText(x.titolo_bando || x.titolo || x.estratto || "");
+        return (code && c && (c.includes(code) || code.includes(c))) || (title && t.includes(title.slice(0, 40)));
+      });
+      const solHit = allSOL.find(x => {
+        const c = normalizeCode(x.codice || "");
+        const t = normalizeText(x.titolo || "");
+        return (code && c && (c.includes(code) || code.includes(c))) || (title && t.includes(title.slice(0, 40)));
+      });
+      return { urp: !!urpHit, sol: !!solHit };
+    }
+
+    function addMonitorRow(data) {
+      if (!currentProject) return;
+      const row = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        tipologia: data.tipologia || "ti_bandi_pubblicati",
+        code: normalizeCode(data.code),
+        title: data.title || "",
+        event: data.event || inferEventoFromTipologia(data.tipologia || "ti_bandi_pubblicati"),
+        source: data.source || "manuale",
+        stato: data.stato || "da_verificare",
+        note: data.note || "",
+        date: data.date || ""
+      };
+      const match = findMatches(row);
+      row.match_urp = match.urp;
+      row.match_sol = match.sol;
+      currentProject.rows.push(row);
+    }
+
+    function updateMatchesAll() {
+      if (!currentProject) return;
+      currentProject.rows.forEach(r => {
+        const m = findMatches(r);
+        r.match_urp = m.urp;
+        r.match_sol = m.sol;
+      });
+    }
+
+    function setImportLog(msg) {
+      document.getElementById("importLog").textContent = msg;
+    }
+
+    function resolveField(obj, names) {
+      const keys = Object.keys(obj || {});
+      for (const n of names) {
+        const hit = keys.find(k => normalizeText(k) === normalizeText(n));
+        if (hit) return obj[hit];
+      }
+      for (const n of names) {
+        const hit = keys.find(k => normalizeText(k).includes(normalizeText(n)));
+        if (hit) return obj[hit];
+      }
+      return "";
+    }
+
+    async function parseWorkbook(file) {
+      const ab = await file.arrayBuffer();
+      if (typeof XLSX === "undefined") {
+        throw new Error("Libreria Excel non caricata.");
+      }
+      const wb = XLSX.read(ab, { type: "array", cellDates: false });
+      const sheetName = wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      return rows;
+    }
+
+    async function importBandiFile(file) {
+      const rows = await parseWorkbook(file);
+      const parsed = rows.map(r => {
+        const codice = resolveField(r, ["codice", "codice bando", "bando", "codice concorso"]);
+        const titolo = resolveField(r, ["titolo", "oggetto", "descrizione", "bando"]);
+        const tipologiaRaw = resolveField(r, ["tipologia", "categoria"]);
+        const data = parseDateAny(resolveField(r, ["data", "data pubblicazione", "data pubblicazione inpa", "data_bando"]));
+        return {
+          code: normalizeCode(codice),
+          title: String(titolo || "").trim(),
+          tipologia: inferTipologiaFromText(`${tipologiaRaw} ${titolo}`, false),
+          date,
+          source: "sol_excel_bandi"
+        };
+      }).filter(x => x.code || x.title);
+
+      currentProject.imports.bandi = parsed;
+      parsed.forEach(r => addMonitorRow({
+        tipologia: r.tipologia,
+        code: r.code,
+        title: r.title,
+        event: "pubblicazione_bando",
+        source: "SOL Excel Bandi",
+        stato: "da_verificare",
+        date: r.date
+      }));
+    }
+
+    async function importGraduatorieFile(file) {
+      const rows = await parseWorkbook(file);
+      const parsed = rows.map(r => {
+        const codice = resolveField(r, ["codice", "codice bando", "bando", "codice concorso"]);
+        const titolo = resolveField(r, ["titolo", "oggetto", "descrizione", "graduatoria"]);
+        const tipologiaRaw = resolveField(r, ["tipologia", "categoria"]);
+        const data = parseDateAny(resolveField(r, ["data", "data pubblicazione graduatoria", "data graduatoria"]));
+        return {
+          code: normalizeCode(codice),
+          title: String(titolo || "").trim(),
+          tipologia: inferTipologiaFromText(`${tipologiaRaw} ${titolo}`, true),
+          date,
+          source: "sol_excel_graduatorie"
+        };
+      }).filter(x => x.code || x.title);
+
+      currentProject.imports.graduatorie = parsed;
+      parsed.forEach(r => addMonitorRow({
+        tipologia: r.tipologia,
+        code: r.code,
+        title: r.title,
+        event: "pubblicazione_graduatoria",
+        source: "SOL Excel Graduatorie",
+        stato: "da_verificare",
+        date: r.date
+      }));
+    }
+
+    function renderImportedTables() {
+      const bandi = (currentProject?.imports?.bandi || []);
+      const grad = (currentProject?.imports?.graduatorie || []);
+      document.getElementById("cntBandiImp").textContent = String(bandi.length);
+      document.getElementById("cntGradImp").textContent = String(grad.length);
+
+      document.getElementById("tbBandiImport").innerHTML = bandi.map(x => `
+        <tr>
+          <td class="mono">${x.code || ""}</td>
+          <td>${x.title || ""}</td>
+          <td>${tipologiaLabel(x.tipologia)}</td>
+          <td>${x.date || ""}</td>
+        </tr>
+      `).join("");
+
+      document.getElementById("tbGradImport").innerHTML = grad.map(x => `
+        <tr>
+          <td class="mono">${x.code || ""}</td>
+          <td>${x.title || ""}</td>
+          <td>${tipologiaLabel(x.tipologia)}</td>
+          <td>${x.date || ""}</td>
+        </tr>
+      `).join("");
+    }
+
+    function pillMatch(row) {
+      if (row.match_urp && row.match_sol) return '<span class="pill status-ok">Match URP+SOL</span>';
+      if (row.match_urp || row.match_sol) return '<span class="pill status-warn">Match parziale</span>';
+      return '<span class="pill status-bad">Non trovato</span>';
+    }
+
+    function statoPill(stato) {
+      if (stato === "confermato") return '<span class="pill status-ok">Confermato</span>';
+      if (stato === "mancante") return '<span class="pill status-bad">Mancante</span>';
+      return '<span class="pill status-neutral">Da verificare</span>';
+    }
+
+    function renderMonitorTable() {
+      const tip = document.getElementById("filterTipologia").value;
+      const st = document.getElementById("filterStato").value;
+      const q = normalizeText(document.getElementById("filterText").value);
+
+      let rows = projectRows();
+      if (tip) rows = rows.filter(r => r.tipologia === tip);
+      if (st) rows = rows.filter(r => r.stato === st);
+      if (q) rows = rows.filter(r => normalizeText(`${r.code} ${r.title} ${r.note}`).includes(q));
+
+      document.getElementById("tbMonitoraggio").innerHTML = rows.map(r => `
+        <tr>
+          <td>${tipologiaLabel(r.tipologia)}</td>
+          <td class="mono">${r.code || ""}</td>
+          <td>${r.title || ""}</td>
+          <td>${r.event || ""}</td>
+          <td>${r.source || ""}</td>
+          <td>${pillMatch(r)}</td>
+          <td>
+            <select data-act="set-stato" data-id="${r.id}">
+              ${STATO_OPTIONS.map(s => `<option value="${s.value}" ${s.value === r.stato ? "selected" : ""}>${s.label}</option>`).join("")}
+            </select>
+            <div class="mb8">${statoPill(r.stato)}</div>
+          </td>
+          <td>
+            <input data-act="set-note" data-id="${r.id}" value="${(r.note || "").replace(/"/g, "&quot;")}" placeholder="note" style="width:100%;" />
+          </td>
+          <td>
+            <button class="warn" data-act="delete" data-id="${r.id}">Rimuovi</button>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    function renderSummary() {
+      const rows = projectRows();
+      const total = rows.length;
+      const matches = rows.filter(r => r.match_urp || r.match_sol).length;
+      const missing = rows.filter(r => r.stato !== "confermato").length;
+
+      document.getElementById("kpiRows").textContent = String(total);
+      document.getElementById("kpiMatches").textContent = String(matches);
+      document.getElementById("kpiMissing").textContent = String(missing);
+
+      const byType = TIPOLOGIE.map(t => {
+        const rr = rows.filter(r => r.tipologia === t.key);
+        const conf = rr.filter(r => r.stato === "confermato").length;
+        const man = rr.filter(r => r.stato === "mancante").length;
+        const ver = rr.filter(r => r.stato === "da_verificare").length;
+        return `<div class="mb8"><b>${t.label}</b><br><span class="pill">Tot ${rr.length}</span> <span class="pill status-ok">Conf ${conf}</span> <span class="pill status-neutral">Ver ${ver}</span> <span class="pill status-bad">Manc ${man}</span></div>`;
+      }).join("");
+
+      document.getElementById("summaryByType").innerHTML = byType || "Nessun dato";
+    }
+
+    function renderProjectInfo() {
+      const el = document.getElementById("projectInfo");
+      if (!currentProject) {
+        el.textContent = "Nessun progetto caricato.";
+        setWorkspaceVisible(false);
+        return;
+      }
+      el.innerHTML = `Progetto attivo: <b>${currentProject.name}</b> · Mese: <b>${currentProject.month}</b> · Record: <b>${currentProject.rows.length}</b>`;
+      setWorkspaceVisible(true);
+    }
+
+    function populateTipologiaFilter() {
+      const f = document.getElementById("filterTipologia");
+      f.innerHTML = `<option value="">Tutte</option>${TIPOLOGIE.map(t => `<option value="${t.key}">${t.label}</option>`).join("")}`;
+    }
+
+    function renderSearchResults() {
+      const q = normalizeText(document.getElementById("searchBando").value);
+      const tipologia = document.getElementById("manualTipologia").value;
+      const list = q.length < 2
+        ? []
+        : allSOL.filter(x => normalizeText(`${x.codice} ${x.titolo}`).includes(q)).slice(0, 50);
+
+      document.getElementById("searchResults").innerHTML = list.map(x => `
+        <div class="search-item">
+          <div>
+            <div class="search-title">${x.titolo || "(senza titolo)"}</div>
+            <div class="mono">${x.codice || ""}</div>
+          </div>
+          <button data-act="add-from-search" data-code="${(x.codice || "").replace(/"/g, "&quot;")}" data-title="${(x.titolo || "").replace(/"/g, "&quot;")}" data-tip="${tipologia}">Aggiungi</button>
+        </div>
+      `).join("");
+    }
+
+    async function loadSources() {
+      const [solResp, urpResp, mobResp] = await Promise.all([
+        fetch("/_static/bandi-concorsi-pubblici-sol.json").catch(() => null),
+        fetch("/_static/bandi-completi-urp.json").catch(() => null),
+        fetch("/_static/bandi-mobilita.json").catch(() => null)
+      ]);
+
+      let sol = [];
+      let urp = [];
+      let mob = [];
+      if (solResp && solResp.ok) sol = await solResp.json();
+      if (urpResp && urpResp.ok) urp = await urpResp.json();
+      if (mobResp && mobResp.ok) mob = await mobResp.json();
+
+      allSOL = Array.isArray(sol) ? sol : [];
+
+      if (Array.isArray(urp)) {
+        allURP = urp;
+      } else if (urp && typeof urp === "object") {
+        allURP = Object.entries(urp).flatMap(([cat, arr]) => (Array.isArray(arr) ? arr.map(x => ({ ...x, categoria: cat })) : []));
+      } else {
+        allURP = [];
+      }
+
+      if (Array.isArray(mob) && mob.length) {
+        allURP = allURP.concat(mob.map(m => ({
+          codice_bando: m.codice || "",
+          titolo_bando: m.estratto || m.titolo || "",
+          categoria: "mobilita",
+          data_pubblicazione_bando: m.data_pubblicazione_bando || ""
+        })));
+      }
+    }
+
+    function dedupeRows() {
+      if (!currentProject) return;
+      const seen = new Set();
+      currentProject.rows = currentProject.rows.filter(r => {
+        const key = `${r.tipologia}|${normalizeCode(r.code)}|${normalizeText(r.title)}|${r.event}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
+    function renderAll() {
+      if (currentProject) {
+        dedupeRows();
+        updateMatchesAll();
+      }
+      renderProjectInfo();
+      if (!currentProject) return;
+      renderImportedTables();
+      renderMonitorTable();
+      renderSummary();
+      saveCurrentProject();
+    }
+
+    document.addEventListener("click", (e) => {
+      const t = e.target;
+      if (!(t instanceof HTMLElement)) return;
+      const act = t.dataset.act;
+      if (!act || !currentProject) return;
+
+      if (act === "delete") {
+        currentProject.rows = currentProject.rows.filter(r => r.id !== t.dataset.id);
+        renderAll();
+      }
+
+      if (act === "add-from-search") {
+        addMonitorRow({
+          tipologia: t.dataset.tip,
+          code: t.dataset.code,
+          title: t.dataset.title,
+          event: inferEventoFromTipologia(t.dataset.tip || ""),
+          source: "SOL lista ricerca",
+          stato: "da_verificare"
+        });
+        renderAll();
+      }
+    });
+
+    document.addEventListener("change", (e) => {
+      const t = e.target;
+      if (!(t instanceof HTMLElement) || !currentProject) return;
+      const act = t.dataset.act;
+      const id = t.dataset.id;
+      if (!act || !id) return;
+      const row = currentProject.rows.find(r => r.id === id);
+      if (!row) return;
+
+      if (act === "set-stato") {
+        row.stato = t.value;
+      }
+      if (act === "set-note") {
+        row.note = t.value;
+      }
+      renderAll();
+    });
+
+    function wireUI() {
+      const monthInput = document.getElementById("projectMonth");
+      const now = new Date();
+      monthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+      document.getElementById("btnCreateProject").addEventListener("click", () => {
+        createProject(monthInput.value);
+      });
+
+      document.getElementById("btnLoadProject").addEventListener("click", () => {
+        loadSelectedProject();
+      });
+
+      document.getElementById("btnImportBandi").addEventListener("click", async () => {
+        if (!currentProject) return alert("Apri prima un progetto.");
+        const file = document.getElementById("fileBandi").files[0];
+        if (!file) return alert("Seleziona file bandi.");
+        try {
+          await importBandiFile(file);
+          setImportLog(`Import bandi completato: ${currentProject.imports.bandi.length} righe.`);
+          renderAll();
+        } catch (err) {
+          setImportLog(`Errore import bandi: ${err.message}`);
+        }
+      });
+
+      document.getElementById("btnImportGraduatorie").addEventListener("click", async () => {
+        if (!currentProject) return alert("Apri prima un progetto.");
+        const file = document.getElementById("fileGraduatorie").files[0];
+        if (!file) return alert("Seleziona file graduatorie.");
+        try {
+          await importGraduatorieFile(file);
+          setImportLog(`Import graduatorie completato: ${currentProject.imports.graduatorie.length} righe.`);
+          renderAll();
+        } catch (err) {
+          setImportLog(`Errore import graduatorie: ${err.message}`);
+        }
+      });
+
+      document.getElementById("searchBando").addEventListener("input", renderSearchResults);
+      document.getElementById("manualTipologia").addEventListener("change", renderSearchResults);
+
+      document.getElementById("btnAddManual").addEventListener("click", () => {
+        if (!currentProject) return alert("Apri prima un progetto.");
+        const tipologia = document.getElementById("manualTipologia").value;
+        const code = document.getElementById("manualCode").value;
+        const title = document.getElementById("manualTitle").value;
+        const event = document.getElementById("manualEvent").value;
+        if (!code && !title) return alert("Inserisci almeno codice o titolo.");
+        addMonitorRow({
+          tipologia,
+          code,
+          title,
+          event,
+          source: "inserimento manuale",
+          stato: "da_verificare"
+        });
+        document.getElementById("manualCode").value = "";
+        document.getElementById("manualTitle").value = "";
+        renderAll();
+      });
+
+      ["filterTipologia", "filterStato", "filterText"].forEach(id => {
+        document.getElementById(id).addEventListener("input", renderMonitorTable);
+        document.getElementById(id).addEventListener("change", renderMonitorTable);
+      });
+    }
+
+    (async function init() {
+      populateTipologiaFilter();
+      wireUI();
+      updateProjectSelect();
+      await loadSources();
     })();
   </script>
 </body>
