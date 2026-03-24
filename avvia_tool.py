@@ -10,6 +10,8 @@ import subprocess
 import json
 import sqlite3
 import requests
+import csv
+import re
 from datetime import datetime, timedelta
 from flask import Flask
 from flask_session import Session
@@ -502,13 +504,19 @@ def _update_runtime_config(patch: dict, updated_by: str | None = None) -> dict:
 
 def _db_delete_job(job_id: str) -> None:
     conn = _db_conn()
-    conn.execute("DELETE FROM job_pages WHERE job_id = ?", (job_id,))
-    conn.execute("DELETE FROM job_documents WHERE job_id = ?", (job_id,))
-    conn.execute("DELETE FROM job_acl WHERE job_id = ?", (job_id,))
-    conn.execute("DELETE FROM job_exports WHERE job_id = ?", (job_id,))
-    conn.execute("DELETE FROM jobs WHERE job_id = ?", (job_id,))
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DELETE FROM job_pages WHERE job_id = ?", (job_id,))
+        conn.execute("DELETE FROM job_documents WHERE job_id = ?", (job_id,))
+        conn.execute("DELETE FROM job_acl WHERE job_id = ?", (job_id,))
+        conn.execute("DELETE FROM job_exports WHERE job_id = ?", (job_id,))
+        conn.execute("DELETE FROM jobs WHERE job_id = ?", (job_id,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def _assemble_job_documents(job_id: str) -> list[dict]:
@@ -534,9 +542,13 @@ def _export_docs_data_from_db(job_id: str) -> list[dict]:
                 page_index = p.get("page_index")
             if page_index is None:
                 continue
-            boxes = p.get("boxes")
-            if not isinstance(boxes, list):
-                boxes = p.get("manual_boxes") or []
+            edited = p.get("edited_boxes")
+            if isinstance(edited, list) and edited:
+                boxes = [b for b in edited if not b.get("skip_redact")]
+            else:
+                boxes = p.get("boxes")
+                if not isinstance(boxes, list):
+                    boxes = p.get("manual_boxes") or []
             clean_pages.append({
                 "page_index": page_index,
                 "boxes": boxes,
@@ -583,86 +595,99 @@ def _generate_export_zip(job_id: str, user_id: str) -> tuple[str, str]:
             except Exception:
                 pass
 
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for doc_entry in docs_data:
-            doc_id = doc_entry.get("doc_id")
-            pages_data = doc_entry.get("pages", [])
-            filename = (doc_entry.get("filename") or f"documento_{doc_id}.pdf").strip()
+    try:
+        with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+            has_content = False
+            for doc_entry in docs_data:
+                doc_id = doc_entry.get("doc_id")
+                pages_data = doc_entry.get("pages", [])
+                filename = (doc_entry.get("filename") or f"documento_{doc_id}.pdf").strip()
 
-            if not doc_id:
-                continue
-            if not _is_doc_owned_by_user(doc_id, user_id):
-                raise RuntimeError("Accesso negato al documento")
+                if not doc_id:
+                    continue
+                if not _is_doc_owned_by_user(doc_id, user_id):
+                    raise RuntimeError("Accesso negato al documento")
 
-            doc_dir = os.path.join(DOCS_FIRME_ROOT, doc_id)
-            if not os.path.isdir(doc_dir):
-                continue
-
-            redacted_image_paths = []
-            for page_info in pages_data:
-                page_index = page_info.get("page_index")
-                boxes = page_info.get("boxes", [])
-                if page_index is None:
+                doc_dir = os.path.join(DOCS_FIRME_ROOT, doc_id)
+                if not os.path.isdir(doc_dir):
                     continue
 
-                image_path = os.path.join(doc_dir, f"page_{page_index}.png")
-                if not os.path.exists(image_path):
+                redacted_image_paths = []
+                for page_info in pages_data:
+                    page_index = page_info.get("page_index")
+                    boxes = page_info.get("boxes", [])
+                    if page_index is None:
+                        continue
+
+                    image_path = os.path.join(doc_dir, f"page_{page_index}.png")
+                    if not os.path.exists(image_path):
+                        print(f"[FIRME][WARN] Immagine mancante, pagina saltata: {image_path}", flush=True)
+                        continue
+
+                    img = Image.open(image_path)
+                    try:
+                        width, height = img.size
+                        draw = ImageDraw.Draw(img)
+
+                        for b in boxes:
+                            x_norm = float(b["x"])
+                            y_norm = float(b["y"])
+                            w_norm = float(b["w"])
+                            h_norm = float(b["h"])
+                            x1 = max(0, min(int(x_norm * width), width))
+                            y1 = max(0, min(int(y_norm * height), height))
+                            x2 = max(0, min(int((x_norm + w_norm) * width), width))
+                            y2 = max(0, min(int((y_norm + h_norm) * height), height))
+                            draw.rectangle([x1, y1, x2, y2], fill="black")
+
+                        redacted_image_path = os.path.join(doc_dir, f"redacted_page_{page_index}.png")
+                        img.save(redacted_image_path, "PNG")
+                        redacted_image_paths.append(redacted_image_path)
+                    finally:
+                        img.close()
+
+                    stored_page = dict(page_info)
+                    stored_page["index"] = page_index
+                    stored_page["manual_boxes"] = [
+                        {"x": b["x"], "y": b["y"], "w": b["w"], "h": b["h"]}
+                        for b in boxes
+                    ]
+                    _db_upsert_page(job_id, doc_id, page_index, stored_page)
+
+                if not redacted_image_paths:
                     continue
 
-                img = Image.open(image_path)
-                width, height = img.size
-                draw = ImageDraw.Draw(img)
+                def _safe_page_num(p):
+                    try:
+                        return int(os.path.basename(p).split("_")[-1].split(".")[0])
+                    except (ValueError, IndexError):
+                        return float('inf')
 
-                for b in boxes:
-                    x_norm = float(b["x"])
-                    y_norm = float(b["y"])
-                    w_norm = float(b["w"])
-                    h_norm = float(b["h"])
-                    x1 = int(x_norm * width)
-                    y1 = int(y_norm * height)
-                    x2 = int((x_norm + w_norm) * width)
-                    y2 = int((y_norm + h_norm) * height)
-                    draw.rectangle([x1, y1, x2, y2], fill="black")
+                redacted_image_paths.sort(key=_safe_page_num)
 
-                redacted_image_path = os.path.join(doc_dir, f"redacted_page_{page_index}.png")
-                img.save(redacted_image_path, "PNG")
-                redacted_image_paths.append(redacted_image_path)
+                pdf_buffer = io.BytesIO()
+                pdf_buffer.write(img2pdf.convert(redacted_image_paths))
+                pdf_buffer.seek(0)
 
-                stored_page = dict(page_info)
-                stored_page["index"] = page_index
-                stored_page["manual_boxes"] = [
-                    {"x": b["x"], "y": b["y"], "w": b["w"], "h": b["h"]}
-                    for b in boxes
-                ]
-                _db_upsert_page(job_id, doc_id, page_index, stored_page)
+                safe_name = os.path.basename(filename)
+                if not safe_name.lower().endswith(".pdf"):
+                    safe_name += ".pdf"
+                base_name = safe_name[:-4] if safe_name.endswith(".pdf") else safe_name
+                safe_name_oscurato = f"{base_name}-oscurato.pdf"
+                zipf.writestr(safe_name_oscurato, pdf_buffer.read())
+                has_content = True
 
-            if not redacted_image_paths:
-                continue
+        if not has_content:
+            raise RuntimeError("Nessun PDF oscurato generato (nessuna pagina utile).")
 
-            redacted_image_paths.sort(
-                key=lambda p: int(os.path.basename(p).split("_")[-1].split(".")[0])
-            )
-
-            pdf_buffer = io.BytesIO()
-            pdf_buffer.write(img2pdf.convert(redacted_image_paths))
-            pdf_buffer.seek(0)
-
-            safe_name = os.path.basename(filename)
-            if not safe_name.lower().endswith(".pdf"):
-                safe_name += ".pdf"
-            base_name = safe_name[:-4] if safe_name.endswith(".pdf") else safe_name
-            safe_name_oscurato = f"{base_name}-oscurato.pdf"
-            zipf.writestr(safe_name_oscurato, pdf_buffer.read())
-
-    zip_buffer.seek(0)
-    if zip_buffer.getbuffer().nbytes == 0:
-        raise RuntimeError("Nessun PDF oscurato generato (nessuna pagina utile).")
-
-    with open(tmp_path, "wb") as handle:
-        handle.write(zip_buffer.read())
-    os.replace(tmp_path, final_path)
-    return final_path, zip_name
+        os.replace(tmp_path, final_path)
+        return final_path, zip_name
+    finally:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
 
 def _get_system_stats(job: dict | None = None) -> dict:
@@ -949,12 +974,10 @@ def _process_page_task(doc_id: str, doc_dir: str, i: int, image_path: str, job_c
                 get_table_header_boxes_for_page,
             )
             from pii_ocr.validators import validate_doc_number
-            if job_conf.get("ocr_lang"):
-                os.environ["PII_OCR_LANG"] = str(job_conf.get("ocr_lang"))
-            if job_conf.get("ocr_config"):
-                os.environ["PII_OCR_CONFIG"] = str(job_conf.get("ocr_config"))
+            ocr_lang = str(job_conf.get("ocr_lang") or "ita")
+            ocr_config = str(job_conf.get("ocr_config") or "--oem 1 --psm 6")
             t_ocr_start = time.perf_counter()
-            ocr_pages = extract_ocr_from_images([image_path])
+            ocr_pages = extract_ocr_from_images([image_path], lang=ocr_lang, config=ocr_config)
             if ocr_pages:
                 ocr_page = ocr_pages[0]
                 text_raw = ocr_page.get("text_raw", "")
@@ -1120,8 +1143,54 @@ def _process_page_task(doc_id: str, doc_dir: str, i: int, image_path: str, job_c
     return doc_id, i, page_info
 
 # cache minima per /api/bandi-rdp
-CACHE_TTL = int(os.environ.get("CACHE_TTL", "60"))
+# Default più alto: evita attese ad ogni apertura pagina.
+CACHE_TTL = int(os.environ.get("CACHE_TTL", "21600"))
 _cache = {"ts": 0, "key": None, "data": []}
+RDP_CACHE_FILE = os.path.join(DIR, "instance", "bandi_rdp_cache.json")
+RDP_CACHE_LOCK = threading.Lock()
+
+
+def _cache_key_to_jsonable(key):
+    if isinstance(key, tuple):
+        return list(key)
+    return key
+
+
+def _cache_key_from_jsonable(key):
+    if isinstance(key, list):
+        return tuple(key)
+    return key
+
+
+def _load_rdp_cache_from_disk():
+    if not os.path.exists(RDP_CACHE_FILE):
+        return None
+    try:
+        with open(RDP_CACHE_FILE, "r", encoding="utf-8") as fh:
+            payload = json.load(fh)
+        if not isinstance(payload, dict):
+            return None
+        return {
+            "ts": float(payload.get("ts") or 0),
+            "key": _cache_key_from_jsonable(payload.get("key")),
+            "data": payload.get("data") or [],
+        }
+    except Exception:
+        return None
+
+
+def _save_rdp_cache_to_disk(cache_obj):
+    try:
+        os.makedirs(os.path.dirname(RDP_CACHE_FILE), exist_ok=True)
+        payload = {
+            "ts": float(cache_obj.get("ts") or 0),
+            "key": _cache_key_to_jsonable(cache_obj.get("key")),
+            "data": cache_obj.get("data") or [],
+        }
+        with open(RDP_CACHE_FILE, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=False)
+    except Exception as e:
+        print(f"[RDP CACHE] Errore salvataggio cache disco: {e}", flush=True)
 
 
 # ========= App =========
@@ -1675,13 +1744,27 @@ def _worker_loop():
                             _handle_page_result(page_info)
                 finally:
                     pdf_doc.close()
+                    # Raccogliere tutti i futures rimanenti anche in caso di errore
+                    if futures:
+                        for fut in list(futures.keys()):
+                            try:
+                                fut.cancel()
+                            except Exception:
+                                pass
+                            if not fut.cancelled() and fut.done():
+                                try:
+                                    _, _, page_info = fut.result()
+                                    _handle_page_result(page_info)
+                                except Exception:
+                                    pass
+                        futures.clear()
                 if t_conv_total > 0:
                     print(
                         f"[TIMING] doc_id={doc_id} step=pdf_to_img pages={page_count} seconds={t_conv_total:.3f}",
                         flush=True,
                     )
 
-                if executor:
+                if executor and futures:
                     for fut in concurrent.futures.as_completed(list(futures.keys())):
                         _, _, page_info = fut.result()
                         _handle_page_result(page_info)
@@ -2190,11 +2273,14 @@ def api_firme_job_save(job_id: str):
         return jsonify({"error": "Accesso negato"}), 403
     payload = request.json or {}
     docs = payload.get("documents") or []
+    valid_doc_ids = {d["doc_id"] for d in _db_get_job_documents(job_id)}
     for doc in docs:
         doc_id = doc.get("doc_id")
         pages = doc.get("pages") or []
         if not doc_id:
             continue
+        if doc_id not in valid_doc_ids:
+            return jsonify({"error": f"Documento {doc_id} non appartiene a questo job"}), 403
         for page in pages:
             page_idx = page.get("index")
             if page_idx is None:
@@ -3346,14 +3432,25 @@ def api_bandi_rdp():
     filter_type = request.args.get("filterType", getattr(svc, "FILTER_TYPE", "all"))
     offset = int(request.args.get("offset", getattr(svc, "OFFSET", 20)))
     codice = (request.args.get("codice") or "").strip().lower()
+    include_details = str(request.args.get("includeDetails") or "").lower() in ("1", "true", "yes")
     nocache = request.args.get("nocache")
 
     now = time.time()
-    cache_key = (filter_type, offset, codice)
-    if (not nocache and CACHE_TTL > 0 and
-        _cache.get("data") and _cache.get("key") == cache_key and
-        (now - _cache.get("ts", 0)) < CACHE_TTL):
-        return jsonify(_cache["data"])
+    cache_key = (filter_type, offset, codice, include_details)
+    if not nocache and CACHE_TTL > 0:
+        # 1) cache in memoria
+        if (_cache.get("data") and _cache.get("key") == cache_key and
+            (now - _cache.get("ts", 0)) < CACHE_TTL):
+            return jsonify(_cache["data"])
+        # 2) cache persistente su disco
+        with RDP_CACHE_LOCK:
+            disk_cache = _load_rdp_cache_from_disk()
+        if (disk_cache and disk_cache.get("data") and disk_cache.get("key") == cache_key and
+            (now - float(disk_cache.get("ts", 0))) < CACHE_TTL):
+            _cache["ts"] = float(disk_cache.get("ts", 0))
+            _cache["key"] = disk_cache.get("key")
+            _cache["data"] = disk_cache.get("data")
+            return jsonify(_cache["data"])
 
     try:
         calls = svc.fetch_calls(offset=offset, filter_type=filter_type)
@@ -3363,22 +3460,622 @@ def api_bandi_rdp():
     if codice:
         calls = [c for c in calls if codice in str(c.get("codice", "")).lower()]
 
-    enriched = []
-    for c in calls:
-        full = svc.fetch_group_fullname(c.get("rdp_raw", ""))
-        members = svc.fetch_rdp_members(full) if full else []
-        enriched.append({
+    def _pick_field(detail: dict, exact: list[str], contains: list[str]) -> str:
+        if not isinstance(detail, dict):
+            return ""
+        for k in exact:
+            v = detail.get(k)
+            if v not in (None, ""):
+                return str(v)
+        for k, v in detail.items():
+            lk = str(k).lower()
+            if any(token in lk for token in contains) and v not in (None, ""):
+                return str(v)
+        return ""
+
+    def _extract_responsabili_from_call_detail(call_code: str) -> list[str]:
+        code = (call_code or "").strip()
+        if not code:
+            return []
+        url = f"https://selezionionline.cnr.it/jconon/call-detail?callCode={code.replace(' ', '%20')}"
+        try:
+            r = requests.get(url, timeout=20)
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "html.parser")
+            texts = []
+            for sel in ("div.well", "li", "p", "td", "div"):
+                for el in soup.select(sel):
+                    t = el.get_text(" ", strip=True)
+                    if t:
+                        texts.append(t)
+            hits = []
+            p1 = re.compile(r"responsabil[ea]\s+del\s+procediment[oa]\s*[:\-]?\s*([A-ZÀ-Ù][^.;:]{3,80})", re.IGNORECASE)
+            p2 = re.compile(r"\bRUP\b\s*[:\-]?\s*([A-ZÀ-Ù][^.;:]{3,80})", re.IGNORECASE)
+            for t in texts:
+                m = p1.search(t) or p2.search(t)
+                if m:
+                    name = m.group(1).strip()
+                    name = re.sub(r"\s{2,}", " ", name)
+                    hits.append(name)
+            out = []
+            seen = set()
+            for h in hits:
+                if h in seen:
+                    continue
+                seen.add(h)
+                out.append(h)
+            return out[:5]
+        except Exception:
+            return []
+
+    def _enrich_call(c: dict) -> dict:
+        rdp_raw = c.get("rdp_raw", "")
+        code = c.get("codice", "")
+        full = ""
+        members = []
+        rdp_error = ""
+        if rdp_raw:
+            try:
+                full = svc.fetch_group_fullname(rdp_raw)
+            except Exception as e:
+                full = ""
+                rdp_error = f"group_lookup: {e}"
+            if not full:
+                full = svc.build_group_fullname(rdp_raw)
+            try:
+                members = svc.fetch_rdp_members(full) if full else []
+            except Exception as e:
+                members = []
+                rdp_error = f"members_lookup: {e}"
+        if not members:
+            fb = _extract_responsabili_from_call_detail(str(code or ""))
+            if fb:
+                members = fb
+                if rdp_error:
+                    rdp_error = rdp_error + " | fallback_call_detail"
+                else:
+                    rdp_error = "fallback_call_detail"
+
+        row = {
             "uuid": c.get("uuid", ""),
-            "codice": c.get("codice", ""),
+            "codice": code,
             "titolo": c.get("titolo", ""),
+            "rdp_raw": rdp_raw,
             "rdp_group": full,
-            "rdp_members": members
-        })
+            "rdp_members": members,
+            "rdp_error": rdp_error,
+        }
+
+        if include_details:
+            detail = svc.fetch_call_detail(str(c.get("uuid") or ""))
+            row["call_status"] = _pick_field(
+                detail,
+                ["jconon_call:stato", "state", "status"],
+                ["stato", "status", "state"],
+            )
+            row["call_structure"] = _pick_field(
+                detail,
+                ["jconon_call:struttura", "jconon_call:struttura_destinataria", "struttura"],
+                ["struttura", "istituto", "sede"],
+            )
+            row["call_profile"] = _pick_field(
+                detail,
+                ["jconon_call:profilo", "profilo"],
+                ["profilo"],
+            )
+            row["call_num_posti"] = _pick_field(
+                detail,
+                ["jconon_call:numero_posti", "numero_posti", "num_posti"],
+                ["posti", "numero_post"],
+            )
+            row["call_date_start"] = _pick_field(
+                detail,
+                ["jconon_call:data_inizio_invio_domande", "jconon_call:data_inizio_invio_domande_index"],
+                ["data_inizio", "inizio_invio", "start"],
+            )
+            row["call_date_end"] = _pick_field(
+                detail,
+                ["jconon_call:data_fine_invio_domande", "jconon_call:data_fine_invio_domande_index"],
+                ["data_fine", "fine_invio", "deadline", "end"],
+            )
+
+        return row
+
+    max_workers = min(12, max(2, len(calls))) if calls else 2
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
+        enriched = list(ex.map(_enrich_call, calls))
 
     _cache["ts"] = now
     _cache["key"] = cache_key
     _cache["data"] = enriched
+    with RDP_CACHE_LOCK:
+        _save_rdp_cache_to_disk(_cache)
     return jsonify(enriched)
+
+
+@app.get("/api/sol/graduatorie")
+@login_required
+def api_sol_graduatorie():
+    """
+    Query live a /jconon/rest/search per bandi con graduatoria pubblicata in un intervallo.
+    Parametri:
+      - month=YYYY-MM   (alternativa rapida)
+      - date_from=YYYY-MM-DD
+      - date_to=YYYY-MM-DD
+      - max_items (default 200)
+      - include_docs=1|0 (default 1): prova a estrarre link documenti graduatoria/punteggi da call-detail
+      - format=json|csv (default json)
+    """
+    TREE_UUID = "713d4376-4cbd-43b6-ad14-9401b5029c51"
+    SEARCH_URL = "https://selezionionline.cnr.it/jconon/rest/search"
+    month = (request.args.get("month") or "").strip()
+    date_from = (request.args.get("date_from") or "").strip()
+    date_to = (request.args.get("date_to") or "").strip()
+    max_items = int(request.args.get("max_items") or 200)
+    include_docs = str(request.args.get("include_docs") or "1").lower() in ("1", "true", "yes")
+    include_rdp = str(request.args.get("include_rdp") or "1").lower() in ("1", "true", "yes")
+    include_candidates = str(request.args.get("include_candidates") or "0").lower() in ("1", "true", "yes")
+    include_scores = str(request.args.get("include_scores") or "0").lower() in ("1", "true", "yes")
+    out_format = (request.args.get("format") or "json").strip().lower()
+
+    if month and (not date_from and not date_to):
+        try:
+            y, m = month.split("-")
+            y_i, m_i = int(y), int(m)
+            first = datetime(y_i, m_i, 1)
+            if m_i == 12:
+                nxt = datetime(y_i + 1, 1, 1)
+            else:
+                nxt = datetime(y_i, m_i + 1, 1)
+            last = nxt - timedelta(days=1)
+            date_from = first.strftime("%Y-%m-%d")
+            date_to = last.strftime("%Y-%m-%d")
+        except Exception:
+            return jsonify({"error": "Parametro month non valido. Usa YYYY-MM"}), 400
+
+    if not date_from or not date_to:
+        return jsonify({"error": "Servono date: month=YYYY-MM oppure date_from/date_to"}), 400
+
+    ts_from = f"{date_from}T00:00:00.000+01:00"
+    ts_to = f"{date_to}T23:59:59.999+01:00"
+
+    cmis_query = f"""
+SELECT * FROM jconon_call:folder root
+WHERE (
+    root.cmis:objectTypeId = 'F:jconon_call_tind:folder_concorsi_pubblici'
+    AND root.jconon_call:data_pubbl_graduatoria >= TIMESTAMP '{ts_from}'
+    AND root.jconon_call:data_pubbl_graduatoria <= TIMESTAMP '{ts_to}'
+    AND IN_TREE (root,'{TREE_UUID}')
+)
+ORDER BY jconon_call:data_fine_invio_domande_index DESC
+""".strip()
+
+    params = {
+        "guest": "true",
+        "ajax": "true",
+        "maxItems": max_items,
+        "skipCount": 0,
+        "fetchCmisObject": "true",
+        "calculateTotalNumItems": "true",
+        "q": cmis_query,
+    }
+    headers = {"Accept": "application/json"}
+    try:
+        resp = requests.get(SEARCH_URL, params=params, headers=headers, timeout=30)
+        resp.raise_for_status()
+        payload = resp.json()
+    except Exception as e:
+        return jsonify({"error": f"Errore chiamata search SOL: {e}"}), 502
+
+    items = payload.get("items") if isinstance(payload, dict) else []
+    if not isinstance(items, list):
+        items = []
+
+    patt_docs = re.compile(r"(graduatori|puntegg|esit|valutaz|idone|vincitor)", re.IGNORECASE)
+    patt_resp1 = re.compile(r"responsabil[ea]\s+del\s+procediment[oa]\s*[:\-]?\s*([A-ZÀ-Ù][^.;:]{3,80})", re.IGNORECASE)
+    patt_resp2 = re.compile(r"\bRUP\b\s*[:\-]?\s*([A-ZÀ-Ù][^.;:]{3,80})", re.IGNORECASE)
+
+    def _extract_docs_and_resp(call_code: str) -> tuple[list[dict], list[str]]:
+        if not call_code:
+            return [], []
+        url = f"https://selezionionline.cnr.it/jconon/call-detail?callCode={call_code.replace(' ', '%20')}"
+        try:
+            r = requests.get(url, timeout=20)
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "html.parser")
+            docs = []
+            responsabili = []
+            for a in soup.select("div.well a, ul li a, a"):
+                title = (a.get_text(" ", strip=True) or "").strip()
+                href = (a.get("href") or "").strip()
+                if not title and not href:
+                    continue
+                if patt_docs.search(title) or patt_docs.search(href):
+                    if href and href.startswith("/"):
+                        href = "https://selezionionline.cnr.it" + href
+                    docs.append({
+                        "titolo": title,
+                        "link": href,
+                    })
+            for sel in ("div.well", "li", "p", "td", "div"):
+                for el in soup.select(sel):
+                    text = (el.get_text(" ", strip=True) or "").strip()
+                    if not text:
+                        continue
+                    m = patt_resp1.search(text) or patt_resp2.search(text)
+                    if m:
+                        name = re.sub(r"\s{2,}", " ", m.group(1).strip())
+                        responsabili.append(name)
+            # dedup semplice
+            seen = set()
+            out = []
+            for d in docs:
+                key = (d.get("titolo", ""), d.get("link", ""))
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(d)
+            seen_r = set()
+            out_r = []
+            for n in responsabili:
+                if n in seen_r:
+                    continue
+                seen_r.add(n)
+                out_r.append(n)
+            return out, out_r[:5]
+        except Exception:
+            return [], []
+
+    out = []
+    for it in items:
+        codice = str(it.get("jconon_call:codice") or "").strip()
+        rdp_raw = str(it.get("jconon_call:rdp") or "").strip()
+        rdp_group = ""
+        rdp_members: list[str] = []
+        rdp_error = ""
+        if include_rdp and rdp_raw:
+            try:
+                rdp_group = svc.fetch_group_fullname(rdp_raw)
+            except Exception as e:
+                rdp_group = ""
+                rdp_error = f"group_lookup: {e}"
+            if not rdp_group:
+                rdp_group = svc.build_group_fullname(rdp_raw)
+            try:
+                rdp_members = svc.fetch_rdp_members(rdp_group) if rdp_group else []
+            except Exception as e:
+                rdp_members = []
+                rdp_error = f"members_lookup: {e}"
+
+        docs, resp_html = _extract_docs_and_resp(codice) if include_docs else ([], [])
+        if not rdp_members and resp_html:
+            rdp_members = resp_html
+            if rdp_error:
+                rdp_error = rdp_error + " | fallback_call_detail"
+            else:
+                rdp_error = "fallback_call_detail"
+
+        row = {
+            "uuid": str(it.get("alfcmis:nodeRef") or it.get("cmis:objectId") or "").strip(),
+            "codice": codice,
+            "titolo": str(it.get("cmis:name") or "").strip(),
+            "data_pubblicazione_graduatoria": str(it.get("jconon_call:data_pubbl_graduatoria") or "").strip(),
+            "data_pubblicazione_inpa": str(it.get("jconon_call:data_pubblicazione_inpa") or "").strip(),
+            "numero_posti": str(it.get("jconon_call:numero_posti") or "").strip(),
+            "profilo": str(it.get("jconon_call:profilo") or "").strip(),
+            "struttura": str(it.get("jconon_call:struttura") or it.get("jconon_call:struttura_destinataria") or "").strip(),
+            "rdp_raw": rdp_raw,
+            "rdp_group": rdp_group,
+            "rdp_members": rdp_members,
+            "rdp_error": rdp_error,
+            "link_bando": f"https://selezionionline.cnr.it/jconon/call-detail?callCode={codice.replace(' ', '%20')}" if codice else "",
+        }
+        row["documenti_graduatoria"] = docs
+        if include_candidates:
+            cand = svc.fetch_call_candidates(row["uuid"])
+            row["candidate_count"] = cand.get("count", 0)
+            row["candidate_sessions"] = cand.get("sessions", [])
+            row["candidati"] = cand.get("candidates", [])
+        else:
+            row["candidate_count"] = 0
+            row["candidate_sessions"] = []
+            row["candidati"] = []
+        if include_scores:
+            scores = svc.fetch_call_scores(row["uuid"])
+            row["scores_count"] = scores.get("count", 0)
+            row["punteggi"] = scores.get("rows", [])
+            if scores.get("error"):
+                row["scores_error"] = scores.get("error")
+        else:
+            row["scores_count"] = 0
+            row["punteggi"] = []
+        out.append(row)
+
+    if out_format == "csv":
+        sio = io.StringIO()
+        writer = csv.writer(sio, delimiter=";")
+        writer.writerow([
+            "codice", "titolo", "data_pubblicazione_graduatoria", "data_pubblicazione_inpa",
+            "numero_posti", "profilo", "struttura", "rdp_group", "rdp_members",
+            "candidate_count", "scores_count", "link_bando", "documenti_graduatoria"
+        ])
+        for r in out:
+            docs_txt = " | ".join(
+                [f"{d.get('titolo','')} -> {d.get('link','')}" for d in (r.get("documenti_graduatoria") or [])]
+            )
+            writer.writerow([
+                r.get("codice", ""),
+                r.get("titolo", ""),
+                r.get("data_pubblicazione_graduatoria", ""),
+                r.get("data_pubblicazione_inpa", ""),
+                r.get("numero_posti", ""),
+                r.get("profilo", ""),
+                r.get("struttura", ""),
+                r.get("rdp_group", ""),
+                " | ".join(r.get("rdp_members") or []),
+                r.get("candidate_count", 0),
+                r.get("scores_count", 0),
+                r.get("link_bando", ""),
+                docs_txt,
+            ])
+        mem = io.BytesIO(sio.getvalue().encode("utf-8"))
+        mem.seek(0)
+        name = f"graduatorie-sol-{date_from}-{date_to}.csv"
+        return send_file(mem, mimetype="text/csv", as_attachment=True, download_name=name)
+
+    return jsonify({
+        "query": {
+            "date_from": date_from,
+            "date_to": date_to,
+            "max_items": max_items,
+            "include_docs": include_docs,
+            "include_rdp": include_rdp,
+            "include_candidates": include_candidates,
+            "include_scores": include_scores,
+        },
+        "total_items": len(out),
+        "items": out,
+    })
+
+
+@app.get("/api/rdp/auth-check")
+@login_required
+def api_rdp_auth_check():
+    """
+    Diagnostica veloce credenziali/permessi su endpoint gruppi RDP.
+    Query param opzionale:
+      - short_name=RDP_...
+    """
+    short_name = (request.args.get("short_name") or "").strip()
+    if not short_name:
+        short_name = "RDP_367.493 RIC_32ec3a77-ab93-47f1-9e6c-2a1f194c2298"
+
+    out = {
+        "short_name": short_name,
+        "group_lookup_ok": False,
+        "group_full_name": "",
+        "members_lookup_ok": False,
+        "members_count": 0,
+        "members_preview": [],
+        "errors": [],
+        "auth_hints": {
+            "has_basic_user": bool(getattr(svc, "USERNAME", "")),
+            "has_basic_password": bool(getattr(svc, "PASSWORD", "")),
+            "has_auth_b64": bool(getattr(svc, "AUTH_B64", "")),
+            "has_x_alf_ticket": bool(getattr(svc, "ALF_TICKET", "")),
+            "has_cookie_header": bool(getattr(svc, "JCONON_COOKIE", "")),
+        },
+    }
+
+    try:
+        full = svc.fetch_group_fullname(short_name)
+        if not full:
+            full = svc.build_group_fullname(short_name)
+        out["group_lookup_ok"] = bool(full)
+        out["group_full_name"] = full
+    except Exception as e:
+        out["errors"].append(f"group_lookup: {e}")
+        return jsonify(out), 200
+
+    try:
+        members = svc.fetch_rdp_members(out["group_full_name"])
+        out["members_lookup_ok"] = True
+        out["members_count"] = len(members)
+        out["members_preview"] = members[:10]
+    except Exception as e:
+        out["errors"].append(f"members_lookup: {e}")
+
+    return jsonify(out), 200
+
+
+@app.get("/api/sol/call-inspect")
+@login_required
+def api_sol_call_inspect():
+    """
+    Ispeziona un bando SOL per codice:
+    1) cerca via /rest/search
+    2) per ogni match recupera /openapi/v1/call/{id}
+    Restituisce JSON grezzo utile per capire i campi disponibili.
+    """
+    q = (request.args.get("q") or "").strip()
+    limit = int(request.args.get("limit") or 5)
+    if not q:
+        return jsonify({"error": "Parametro q obbligatorio"}), 400
+
+    SEARCH_URL = "https://selezionionline.cnr.it/jconon/rest/search"
+    TREE_UUID = "713d4376-4cbd-43b6-ad14-9401b5029c51"
+    cmis_query = f"""
+SELECT * FROM jconon_call:folder root
+WHERE (
+    (root.jconon_call:codice LIKE '%{q}%' OR root.cmis:name LIKE '%{q}%')
+    AND IN_TREE (root,'{TREE_UUID}')
+)
+ORDER BY jconon_call:data_fine_invio_domande_index DESC
+""".strip()
+
+    params = {
+        "guest": "true",
+        "ajax": "true",
+        "maxItems": max(1, min(limit, 20)),
+        "skipCount": 0,
+        "fetchCmisObject": "true",
+        "calculateTotalNumItems": "true",
+        "q": cmis_query,
+    }
+    headers = {"Accept": "application/json"}
+    try:
+        resp = requests.get(SEARCH_URL, params=params, headers=headers, timeout=30)
+        resp.raise_for_status()
+        payload = resp.json()
+    except Exception as e:
+        return jsonify({"error": f"Errore ricerca SOL: {e}"}), 502
+
+    items = payload.get("items") if isinstance(payload, dict) else []
+    if not isinstance(items, list):
+        items = []
+
+    def _uuid_from_item(it: dict) -> str:
+        node_ref = str(it.get("alfcmis:nodeRef") or "").strip()
+        if node_ref and "/" in node_ref:
+            return node_ref.rsplit("/", 1)[-1].strip()
+        return str(it.get("cmis:objectId") or "").strip()
+
+    out = []
+    for it in items:
+        uid = _uuid_from_item(it)
+        detail = svc.fetch_call_detail(uid) if uid else {}
+        rdp_diag = {
+            "rdp_raw": "",
+            "group_lookup_ok": False,
+            "group_full_name": "",
+            "members_lookup_ok": False,
+            "members_count": 0,
+            "members_preview": [],
+            "errors": [],
+        }
+        rdp_raw = str(
+            (detail or {}).get("jconon_call:rdp")
+            or it.get("jconon_call:rdp")
+            or ""
+        ).strip()
+        rdp_diag["rdp_raw"] = rdp_raw
+        if rdp_raw:
+            try:
+                full = svc.fetch_group_fullname(rdp_raw)
+                if not full:
+                    full = svc.build_group_fullname(rdp_raw)
+                rdp_diag["group_lookup_ok"] = bool(full)
+                rdp_diag["group_full_name"] = full
+            except Exception as e:
+                rdp_diag["errors"].append(f"group_lookup: {e}")
+            if rdp_diag["group_full_name"]:
+                try:
+                    members = svc.fetch_rdp_members(rdp_diag["group_full_name"])
+                    rdp_diag["members_lookup_ok"] = True
+                    rdp_diag["members_count"] = len(members)
+                    rdp_diag["members_preview"] = members[:10]
+                except Exception as e:
+                    rdp_diag["errors"].append(f"members_lookup: {e}")
+        else:
+            rdp_diag["errors"].append("rdp_raw assente nel payload call/search")
+
+        out.append({
+            "uuid": uid,
+            "codice": it.get("jconon_call:codice"),
+            "titolo": it.get("cmis:name"),
+            "search_item": it,
+            "call_detail": detail,
+            "rdp_diagnostic": rdp_diag,
+        })
+
+    return jsonify({
+        "query": q,
+        "count": len(out),
+        "results": out,
+    })
+
+
+@app.get("/api/sol/graduatoria-detail")
+@login_required
+def api_sol_graduatoria_detail():
+    """
+    Dettaglio graduatoria per codice bando:
+      - individua il call id via /rest/search
+      - ritorna candidati e punteggi (best effort)
+    Parametri:
+      - codice (obbligatorio)
+    """
+    codice = (request.args.get("codice") or "").strip()
+    if not codice:
+        return jsonify({"error": "Parametro codice obbligatorio"}), 400
+
+    SEARCH_URL = "https://selezionionline.cnr.it/jconon/rest/search"
+    TREE_UUID = "713d4376-4cbd-43b6-ad14-9401b5029c51"
+    cmis_query = f"""
+SELECT * FROM jconon_call:folder root
+WHERE (
+    (root.jconon_call:codice LIKE '%{codice}%' OR root.cmis:name LIKE '%{codice}%')
+    AND IN_TREE (root,'{TREE_UUID}')
+)
+ORDER BY jconon_call:data_fine_invio_domande_index DESC
+""".strip()
+
+    params = {
+        "guest": "true",
+        "ajax": "true",
+        "maxItems": 20,
+        "skipCount": 0,
+        "fetchCmisObject": "true",
+        "calculateTotalNumItems": "true",
+        "q": cmis_query,
+    }
+
+    try:
+        r = requests.get(SEARCH_URL, params=params, headers={"Accept": "application/json"}, timeout=30)
+        r.raise_for_status()
+        payload = r.json()
+    except Exception as e:
+        return jsonify({"error": f"Errore ricerca call: {e}"}), 502
+
+    items = payload.get("items") if isinstance(payload, dict) else []
+    if not isinstance(items, list) or not items:
+        return jsonify({"error": "Bando non trovato", "codice": codice}), 404
+
+    def _uuid(it: dict) -> str:
+        nr = str(it.get("alfcmis:nodeRef") or "").strip()
+        if nr and "/" in nr:
+            return nr.rsplit("/", 1)[-1].strip()
+        return str(it.get("cmis:objectId") or "").strip()
+
+    wanted = None
+    code_norm = codice.upper().strip()
+    for it in items:
+        c = str(it.get("jconon_call:codice") or "").upper().strip()
+        if c == code_norm:
+            wanted = it
+            break
+    if wanted is None:
+        wanted = items[0]
+
+    call_id = _uuid(wanted)
+    detail = svc.fetch_call_detail(call_id)
+    cands = svc.fetch_call_candidates(call_id)
+    scores = svc.fetch_call_scores(call_id)
+
+    return jsonify({
+        "codice_query": codice,
+        "call_id": call_id,
+        "codice": wanted.get("jconon_call:codice") or "",
+        "titolo": wanted.get("cmis:name") or "",
+        "candidate_count": cands.get("count", 0),
+        "candidati": cands.get("candidates", []),
+        "sessions": cands.get("sessions", []),
+        "scores_count": scores.get("count", 0),
+        "punteggi": scores.get("rows", []),
+        "scores_source": scores.get("source", ""),
+        "scores_error": scores.get("error", ""),
+        "call_detail": detail,
+    })
 
 
 

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dettaglio Graduatoria</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 16px; color: #142033; background: #f5f8fd; }
+    .card { background:#fff; border:1px solid #d7e1ef; border-radius:10px; padding:12px; margin-bottom:12px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    input, button { font: inherit; padding:8px 10px; border:1px solid #b7c8df; border-radius:8px; }
+    button { background:#0f4aa3; color:#fff; border-color:#0f4aa3; cursor:pointer; }
+    table { width:100%; border-collapse: collapse; }
+    th,td { border:1px solid #dfe7f3; padding:6px; text-align:left; vertical-align:top; font-size:.9rem; }
+    th { background:#f0f5fc; }
+    .muted { color:#5d6a7e; }
+    .mono { font-family: Menlo, Consolas, monospace; }
+    .tbl-wrap { overflow:auto; max-height:55vh; }
+    a { color:#0f4aa3; text-decoration:none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="row" style="justify-content:space-between;">
+      <h2 style="margin:0;">Dettaglio Graduatoria</h2>
+      <a href="report-mese.html">Torna alla tabella</a>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <label for="cod">Codice bando:</label>
+      <input id="cod" type="text" style="min-width:260px; flex:1;" />
+      <button id="btn">Carica dettaglio</button>
+    </div>
+    <div id="status" class="muted" style="margin-top:8px;">Pronto.</div>
+  </div>
+
+  <div class="card">
+    <div><b>Info bando</b></div>
+    <div id="meta" class="mono"></div>
+  </div>
+
+  <div class="card">
+    <div><b>Candidati</b> <span id="candCount" class="muted"></span></div>
+    <div class="tbl-wrap"><table id="candTbl"><thead></thead><tbody></tbody></table></div>
+  </div>
+
+  <div class="card">
+    <div><b>Punteggi</b> <span id="scoreCount" class="muted"></span></div>
+    <div id="scoreMeta" class="muted"></div>
+    <div class="tbl-wrap"><table id="scoreTbl"><thead></thead><tbody></tbody></table></div>
+  </div>
+
+  <script>
+    function qs(name) { return new URLSearchParams(location.search).get(name) || ''; }
+    function esc(v) {
+      return String(v ?? '')
+        .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
+        .replaceAll('"','&quot;').replaceAll("'",'&#39;');
+    }
+
+    function renderTable(tableId, rows) {
+      const table = document.getElementById(tableId);
+      const thead = table.querySelector('thead');
+      const tbody = table.querySelector('tbody');
+      const arr = Array.isArray(rows) ? rows : [];
+      if (!arr.length) {
+        thead.innerHTML = '';
+        tbody.innerHTML = '<tr><td class="muted">Nessun dato</td></tr>';
+        return;
+      }
+      const keys = [...new Set(arr.flatMap(r => Object.keys(r || {})))];
+      thead.innerHTML = `<tr>${keys.map(k => `<th>${esc(k)}</th>`).join('')}</tr>`;
+      tbody.innerHTML = arr.map(r => `<tr>${keys.map(k => `<td>${esc(r[k])}</td>`).join('')}</tr>`).join('');
+    }
+
+    async function loadDetail() {
+      const code = document.getElementById('cod').value.trim();
+      if (!code) return;
+      const status = document.getElementById('status');
+      status.textContent = 'Caricamento...';
+      try {
+        const res = await fetch(`/api/sol/graduatoria-detail?codice=${encodeURIComponent(code)}`, { cache: 'no-store' });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+        document.getElementById('meta').textContent = `codice=${j.codice} | titolo=${j.titolo} | call_id=${j.call_id}`;
+        document.getElementById('candCount').textContent = `(${j.candidate_count || 0})`;
+        document.getElementById('scoreCount').textContent = `(${j.scores_count || 0})`;
+        document.getElementById('scoreMeta').textContent = `source=${j.scores_source || 'n/d'}${j.scores_error ? ' | error=' + j.scores_error : ''}`;
+        renderTable('candTbl', j.candidati || []);
+        renderTable('scoreTbl', j.punteggi || []);
+        status.textContent = 'OK';
+      } catch (e) {
+        status.textContent = `Errore: ${e.message}`;
+      }
+    }
+
+    document.getElementById('btn').addEventListener('click', loadDetail);
+    document.getElementById('cod').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadDetail(); });
+
+    const init = qs('codice');
+    if (init) {
+      document.getElementById('cod').value = init;
+      loadDetail();
+    }
+  </script>
+</body>
+</html>

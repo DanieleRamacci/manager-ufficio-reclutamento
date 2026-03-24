@@ -2,30 +2,31 @@
 <html lang="it">
 <head>
   <meta charset="UTF-8" />
-  <title>Monitoraggio Mensile</title>
+  <title>Bandi Selezioni Online</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     :root {
-      --bg: #f6f8fb;
+      --bg: #f3f6fb;
       --panel: #ffffff;
-      --line: #d9e1ec;
+      --line: #d6deea;
       --ink: #152033;
-      --muted: #5d6a7d;
+      --muted: #5c6a7d;
       --brand: #0f4aa3;
-      --ok: #1f8f5f;
-      --warn: #b36f00;
-      --danger: #c0352b;
-      --tag: #eef4ff;
+      --ok-bg: #e8f7f0;
+      --ok-ink: #125f3d;
+      --warn-bg: #fff4df;
+      --warn-ink: #7b4f00;
+      --neutral-bg: #edf1f7;
+      --neutral-ink: #41566f;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       color: var(--ink);
-      background: linear-gradient(180deg, #f5f9ff 0%, var(--bg) 180px);
+      background: linear-gradient(180deg, #f7faff 0%, var(--bg) 200px);
       font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     }
-    .wrap { max-width: 1280px; margin: 0 auto; padding: 20px; }
+    .wrap { max-width: 1400px; margin: 0 auto; padding: 20px; }
     nav { margin: 8px 0 20px; display: flex; flex-wrap: wrap; gap: 8px; }
     nav a {
       text-decoration: none;
@@ -38,18 +39,19 @@
     }
     h1 { margin: 4px 0 6px; font-size: 1.7rem; }
     .muted { color: var(--muted); }
-    .grid { display: grid; gap: 14px; }
-    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .card {
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 12px;
       padding: 14px;
       box-shadow: 0 4px 14px rgba(16, 34, 72, 0.05);
+      margin-bottom: 14px;
     }
-    .card h2, .card h3 { margin: 0 0 10px; font-size: 1.06rem; }
-    .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .grid { display: grid; gap: 12px; }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .kpi-title { font-size: .86rem; color: var(--muted); }
+    .kpi-value { font-size: 1.35rem; font-weight: 700; margin-top: 4px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
     label { font-size: .92rem; color: #22314a; }
     input, select, button {
       font: inherit;
@@ -66,55 +68,78 @@
       color: #fff;
       font-weight: 600;
     }
-    button.ghost { background: #fff; color: #0b3e88; }
-    button.warn { background: #a15d00; border-color: #8d5200; }
-    button:disabled { opacity: .5; cursor: not-allowed; }
+    button.ghost {
+      background: #fff;
+      color: #0b3e88;
+    }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .status {
+      border-radius: 8px;
+      padding: 6px 9px;
+      font-size: .86rem;
+      border: 1px solid #d4dfef;
+      background: var(--neutral-bg);
+      color: var(--neutral-ink);
+      display: inline-block;
+    }
+    .status.ok {
+      background: var(--ok-bg);
+      border-color: #b8e6cf;
+      color: var(--ok-ink);
+    }
+    .status.warn {
+      background: var(--warn-bg);
+      border-color: #f4d392;
+      color: var(--warn-ink);
+    }
     .pill {
       display: inline-block;
       padding: 2px 8px;
       border-radius: 999px;
       font-size: .78rem;
-      background: var(--tag);
-      color: #25477b;
-      border: 1px solid #ccdcf7;
+      border: 1px solid #cfdaea;
+      background: #eef3fa;
+      color: #2b476d;
       white-space: nowrap;
     }
-    .status-ok { background: #e8f7f0; color: #125f3d; border-color: #b8e6cf; }
-    .status-warn { background: #fff4df; color: #7b4f00; border-color: #f4d392; }
-    .status-bad { background: #ffe8e6; color: #80261f; border-color: #f2b2ad; }
-    .status-neutral { background: #eef2f7; color: #41566f; border-color: #d5e0ec; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { border: 1px solid var(--line); padding: 7px; text-align: left; vertical-align: top; }
-    th { background: #f2f6fc; font-size: .86rem; }
-    td { font-size: .88rem; }
-    .table-wrap { overflow: auto; max-height: 420px; }
-    .kpi { font-size: 1.4rem; font-weight: 700; margin-top: 4px; }
-    .split { display: grid; grid-template-columns: 2.2fr 1fr; gap: 14px; }
-    .search-list {
+    .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .84rem; }
+    .table-wrap {
+      overflow: auto;
+      max-height: calc(100vh - 290px);
       border: 1px solid var(--line);
       border-radius: 10px;
-      max-height: 260px;
-      overflow: auto;
-      background: #fff;
     }
-    .search-item {
-      padding: 9px;
-      border-bottom: 1px solid #e6edf7;
+    table { width: 100%; border-collapse: collapse; min-width: 1850px; }
+    th, td {
+      border-bottom: 1px solid #e1e8f3;
+      padding: 8px;
+      text-align: left;
+      vertical-align: top;
+      font-size: .87rem;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      background: #f2f6fc;
+      z-index: 2;
+      font-size: .82rem;
+      text-transform: uppercase;
+      letter-spacing: .02em;
+    }
+    td a { color: #0f4aa3; text-decoration: none; }
+    td a:hover { text-decoration: underline; }
+    .members {
       display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px;
+      max-width: 420px;
     }
-    .search-item:last-child { border-bottom: none; }
-    .search-title { font-weight: 600; }
-    .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .82rem; }
-    .mb8 { margin-bottom: 8px; }
+    .members .pill { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+    .right { margin-left: auto; }
     .mb12 { margin-bottom: 12px; }
-    .mb16 { margin-bottom: 16px; }
-    .hidden { display: none; }
-    @media (max-width: 980px) {
-      .grid-2, .grid-3, .split { grid-template-columns: 1fr; }
-      .wrap { padding: 14px; }
+    @media (max-width: 1100px) {
+      .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .table-wrap { max-height: none; }
     }
   </style>
 </head>
@@ -125,174 +150,85 @@
       <a href="access.html">Accessibilità URP</a>
       <a href="verifica-access.html">Verifica PDF</a>
       <a href="mobilita-urp.html">Mobilità</a>
-      <a href="report-mese.html">Monitoraggio Mese</a>
+      <a href="report-mese.html">Bandi SOL</a>
     </nav>
 
-    <h1>Monitoraggio Mensile URP/SOL</h1>
-    <div class="muted mb16">Crea un progetto per mese, importa file Excel SOL, confronta con URP/SOL e completa manualmente i mancanti.</div>
+    <h1>Bandi Selezioni Online</h1>
+    <div class="muted mb12">Tabella unica con dati SOL e membri gruppo RDP (responsabile/i) ricavati da API interne.</div>
 
-    <div class="card mb16">
-      <h2>1) Crea o apri progetto monitoraggio</h2>
-      <div class="row mb12">
-        <label for="projectMonth">Mese di riferimento:</label>
-        <input id="projectMonth" type="month" />
-        <button id="btnCreateProject">Apri progetto</button>
-        <select id="existingProjects"></select>
-        <button id="btnLoadProject" class="ghost">Carica progetto salvato</button>
-      </div>
-      <div id="projectInfo" class="muted">Nessun progetto caricato.</div>
+    <div class="grid grid-4 mb12">
+      <div class="card"><div class="kpi-title">Bandi in tabella</div><div id="kpiTotal" class="kpi-value">0</div></div>
+      <div class="card"><div class="kpi-title">Con gruppo RDP</div><div id="kpiWithGroup" class="kpi-value">0</div></div>
+      <div class="card"><div class="kpi-title">Con membri RDP</div><div id="kpiWithMembers" class="kpi-value">0</div></div>
+      <div class="card"><div class="kpi-title">Con graduatoria presente</div><div id="kpiWithGrad" class="kpi-value">0</div></div>
     </div>
 
-    <div id="workspace" class="hidden">
-      <div class="grid grid-3 mb16">
-        <div class="card">
-          <div class="muted">Record monitoraggio</div>
-          <div id="kpiRows" class="kpi">0</div>
-        </div>
-        <div class="card">
-          <div class="muted">Match automatici URP/SOL</div>
-          <div id="kpiMatches" class="kpi">0</div>
-        </div>
-        <div class="card">
-          <div class="muted">Mancanti o da verificare</div>
-          <div id="kpiMissing" class="kpi">0</div>
-        </div>
+    <div class="card">
+      <div class="row mb12">
+        <label for="q">Ricerca:</label>
+        <input id="q" type="text" placeholder="codice, titolo, membro RDP" style="min-width:260px; flex:1;" />
+
+        <label for="gradMonth">Mese graduatorie:</label>
+        <input id="gradMonth" type="month" />
+        <button id="btnLoadGradMonth" class="ghost">Carica Graduatorie Mese</button>
+
+        <label for="tipologia">Tipologia:</label>
+        <select id="tipologia">
+          <option value="">Tutte</option>
+        </select>
+
+        <label for="graduatoria">Graduatoria:</label>
+        <select id="graduatoria">
+          <option value="">Tutte</option>
+          <option value="si">Presente</option>
+          <option value="no">Assente</option>
+        </select>
+
+        <button id="btnReload">Ricarica dati</button>
+        <button id="btnRefreshRemote" class="ghost">Aggiorna da remoto</button>
+        <button id="btnExport" class="ghost">Esporta CSV vista</button>
       </div>
 
-      <div class="grid grid-2 mb16">
-        <div class="card">
-          <h3>2) Import file SOL</h3>
-          <div class="mb8 row">
-            <label for="fileBandi">Excel bandi pubblicati (.xls/.xlsx):</label>
-            <input id="fileBandi" type="file" accept=".xls,.xlsx,.csv" />
-            <button id="btnImportBandi">Importa bandi</button>
-          </div>
-          <div class="mb8 row">
-            <label for="fileGraduatorie">Excel graduatorie/punteggi (.xls/.xlsx):</label>
-            <input id="fileGraduatorie" type="file" accept=".xls,.xlsx,.csv" />
-            <button id="btnImportGraduatorie">Importa graduatorie</button>
-          </div>
-          <div id="importLog" class="muted"></div>
-        </div>
-
-        <div class="card">
-          <h3>3) Aggiunta manuale da lista SOL</h3>
-          <div class="row mb8">
-            <input id="searchBando" type="text" placeholder="Cerca codice o titolo bando SOL..." style="flex:1; min-width:220px;" />
-            <select id="manualTipologia">
-              <option value="scorrimenti_pubblicati">Scorrimenti pubblicati</option>
-              <option value="graduatorie_scorrimenti">Graduatorie scorrimenti</option>
-              <option value="mobilita_bandi_pubblicati">Mobilità - bandi pubblicati</option>
-              <option value="mobilita_graduatorie">Mobilità - graduatorie</option>
-              <option value="ti_bandi_pubblicati">Tempo indeterminato - bandi pubblicati</option>
-              <option value="ti_graduatorie">Tempo indeterminato - graduatorie</option>
-            </select>
-          </div>
-          <div class="search-list" id="searchResults"></div>
-        </div>
+      <div class="row mb12">
+        <span id="loadStatus" class="status">Caricamento...</span>
+        <span id="lastUpdate" class="muted"></span>
       </div>
 
-      <div class="split mb16">
-        <div class="card">
-          <h3>4) Quadro monitoraggio per tipologia</h3>
-          <div class="row mb8">
-            <label for="filterTipologia">Tipologia:</label>
-            <select id="filterTipologia"></select>
-            <label for="filterStato">Stato controllo:</label>
-            <select id="filterStato">
-              <option value="">Tutti</option>
-              <option value="da_verificare">Da verificare</option>
-              <option value="confermato">Confermato</option>
-              <option value="mancante">Mancante</option>
-            </select>
-            <input id="filterText" type="text" placeholder="Filtro testo" />
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Tipologia</th>
-                  <th>Codice</th>
-                  <th>Titolo</th>
-                  <th>Evento</th>
-                  <th>Fonte</th>
-                  <th>Match</th>
-                  <th>Stato</th>
-                  <th>Note</th>
-                  <th>Azioni</th>
-                </tr>
-              </thead>
-              <tbody id="tbMonitoraggio"></tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3>5) Riepilogo categorie</h3>
-          <div id="summaryByType" class="muted"></div>
-          <hr />
-          <h3>Aggiunta manuale veloce</h3>
-          <div class="mb8">
-            <input id="manualCode" type="text" placeholder="Codice bando" class="mb8" style="width:100%;" />
-            <input id="manualTitle" type="text" placeholder="Titolo" class="mb8" style="width:100%;" />
-            <select id="manualEvent" class="mb8" style="width:100%;">
-              <option value="pubblicazione_bando">Pubblicazione bando</option>
-              <option value="pubblicazione_graduatoria">Pubblicazione graduatoria</option>
-              <option value="scorrimento">Scorrimento</option>
-            </select>
-            <button id="btnAddManual" style="width:100%;">Aggiungi riga manuale</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h3>Tabelle importate (separate)</h3>
-        <div class="grid grid-2">
-          <div>
-            <div class="mb8"><b>Bandi importati SOL</b> <span id="cntBandiImp" class="pill">0</span></div>
-            <div class="table-wrap">
-              <table>
-                <thead><tr><th>Codice</th><th>Titolo</th><th>Tipologia</th><th>Data</th></tr></thead>
-                <tbody id="tbBandiImport"></tbody>
-              </table>
-            </div>
-          </div>
-          <div>
-            <div class="mb8"><b>Graduatorie importate SOL</b> <span id="cntGradImp" class="pill">0</span></div>
-            <div class="table-wrap">
-              <table>
-                <thead><tr><th>Codice</th><th>Titolo</th><th>Tipologia</th><th>Data</th></tr></thead>
-                <tbody id="tbGradImport"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Codice</th>
+              <th>Titolo</th>
+              <th>Tipologia</th>
+              <th>Stato bando</th>
+              <th>Struttura</th>
+              <th>Profilo</th>
+              <th>Posti</th>
+              <th>Inizio domande</th>
+              <th>Scadenza domande</th>
+              <th>Data pubblicazione INPA</th>
+              <th>Data graduatoria</th>
+              <th>Graduatoria</th>
+              <th>Gruppo RDP</th>
+              <th>Responsabile/i (membri RDP)</th>
+              <th>Link</th>
+            </tr>
+          </thead>
+          <tbody id="tb"></tbody>
+        </table>
       </div>
     </div>
   </div>
 
   <script>
-    const STORAGE_KEY = "urp_sol_monitoring_projects_v1";
-    const TIPOLOGIE = [
-      { key: "scorrimenti_pubblicati", label: "Scorrimenti pubblicati" },
-      { key: "graduatorie_scorrimenti", label: "Graduatorie scorrimenti" },
-      { key: "mobilita_bandi_pubblicati", label: "Mobilità - bandi pubblicati" },
-      { key: "mobilita_graduatorie", label: "Mobilità - graduatorie" },
-      { key: "ti_bandi_pubblicati", label: "Tempo indeterminato - bandi pubblicati" },
-      { key: "ti_graduatorie", label: "Tempo indeterminato - graduatorie" }
-    ];
+    const STATE = {
+      rows: [],
+      filtered: [],
+      lastUpdate: ""
+    };
 
-    const STATO_OPTIONS = [
-      { value: "da_verificare", label: "Da verificare" },
-      { value: "confermato", label: "Confermato" },
-      { value: "mancante", label: "Mancante" }
-    ];
-
-    let allSOL = [];
-    let allURP = [];
-    let currentProject = null;
-
-    function normalizeText(v) {
+    function norm(v) {
       return String(v || "")
         .toLowerCase()
         .normalize("NFD")
@@ -301,553 +237,340 @@
         .trim();
     }
 
-    function parseDateAny(v) {
-      const t = String(v || "").trim();
-      if (!t) return "";
-      let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-      m = t.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-      if (m) return `${m[3]}-${m[2]}-${m[1]}`;
-      m = t.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-      if (m) return `${m[3]}-${m[2]}-${m[1]}`;
-      return t;
+    function fmtDate(v) {
+      const s = String(v || "").trim();
+      if (!s) return "";
+      const d = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (d) return `${d[3]}/${d[2]}/${d[1]}`;
+      return s;
     }
 
-    function getProjects() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        return raw ? JSON.parse(raw) : [];
-      } catch (e) {
-        return [];
-      }
+    function escapeHtml(v) {
+      return String(v || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
     }
 
-    function saveProjects(list) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    function setStatus(text, kind = "") {
+      const el = document.getElementById("loadStatus");
+      el.textContent = text;
+      el.className = "status" + (kind ? ` ${kind}` : "");
     }
 
-    function tipologiaLabel(k) {
-      const x = TIPOLOGIE.find(t => t.key === k);
-      return x ? x.label : k;
+    async function loadJSON(path) {
+      const res = await fetch(path, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status} su ${path}`);
+      return await res.json();
     }
 
-    function inferTipologiaFromText(text, forGraduatoria = false) {
-      const t = normalizeText(text);
-      const isMob = t.includes("mobilita") || t.includes("mobilità");
-      if (forGraduatoria) {
-        if (isMob) return "mobilita_graduatorie";
-        if (t.includes("scorr") || t.includes("utilizzo")) return "graduatorie_scorrimenti";
-        return "ti_graduatorie";
-      }
-      if (isMob) return "mobilita_bandi_pubblicati";
-      if (t.includes("scorr") || t.includes("utilizzo")) return "scorrimenti_pubblicati";
-      return "ti_bandi_pubblicati";
+    async function loadRdp(forceRemote = false) {
+      const qs = forceRemote ? "&nocache=1" : "";
+      const res = await fetch(`/api/bandi-rdp?filterType=all&offset=20&includeDetails=1${qs}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status} su /api/bandi-rdp`);
+      return await res.json();
     }
 
-    function inferEventoFromTipologia(tipologia) {
-      if (tipologia.includes("scorr")) return "scorrimento";
-      if (tipologia.includes("graduatorie")) return "pubblicazione_graduatoria";
-      return "pubblicazione_bando";
-    }
-
-    function updateProjectSelect() {
-      const select = document.getElementById("existingProjects");
-      const list = getProjects().sort((a, b) => (a.month < b.month ? 1 : -1));
-      select.innerHTML = list.map(p => `<option value="${p.id}">${p.month} - ${p.name}</option>`).join("");
-      if (!list.length) select.innerHTML = "<option value=''>Nessun progetto</option>";
-    }
-
-    function ensureProjectShape(p) {
-      p.rows = Array.isArray(p.rows) ? p.rows : [];
-      p.imports = p.imports || { bandi: [], graduatorie: [] };
-      return p;
-    }
-
-    function saveCurrentProject() {
-      if (!currentProject) return;
-      const list = getProjects();
-      const idx = list.findIndex(x => x.id === currentProject.id);
-      if (idx >= 0) list[idx] = currentProject;
-      else list.push(currentProject);
-      saveProjects(list);
-      updateProjectSelect();
-    }
-
-    function createProject(monthValue) {
-      const month = monthValue || "";
-      if (!month) {
-        alert("Seleziona un mese.");
-        return;
-      }
-      const list = getProjects();
-      const id = `monitor-${month}`;
-      let p = list.find(x => x.id === id);
-      if (!p) {
-        p = {
-          id,
-          month,
-          name: `Monitoraggio ${month}`,
-          createdAt: new Date().toISOString(),
-          rows: [],
-          imports: { bandi: [], graduatorie: [] }
-        };
-        list.push(p);
-        saveProjects(list);
-      }
-      currentProject = ensureProjectShape(p);
-      renderAll();
-      updateProjectSelect();
-    }
-
-    function loadSelectedProject() {
-      const id = document.getElementById("existingProjects").value;
-      const p = getProjects().find(x => x.id === id);
-      if (!p) return;
-      currentProject = ensureProjectShape(p);
-      renderAll();
-    }
-
-    function setWorkspaceVisible(v) {
-      document.getElementById("workspace").classList.toggle("hidden", !v);
-    }
-
-    function projectRows() {
-      return currentProject ? currentProject.rows : [];
-    }
-
-    function normalizeCode(v) {
-      return String(v || "").toUpperCase().replace(/\s+/g, " ").trim();
-    }
-
-    function findMatches(row) {
-      const code = normalizeCode(row.code);
-      const title = normalizeText(row.title);
-      const urpHit = allURP.find(x => {
-        const c = normalizeCode(x.codice_bando || x.codice || "");
-        const t = normalizeText(x.titolo_bando || x.titolo || x.estratto || "");
-        return (code && c && (c.includes(code) || code.includes(c))) || (title && t.includes(title.slice(0, 40)));
+    function buildRows(solArr, rdpArr) {
+      const rdpByCode = new Map();
+      (Array.isArray(rdpArr) ? rdpArr : []).forEach(x => {
+        const code = norm(x.codice);
+        if (!code) return;
+        rdpByCode.set(code, {
+          rdp_group: x.rdp_group || "",
+          rdp_members: Array.isArray(x.rdp_members) ? x.rdp_members : []
+        });
       });
-      const solHit = allSOL.find(x => {
-        const c = normalizeCode(x.codice || "");
-        const t = normalizeText(x.titolo || "");
-        return (code && c && (c.includes(code) || code.includes(c))) || (title && t.includes(title.slice(0, 40)));
-      });
-      return { urp: !!urpHit, sol: !!solHit };
-    }
 
-    function addMonitorRow(data) {
-      if (!currentProject) return;
-      const row = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        tipologia: data.tipologia || "ti_bandi_pubblicati",
-        code: normalizeCode(data.code),
-        title: data.title || "",
-        event: data.event || inferEventoFromTipologia(data.tipologia || "ti_bandi_pubblicati"),
-        source: data.source || "manuale",
-        stato: data.stato || "da_verificare",
-        note: data.note || "",
-        date: data.date || ""
-      };
-      const match = findMatches(row);
-      row.match_urp = match.urp;
-      row.match_sol = match.sol;
-      currentProject.rows.push(row);
-    }
-
-    function updateMatchesAll() {
-      if (!currentProject) return;
-      currentProject.rows.forEach(r => {
-        const m = findMatches(r);
-        r.match_urp = m.urp;
-        r.match_sol = m.sol;
-      });
-    }
-
-    function setImportLog(msg) {
-      document.getElementById("importLog").textContent = msg;
-    }
-
-    function resolveField(obj, names) {
-      const keys = Object.keys(obj || {});
-      for (const n of names) {
-        const hit = keys.find(k => normalizeText(k) === normalizeText(n));
-        if (hit) return obj[hit];
-      }
-      for (const n of names) {
-        const hit = keys.find(k => normalizeText(k).includes(normalizeText(n)));
-        if (hit) return obj[hit];
-      }
-      return "";
-    }
-
-    async function parseWorkbook(file) {
-      const ab = await file.arrayBuffer();
-      if (typeof XLSX === "undefined") {
-        throw new Error("Libreria Excel non caricata.");
-      }
-      const wb = XLSX.read(ab, { type: "array", cellDates: false });
-      const sheetName = wb.SheetNames[0];
-      const ws = wb.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
-      return rows;
-    }
-
-    async function importBandiFile(file) {
-      const rows = await parseWorkbook(file);
-      const parsed = rows.map(r => {
-        const codice = resolveField(r, ["codice", "codice bando", "bando", "codice concorso"]);
-        const titolo = resolveField(r, ["titolo", "oggetto", "descrizione", "bando"]);
-        const tipologiaRaw = resolveField(r, ["tipologia", "categoria"]);
-        const data = parseDateAny(resolveField(r, ["data", "data pubblicazione", "data pubblicazione inpa", "data_bando"]));
+      return (Array.isArray(solArr) ? solArr : []).map(s => {
+        const code = String(s.codice || "").trim();
+        const k = norm(code);
+        const rdp = rdpByCode.get(k) || { rdp_group: "", rdp_members: [] };
         return {
-          code: normalizeCode(codice),
-          title: String(titolo || "").trim(),
-          tipologia: inferTipologiaFromText(`${tipologiaRaw} ${titolo}`, false),
-          date: data,
-          source: "sol_excel_bandi"
+          codice: code,
+          titolo: s.titolo || "",
+          tipologia: s.tipologia || "",
+          data_pubblicazione_inpa: s.data_pubblicazione_inpa || "",
+          data_pubblicazione_graduatoria: s.data_pubblicazione_graduatoria || "",
+          graduatoria_presente: !!s.graduatoria_presente,
+          graduatoria_allegato: !!s.graduatoria_allegato,
+          rdp_group: rdp.rdp_group,
+          rdp_members: rdp.rdp_members,
+          rdp_error: rdp.rdp_error || "",
+          call_status: rdp.call_status || "",
+          call_structure: rdp.call_structure || "",
+          call_profile: rdp.call_profile || "",
+          call_num_posti: rdp.call_num_posti || "",
+          call_date_start: rdp.call_date_start || "",
+          call_date_end: rdp.call_date_end || "",
+          link: code ? `https://selezionionline.cnr.it/jconon/call-detail?callCode=${encodeURIComponent(code)}` : ""
         };
-      }).filter(x => x.code || x.title);
+      });
+    }
 
-      currentProject.imports.bandi = parsed;
-      parsed.forEach(r => addMonitorRow({
-        tipologia: r.tipologia,
-        code: r.code,
-        title: r.title,
-        event: "pubblicazione_bando",
-        source: "SOL Excel Bandi",
-        stato: "da_verificare",
-        date: r.date
+    function mapGraduatorieMonthRows(items) {
+      return (Array.isArray(items) ? items : []).map(r => ({
+        codice: r.codice || "",
+        titolo: r.titolo || "",
+        tipologia: "concorsi_pubblici_graduatorie_mese",
+        call_status: "",
+        call_structure: r.struttura || "",
+        call_profile: r.profilo || "",
+        call_num_posti: r.numero_posti || "",
+        call_date_start: "",
+        call_date_end: "",
+        data_pubblicazione_inpa: r.data_pubblicazione_inpa || "",
+        data_pubblicazione_graduatoria: r.data_pubblicazione_graduatoria || "",
+        graduatoria_presente: true,
+        graduatoria_allegato: Array.isArray(r.documenti_graduatoria) && r.documenti_graduatoria.length > 0,
+        rdp_group: r.rdp_group || "",
+        rdp_members: Array.isArray(r.rdp_members) ? r.rdp_members : [],
+        rdp_error: r.rdp_error || "",
+        link: r.link_bando || ""
       }));
     }
 
-    async function importGraduatorieFile(file) {
-      const rows = await parseWorkbook(file);
-      const parsed = rows.map(r => {
-        const codice = resolveField(r, ["codice", "codice bando", "bando", "codice concorso"]);
-        const titolo = resolveField(r, ["titolo", "oggetto", "descrizione", "graduatoria"]);
-        const tipologiaRaw = resolveField(r, ["tipologia", "categoria"]);
-        const data = parseDateAny(resolveField(r, ["data", "data pubblicazione graduatoria", "data graduatoria"]));
-        return {
-          code: normalizeCode(codice),
-          title: String(titolo || "").trim(),
-          tipologia: inferTipologiaFromText(`${tipologiaRaw} ${titolo}`, true),
-          date: data,
-          source: "sol_excel_graduatorie"
-        };
-      }).filter(x => x.code || x.title);
-
-      currentProject.imports.graduatorie = parsed;
-      parsed.forEach(r => addMonitorRow({
-        tipologia: r.tipologia,
-        code: r.code,
-        title: r.title,
-        event: "pubblicazione_graduatoria",
-        source: "SOL Excel Graduatorie",
-        stato: "da_verificare",
-        date: r.date
-      }));
+    function renderTipologiaFilter(rows) {
+      const sel = document.getElementById("tipologia");
+      const old = sel.value;
+      const all = [...new Set(rows.map(r => r.tipologia).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+      sel.innerHTML = `<option value="">Tutte</option>${all.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("")}`;
+      if (all.includes(old)) sel.value = old;
     }
 
-    function renderImportedTables() {
-      const bandi = (currentProject?.imports?.bandi || []);
-      const grad = (currentProject?.imports?.graduatorie || []);
-      document.getElementById("cntBandiImp").textContent = String(bandi.length);
-      document.getElementById("cntGradImp").textContent = String(grad.length);
+    function applyFilters() {
+      const q = norm(document.getElementById("q").value);
+      const tip = document.getElementById("tipologia").value;
+      const grad = document.getElementById("graduatoria").value;
 
-      document.getElementById("tbBandiImport").innerHTML = bandi.map(x => `
-        <tr>
-          <td class="mono">${x.code || ""}</td>
-          <td>${x.title || ""}</td>
-          <td>${tipologiaLabel(x.tipologia)}</td>
-          <td>${x.date || ""}</td>
-        </tr>
-      `).join("");
-
-      document.getElementById("tbGradImport").innerHTML = grad.map(x => `
-        <tr>
-          <td class="mono">${x.code || ""}</td>
-          <td>${x.title || ""}</td>
-          <td>${tipologiaLabel(x.tipologia)}</td>
-          <td>${x.date || ""}</td>
-        </tr>
-      `).join("");
-    }
-
-    function pillMatch(row) {
-      if (row.match_urp && row.match_sol) return '<span class="pill status-ok">Match URP+SOL</span>';
-      if (row.match_urp || row.match_sol) return '<span class="pill status-warn">Match parziale</span>';
-      return '<span class="pill status-bad">Non trovato</span>';
-    }
-
-    function statoPill(stato) {
-      if (stato === "confermato") return '<span class="pill status-ok">Confermato</span>';
-      if (stato === "mancante") return '<span class="pill status-bad">Mancante</span>';
-      return '<span class="pill status-neutral">Da verificare</span>';
-    }
-
-    function renderMonitorTable() {
-      const tip = document.getElementById("filterTipologia").value;
-      const st = document.getElementById("filterStato").value;
-      const q = normalizeText(document.getElementById("filterText").value);
-
-      let rows = projectRows();
+      let rows = [...STATE.rows];
       if (tip) rows = rows.filter(r => r.tipologia === tip);
-      if (st) rows = rows.filter(r => r.stato === st);
-      if (q) rows = rows.filter(r => normalizeText(`${r.code} ${r.title} ${r.note}`).includes(q));
+      if (grad === "si") rows = rows.filter(r => r.graduatoria_presente);
+      if (grad === "no") rows = rows.filter(r => !r.graduatoria_presente);
+      if (q) {
+        rows = rows.filter(r => {
+          const members = (r.rdp_members || []).join(" ");
+          return norm(`${r.codice} ${r.titolo} ${r.tipologia} ${r.call_status} ${r.call_structure} ${r.call_profile} ${members} ${r.rdp_group}`).includes(q);
+        });
+      }
 
-      document.getElementById("tbMonitoraggio").innerHTML = rows.map(r => `
-        <tr>
-          <td>${tipologiaLabel(r.tipologia)}</td>
-          <td class="mono">${r.code || ""}</td>
-          <td>${r.title || ""}</td>
-          <td>${r.event || ""}</td>
-          <td>${r.source || ""}</td>
-          <td>${pillMatch(r)}</td>
-          <td>
-            <select data-act="set-stato" data-id="${r.id}">
-              ${STATO_OPTIONS.map(s => `<option value="${s.value}" ${s.value === r.stato ? "selected" : ""}>${s.label}</option>`).join("")}
-            </select>
-            <div class="mb8">${statoPill(r.stato)}</div>
-          </td>
-          <td>
-            <input data-act="set-note" data-id="${r.id}" value="${(r.note || "").replace(/"/g, "&quot;")}" placeholder="note" style="width:100%;" />
-          </td>
-          <td>
-            <button class="warn" data-act="delete" data-id="${r.id}">Rimuovi</button>
-          </td>
-        </tr>
-      `).join("");
+      rows.sort((a, b) => {
+        const da = String(a.data_pubblicazione_inpa || "");
+        const db = String(b.data_pubblicazione_inpa || "");
+        return db.localeCompare(da) || String(a.codice).localeCompare(String(b.codice));
+      });
+
+      STATE.filtered = rows;
+      renderTable();
+      renderKpi();
     }
 
-    function renderSummary() {
-      const rows = projectRows();
-      const total = rows.length;
-      const matches = rows.filter(r => r.match_urp || r.match_sol).length;
-      const missing = rows.filter(r => r.stato !== "confermato").length;
+    function gradPill(r) {
+      if (r.graduatoria_presente) {
+        return `<span class="pill" title="Data o allegato graduatoria presente">SI${r.graduatoria_allegato ? " (allegato)" : ""}</span>`;
+      }
+      return `<span class="pill">NO</span>`;
+    }
 
-      document.getElementById("kpiRows").textContent = String(total);
-      document.getElementById("kpiMatches").textContent = String(matches);
-      document.getElementById("kpiMissing").textContent = String(missing);
+    function renderTable() {
+      const tb = document.getElementById("tb");
+      tb.innerHTML = STATE.filtered.map(r => {
+        let members = `<span class="muted">n/d</span>`;
+        if ((r.rdp_members || []).length) {
+          members = `<div class="members">${r.rdp_members.map(m => `<span class="pill" title="${escapeHtml(m)}">${escapeHtml(m)}</span>`).join("")}</div>`;
+        } else if (r.rdp_error) {
+          const err = String(r.rdp_error || "");
+          const code = err.includes("403") ? "403" : (err.includes("401") ? "401" : "");
+          const label = code ? `membri non leggibili (${code})` : "membri non leggibili";
+          members = `<span class="pill" title="${escapeHtml(r.rdp_error)}">${escapeHtml(label)}</span>`;
+        } else if (r.rdp_group) {
+          members = `<span class="pill">gruppo senza membri visibili</span>`;
+        }
 
-      const byType = TIPOLOGIE.map(t => {
-        const rr = rows.filter(r => r.tipologia === t.key);
-        const conf = rr.filter(r => r.stato === "confermato").length;
-        const man = rr.filter(r => r.stato === "mancante").length;
-        const ver = rr.filter(r => r.stato === "da_verificare").length;
-        return `<div class="mb8"><b>${t.label}</b><br><span class="pill">Tot ${rr.length}</span> <span class="pill status-ok">Conf ${conf}</span> <span class="pill status-neutral">Ver ${ver}</span> <span class="pill status-bad">Manc ${man}</span></div>`;
+        const rdpGroup = r.rdp_group ? `<span class="mono">${escapeHtml(r.rdp_group)}</span>` : `<span class="muted">n/d</span>`;
+        const links = [];
+        if (r.link) {
+          links.push(`<a href="${r.link}" target="_blank" rel="noopener noreferrer">Apri bando</a>`);
+        }
+        if (r.codice) {
+          links.push(`<a href="graduatoria-detail.html?codice=${encodeURIComponent(r.codice)}" target="_blank" rel="noopener noreferrer">Candidati/Punteggi</a>`);
+        }
+        const detail = links.join(" | ");
+
+        return `
+          <tr>
+            <td class="mono">${escapeHtml(r.codice || "")}</td>
+            <td>${escapeHtml(r.titolo || "")}</td>
+            <td>${escapeHtml(r.tipologia || "")}</td>
+            <td>${escapeHtml(r.call_status || "")}</td>
+            <td>${escapeHtml(r.call_structure || "")}</td>
+            <td>${escapeHtml(r.call_profile || "")}</td>
+            <td>${escapeHtml(r.call_num_posti || "")}</td>
+            <td>${escapeHtml(fmtDate(r.call_date_start))}</td>
+            <td>${escapeHtml(fmtDate(r.call_date_end))}</td>
+            <td>${escapeHtml(fmtDate(r.data_pubblicazione_inpa))}</td>
+            <td>${escapeHtml(fmtDate(r.data_pubblicazione_graduatoria))}</td>
+            <td>${gradPill(r)}</td>
+            <td>${rdpGroup}</td>
+            <td>${members}</td>
+            <td>${detail}</td>
+          </tr>
+        `;
       }).join("");
-
-      document.getElementById("summaryByType").innerHTML = byType || "Nessun dato";
     }
 
-    function renderProjectInfo() {
-      const el = document.getElementById("projectInfo");
-      if (!currentProject) {
-        el.textContent = "Nessun progetto caricato.";
-        setWorkspaceVisible(false);
+    function renderKpi() {
+      const rows = STATE.filtered;
+      const withGroup = rows.filter(r => !!r.rdp_group).length;
+      const withMembers = rows.filter(r => Array.isArray(r.rdp_members) && r.rdp_members.length > 0).length;
+      const withGrad = rows.filter(r => !!r.graduatoria_presente).length;
+
+      document.getElementById("kpiTotal").textContent = String(rows.length);
+      document.getElementById("kpiWithGroup").textContent = String(withGroup);
+      document.getElementById("kpiWithMembers").textContent = String(withMembers);
+      document.getElementById("kpiWithGrad").textContent = String(withGrad);
+    }
+
+    function exportCurrentCsv() {
+      const rows = STATE.filtered;
+      if (!rows.length) return;
+      const header = [
+        "codice",
+        "titolo",
+        "tipologia",
+        "call_status",
+        "call_structure",
+        "call_profile",
+        "call_num_posti",
+        "call_date_start",
+        "call_date_end",
+        "data_pubblicazione_inpa",
+        "data_pubblicazione_graduatoria",
+        "graduatoria_presente",
+        "graduatoria_allegato",
+        "rdp_group",
+        "rdp_members",
+        "link"
+      ];
+
+      const csvRows = [header.join(";")];
+      rows.forEach(r => {
+        const line = [
+          r.codice,
+          r.titolo,
+          r.tipologia,
+          r.call_status,
+          r.call_structure,
+          r.call_profile,
+          r.call_num_posti,
+          r.call_date_start,
+          r.call_date_end,
+          r.data_pubblicazione_inpa,
+          r.data_pubblicazione_graduatoria,
+          r.graduatoria_presente ? "1" : "0",
+          r.graduatoria_allegato ? "1" : "0",
+          r.rdp_group,
+          (r.rdp_members || []).join(" | "),
+          r.link
+        ].map(v => `"${String(v || "").replaceAll('"', '""')}"`);
+        csvRows.push(line.join(";"));
+      });
+
+      const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `bandi-sol-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function reloadAll(forceRemote = false) {
+      setStatus(forceRemote ? "Aggiornamento remoto in corso..." : "Caricamento dati in corso...");
+      document.getElementById("btnReload").disabled = true;
+      document.getElementById("btnRefreshRemote").disabled = true;
+      try {
+        // 1) Mostra subito i dati SOL (senza attendere RDP/dettagli)
+        const sol = await loadJSON("/_static/bandi-concorsi-pubblici-sol.json");
+        STATE.rows = buildRows(sol, []);
+        renderTipologiaFilter(STATE.rows);
+        applyFilters();
+        setStatus("Dati SOL caricati. Arricchimento RDP in corso...", "warn");
+
+        // 2) Arricchisci in background con RDP + dettagli call
+        const rdp = await loadRdp(forceRemote);
+        STATE.rows = buildRows(sol, rdp);
+        renderTipologiaFilter(STATE.rows);
+        applyFilters();
+
+        STATE.lastUpdate = new Date().toLocaleString("it-IT");
+        document.getElementById("lastUpdate").textContent = `Ultimo aggiornamento vista: ${STATE.lastUpdate}`;
+
+        const noMembers = STATE.rows.filter(r => !Array.isArray(r.rdp_members) || r.rdp_members.length === 0).length;
+        if (noMembers > 0) {
+          setStatus(`Dati caricati. ${noMembers} bandi senza membri RDP risolti.${forceRemote ? " (aggiornamento remoto)" : " (cache)"} `, "warn");
+        } else {
+          setStatus(`Dati caricati correttamente.${forceRemote ? " (aggiornamento remoto)" : " (cache)"}`, "ok");
+        }
+      } catch (err) {
+        console.error(err);
+        setStatus(`Errore caricamento: ${err.message}`, "warn");
+        STATE.rows = [];
+        STATE.filtered = [];
+        renderTipologiaFilter([]);
+        renderTable();
+        renderKpi();
+      } finally {
+        document.getElementById("btnReload").disabled = false;
+        document.getElementById("btnRefreshRemote").disabled = false;
+      }
+    }
+
+    async function loadGraduatorieMonth() {
+      const month = document.getElementById("gradMonth").value;
+      if (!month) {
+        setStatus("Seleziona un mese (YYYY-MM) per caricare le graduatorie.", "warn");
         return;
       }
-      el.innerHTML = `Progetto attivo: <b>${currentProject.name}</b> · Mese: <b>${currentProject.month}</b> · Record: <b>${currentProject.rows.length}</b>`;
-      setWorkspaceVisible(true);
-    }
+      setStatus("Caricamento graduatorie mese in corso...");
+      document.getElementById("btnLoadGradMonth").disabled = true;
+      try {
+        const res = await fetch(`/api/sol/graduatorie?month=${encodeURIComponent(month)}&include_docs=1&include_rdp=1`, { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status} su /api/sol/graduatorie`);
+        const payload = await res.json();
+        const items = payload.items || [];
 
-    function populateTipologiaFilter() {
-      const f = document.getElementById("filterTipologia");
-      f.innerHTML = `<option value="">Tutte</option>${TIPOLOGIE.map(t => `<option value="${t.key}">${t.label}</option>`).join("")}`;
-    }
-
-    function renderSearchResults() {
-      const q = normalizeText(document.getElementById("searchBando").value);
-      const tipologia = document.getElementById("manualTipologia").value;
-      const list = q.length < 2
-        ? []
-        : allSOL.filter(x => normalizeText(`${x.codice} ${x.titolo}`).includes(q)).slice(0, 50);
-
-      document.getElementById("searchResults").innerHTML = list.map(x => `
-        <div class="search-item">
-          <div>
-            <div class="search-title">${x.titolo || "(senza titolo)"}</div>
-            <div class="mono">${x.codice || ""}</div>
-          </div>
-          <button data-act="add-from-search" data-code="${(x.codice || "").replace(/"/g, "&quot;")}" data-title="${(x.titolo || "").replace(/"/g, "&quot;")}" data-tip="${tipologia}">Aggiungi</button>
-        </div>
-      `).join("");
-    }
-
-    async function loadSources() {
-      const [solResp, urpResp, mobResp] = await Promise.all([
-        fetch("/_static/bandi-concorsi-pubblici-sol.json").catch(() => null),
-        fetch("/_static/bandi-completi-urp.json").catch(() => null),
-        fetch("/_static/bandi-mobilita.json").catch(() => null)
-      ]);
-
-      let sol = [];
-      let urp = [];
-      let mob = [];
-      if (solResp && solResp.ok) sol = await solResp.json();
-      if (urpResp && urpResp.ok) urp = await urpResp.json();
-      if (mobResp && mobResp.ok) mob = await mobResp.json();
-
-      allSOL = Array.isArray(sol) ? sol : [];
-
-      if (Array.isArray(urp)) {
-        allURP = urp;
-      } else if (urp && typeof urp === "object") {
-        allURP = Object.entries(urp).flatMap(([cat, arr]) => (Array.isArray(arr) ? arr.map(x => ({ ...x, categoria: cat })) : []));
-      } else {
-        allURP = [];
-      }
-
-      if (Array.isArray(mob) && mob.length) {
-        allURP = allURP.concat(mob.map(m => ({
-          codice_bando: m.codice || "",
-          titolo_bando: m.estratto || m.titolo || "",
-          categoria: "mobilita",
-          data_pubblicazione_bando: m.data_pubblicazione_bando || ""
-        })));
+        STATE.rows = mapGraduatorieMonthRows(items);
+        renderTipologiaFilter(STATE.rows);
+        applyFilters();
+        STATE.lastUpdate = new Date().toLocaleString("it-IT");
+        document.getElementById("lastUpdate").textContent = `Ultimo aggiornamento vista: ${STATE.lastUpdate}`;
+        setStatus(`Caricate ${STATE.rows.length} graduatorie del mese ${month} (arricchite RDP).`, "ok");
+      } catch (err) {
+        console.error(err);
+        setStatus(`Errore caricamento graduatorie mese: ${err.message}`, "warn");
+      } finally {
+        document.getElementById("btnLoadGradMonth").disabled = false;
       }
     }
 
-    function dedupeRows() {
-      if (!currentProject) return;
-      const seen = new Set();
-      currentProject.rows = currentProject.rows.filter(r => {
-        const key = `${r.tipologia}|${normalizeCode(r.code)}|${normalizeText(r.title)}|${r.event}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
+    function initEvents() {
+      ["q", "tipologia", "graduatoria"].forEach(id => {
+        document.getElementById(id).addEventListener("input", applyFilters);
+        document.getElementById(id).addEventListener("change", applyFilters);
       });
+      document.getElementById("btnReload").addEventListener("click", () => reloadAll(false));
+      document.getElementById("btnRefreshRemote").addEventListener("click", () => reloadAll(true));
+      document.getElementById("btnLoadGradMonth").addEventListener("click", loadGraduatorieMonth);
+      document.getElementById("btnExport").addEventListener("click", exportCurrentCsv);
     }
 
-    function renderAll() {
-      if (currentProject) {
-        dedupeRows();
-        updateMatchesAll();
-      }
-      renderProjectInfo();
-      if (!currentProject) return;
-      renderImportedTables();
-      renderMonitorTable();
-      renderSummary();
-      saveCurrentProject();
-    }
-
-    document.addEventListener("click", (e) => {
-      const t = e.target;
-      if (!(t instanceof HTMLElement)) return;
-      const act = t.dataset.act;
-      if (!act || !currentProject) return;
-
-      if (act === "delete") {
-        currentProject.rows = currentProject.rows.filter(r => r.id !== t.dataset.id);
-        renderAll();
-      }
-
-      if (act === "add-from-search") {
-        addMonitorRow({
-          tipologia: t.dataset.tip,
-          code: t.dataset.code,
-          title: t.dataset.title,
-          event: inferEventoFromTipologia(t.dataset.tip || ""),
-          source: "SOL lista ricerca",
-          stato: "da_verificare"
-        });
-        renderAll();
-      }
-    });
-
-    document.addEventListener("change", (e) => {
-      const t = e.target;
-      if (!(t instanceof HTMLElement) || !currentProject) return;
-      const act = t.dataset.act;
-      const id = t.dataset.id;
-      if (!act || !id) return;
-      const row = currentProject.rows.find(r => r.id === id);
-      if (!row) return;
-
-      if (act === "set-stato") {
-        row.stato = t.value;
-      }
-      if (act === "set-note") {
-        row.note = t.value;
-      }
-      renderAll();
-    });
-
-    function wireUI() {
-      const monthInput = document.getElementById("projectMonth");
-      const now = new Date();
-      monthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-
-      document.getElementById("btnCreateProject").addEventListener("click", () => {
-        createProject(monthInput.value);
-      });
-
-      document.getElementById("btnLoadProject").addEventListener("click", () => {
-        loadSelectedProject();
-      });
-
-      document.getElementById("btnImportBandi").addEventListener("click", async () => {
-        if (!currentProject) return alert("Apri prima un progetto.");
-        const file = document.getElementById("fileBandi").files[0];
-        if (!file) return alert("Seleziona file bandi.");
-        try {
-          await importBandiFile(file);
-          setImportLog(`Import bandi completato: ${currentProject.imports.bandi.length} righe.`);
-          renderAll();
-        } catch (err) {
-          setImportLog(`Errore import bandi: ${err.message}`);
-        }
-      });
-
-      document.getElementById("btnImportGraduatorie").addEventListener("click", async () => {
-        if (!currentProject) return alert("Apri prima un progetto.");
-        const file = document.getElementById("fileGraduatorie").files[0];
-        if (!file) return alert("Seleziona file graduatorie.");
-        try {
-          await importGraduatorieFile(file);
-          setImportLog(`Import graduatorie completato: ${currentProject.imports.graduatorie.length} righe.`);
-          renderAll();
-        } catch (err) {
-          setImportLog(`Errore import graduatorie: ${err.message}`);
-        }
-      });
-
-      document.getElementById("searchBando").addEventListener("input", renderSearchResults);
-      document.getElementById("manualTipologia").addEventListener("change", renderSearchResults);
-
-      document.getElementById("btnAddManual").addEventListener("click", () => {
-        if (!currentProject) return alert("Apri prima un progetto.");
-        const tipologia = document.getElementById("manualTipologia").value;
-        const code = document.getElementById("manualCode").value;
-        const title = document.getElementById("manualTitle").value;
-        const event = document.getElementById("manualEvent").value;
-        if (!code && !title) return alert("Inserisci almeno codice o titolo.");
-        addMonitorRow({
-          tipologia,
-          code,
-          title,
-          event,
-          source: "inserimento manuale",
-          stato: "da_verificare"
-        });
-        document.getElementById("manualCode").value = "";
-        document.getElementById("manualTitle").value = "";
-        renderAll();
-      });
-
-      ["filterTipologia", "filterStato", "filterText"].forEach(id => {
-        document.getElementById(id).addEventListener("input", renderMonitorTable);
-        document.getElementById(id).addEventListener("change", renderMonitorTable);
-      });
-    }
-
-    (async function init() {
-      populateTipologiaFilter();
-      wireUI();
-      updateProjectSelect();
-      await loadSources();
-    })();
+    initEvents();
+    reloadAll(false);
   </script>
 </body>
 </html>

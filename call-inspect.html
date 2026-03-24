@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Inspect Call SOL</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 16px; color: #132033; background: #f6f8fc; }
+    .card { background: #fff; border: 1px solid #d8e1ef; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    input, button { font: inherit; padding: 8px 10px; border: 1px solid #b9c7dc; border-radius: 8px; }
+    button { background: #0f4aa3; color: #fff; border-color: #0f4aa3; cursor: pointer; }
+    pre { background: #0b1220; color: #d8e6ff; padding: 10px; border-radius: 8px; overflow: auto; max-height: 60vh; }
+    .muted { color: #5c6a7d; }
+    a { color: #0f4aa3; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="row" style="justify-content:space-between;">
+      <h2 style="margin:0;">Inspect OpenAPI Call</h2>
+      <a href="report-mese.html">Torna a Bandi SOL</a>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <label for="q">Codice/titolo:</label>
+      <input id="q" type="text" value="367.493" style="min-width:260px; flex:1;" />
+      <label for="limit">Limit:</label>
+      <input id="limit" type="number" value="3" min="1" max="20" style="width:80px;" />
+      <button id="btn">Ispeziona</button>
+    </div>
+    <div id="status" class="muted" style="margin-top:8px;">Pronto.</div>
+  </div>
+
+  <div class="card">
+    <div><b>Diagnostica Responsabili (RDP)</b></div>
+    <pre id="diag">[]</pre>
+  </div>
+
+  <div class="card">
+    <div><b>Risposta API</b></div>
+    <pre id="out">{}</pre>
+  </div>
+
+  <script>
+    async function runInspect() {
+      const q = document.getElementById('q').value.trim();
+      const limit = document.getElementById('limit').value.trim() || '3';
+      const status = document.getElementById('status');
+      const out = document.getElementById('out');
+      const diag = document.getElementById('diag');
+      if (!q) {
+        status.textContent = 'Inserisci un codice o testo da cercare.';
+        return;
+      }
+      status.textContent = 'Chiamata in corso...';
+      try {
+        const res = await fetch(`/api/sol/call-inspect?q=${encodeURIComponent(q)}&limit=${encodeURIComponent(limit)}`, { cache: 'no-store' });
+        const txt = await res.text();
+        let payload;
+        try { payload = JSON.parse(txt); } catch { payload = { raw: txt }; }
+        out.textContent = JSON.stringify(payload, null, 2);
+        const compact = (payload.results || []).map(r => ({
+          codice: r.codice,
+          titolo: r.titolo,
+          rdp: r.rdp_diagnostic || {}
+        }));
+        diag.textContent = JSON.stringify(compact, null, 2);
+        status.textContent = res.ok ? `OK (${res.status})` : `Errore (${res.status})`;
+      } catch (e) {
+        status.textContent = `Errore: ${e.message}`;
+      }
+    }
+
+    document.getElementById('btn').addEventListener('click', runInspect);
+    document.getElementById('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') runInspect(); });
+  </script>
+</body>
+</html>

@@ -52,7 +52,7 @@ def _map_bbox_to_original(
     }
 
 
-def extract_ocr_from_images(image_paths: list[str]) -> list[dict]:
+def extract_ocr_from_images(image_paths: list[str], lang: str | None = None, config: str | None = None) -> list[dict]:
     results: list[dict] = []
     for page_index, image_path in enumerate(image_paths):
         try:
@@ -86,8 +86,8 @@ def extract_ocr_from_images(image_paths: list[str]) -> list[dict]:
         ocr_img = _rotate_image_for_ocr(img, rotation)
         rot_w, rot_h = ocr_img.size
 
-        lang = os.environ.get("PII_OCR_LANG", "ita")
-        config = os.environ.get("PII_OCR_CONFIG", "--oem 1 --psm 6")
+        lang = lang or os.environ.get("PII_OCR_LANG", "ita")
+        config = config or os.environ.get("PII_OCR_CONFIG", "--oem 1 --psm 6")
         try:
             data = pytesseract.image_to_data(
                 ocr_img,

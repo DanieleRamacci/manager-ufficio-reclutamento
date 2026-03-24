@@ -33,3 +33,4 @@ ultralyticsplus==0.0.28
 pytesseract
 phonenumbers
 dateparser
+xlrd==2.0.1
