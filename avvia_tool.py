@@ -3428,6 +3428,8 @@ def api_run():
 def api_bandi_rdp():
     if request.method == "OPTIONS":
         return ("", 204)
+    # DISABILITATO: servizio auth RDP non disponibile, riattivare quando le credenziali saranno configurate
+    return jsonify({"error": "Servizio RDP temporaneamente disabilitato"}), 503
 
     filter_type = request.args.get("filterType", getattr(svc, "FILTER_TYPE", "all"))
     offset = int(request.args.get("offset", getattr(svc, "OFFSET", 20)))
