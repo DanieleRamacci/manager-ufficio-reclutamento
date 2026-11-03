@@ -158,9 +158,11 @@ def oidc_callback():
         id_token = tokens.get("id_token")
         if not id_token:
             return "ID token OIDC mancante", 401
-        jwks = jwt.PyJWKClient(f"{OIDC_BASE_URL}/certs")
+        # dal token endpoint in uso: il tool firme può configurare solo OIDC_TOKEN_URL
+        base_oidc = OIDC_TOKEN_URL.rsplit("/token", 1)[0]
+        jwks = jwt.PyJWKClient(f"{base_oidc}/certs")
         chiave = jwks.get_signing_key_from_jwt(id_token).key
-        issuer = OIDC_BASE_URL.rsplit("/protocol/openid-connect", 1)[0]
+        issuer = base_oidc.rsplit("/protocol/openid-connect", 1)[0]
         decoded = jwt.decode(id_token, chiave, algorithms=["RS256"], audience=OIDC_CLIENT_ID, issuer=issuer)
         if not nonce or not secrets.compare_digest(decoded.get("nonce", ""), nonce):
             session.clear()

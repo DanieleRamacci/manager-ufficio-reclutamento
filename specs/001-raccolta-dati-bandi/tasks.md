@@ -179,7 +179,7 @@ Pacchetto `monitoraggio/` e cartella `tests/` nella radice del repository, accan
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T038 Rimuovere dall'indice git i file di dati in radice (`git rm --cached bandi-completi-urp.json bandi-concorsi-pubblici-sol.json bandi-mobilita.json bandi_temp.json controllo_criteri_tracce_2020plus.json controllo_criteri_tracce_2024plus.csv` e le cartelle `flask_session/`, `instance/`, `docs_firme/` se tracciate), lasciandoli sul disco per `importa-json`; la pulizia della cronologia resta il TODO(REPO_VISIBILITY) della constitution
+- [X] T038 Rimuovere dall'indice git i file di dati in radice (`git rm --cached bandi-completi-urp.json bandi-concorsi-pubblici-sol.json bandi-mobilita.json bandi_temp.json controllo_criteri_tracce_2020plus.json controllo_criteri_tracce_2024plus.csv` e le cartelle `flask_session/`, `instance/`, `docs_firme/` se tracciate), lasciandoli sul disco per `importa-json`; la pulizia della cronologia resta il TODO(REPO_VISIBILITY) della constitution
 - [ ] T039 [P] Aggiornare README.md con: comandi `python -m monitoraggio`, variabili d'ambiente della raccolta, volume `DATA_DIR` per Coolify, esecuzione dei test in README.md
 - [ ] T040 [P] Creare CLAUDE.md con il contesto operativo richiesto dalla Governance della constitution: scopo, fonti (URP, SOL, file di riepilogo), glossario (scorrimento, subentro, utilizzo, protocollo pubblico e privato), regole sui dati (Principio II), comandi di test e di raccolta in CLAUDE.md
 - [ ] T041 Eseguire `pytest -q` sull'intera cartella tests/ e correggere i fallimenti in monitoraggio/
