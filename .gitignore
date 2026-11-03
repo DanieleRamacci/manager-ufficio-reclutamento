@@ -33,3 +33,17 @@ pii_ocr_debug/
 instance/
 
 exports_firme/**/*.zip
+
+# dati: stanno nel database sul volume persistente, mai nel repository (constitution, Principio II)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+flask_session/
+/bandi-completi-urp.json
+/bandi-concorsi-pubblici-sol.json
+/bandi-mobilita.json
+/bandi_temp.json
+/bandi-con-rdp.json
+/controllo_criteri_tracce_*.json
+/controllo_criteri_tracce_*.csv

@@ -1,0 +1,81 @@
+{
+ "items": [
+  {
+   "cmis:objectId": "f62e1175-3049-4d4a-a3d3-467c09eeeef4;1.0",
+   "cmis:name": "Bando 367.473 OTP IN PISA_signed.pdf",
+   "cmis:objectTypeId": "D:jconon_attachment:call_it",
+   "cmis:creationDate": "2025-04-08T14:53:03.763Z",
+   "cmis:lastModificationDate": "2025-04-08T14:53:04.08Z",
+   "alfcmis:nodeRef": "workspace://SpacesStore/f62e1175-3049-4d4a-a3d3-467c09eeeef4",
+   "jconon_protocollo:numero": "0115499",
+   "jconon_protocollo:data": "2025-04-08T12:00:00Z"
+  },
+  {
+   "cmis:objectId": "0bae9ec7-e321-4858-bafc-82c3768fdd16;1.0",
+   "cmis:name": "Curriculum strutturato 367.473 OPT IN.docx",
+   "cmis:objectTypeId": "D:jconon_attachment:call_generic",
+   "cmis:creationDate": "2025-04-08T14:53:30.554Z",
+   "cmis:lastModificationDate": "2025-04-08T14:53:30.838Z",
+   "alfcmis:nodeRef": "workspace://SpacesStore/0bae9ec7-e321-4858-bafc-82c3768fdd16",
+   "jconon_protocollo:numero": null,
+   "jconon_protocollo:data": null
+  },
+  {
+   "cmis:objectId": "1e06f851-ca8f-44b3-b1d5-199f5207420c;1.0",
+   "cmis:name": "ALL.2_Decreto nomina commissione.pdf",
+   "cmis:objectTypeId": "D:jconon_attachment:call_commission",
+   "cmis:creationDate": "2025-10-02T12:23:00.157Z",
+   "cmis:lastModificationDate": "2025-10-02T12:23:00.78Z",
+   "alfcmis:nodeRef": "workspace://SpacesStore/1e06f851-ca8f-44b3-b1d5-199f5207420c",
+   "jconon_protocollo:numero": "0303579",
+   "jconon_protocollo:data": "2025-08-05T12:00:00Z"
+  },
+  {
+   "cmis:objectId": "6e02d1c8-dbc7-4d13-854e-8a4bce0e558e;1.0",
+   "cmis:name": "AVVISO CONVOCAZIONE PROVA SCRITTA 367.473 OTP IN.pdf",
+   "cmis:objectTypeId": "D:jconon_attachment:call_convocazioni_candidati",
+   "cmis:creationDate": "2025-10-17T14:09:14.509Z",
+   "cmis:lastModificationDate": "2025-10-17T14:09:14.916Z",
+   "alfcmis:nodeRef": "workspace://SpacesStore/6e02d1c8-dbc7-4d13-854e-8a4bce0e558e",
+   "jconon_protocollo:numero": "0395036",
+   "jconon_protocollo:data": "2025-10-17T12:00:00Z"
+  },
+  {
+   "cmis:objectId": "b0ff8e88-57e3-4dee-80e8-267cf746a301;1.0",
+   "cmis:name": "367.473 OTP IN PISA Graduatoria_signed.pdf",
+   "cmis:objectTypeId": "D:jconon_attachment:call_classification",
+   "cmis:creationDate": "2026-01-09T09:34:47.37Z",
+   "cmis:lastModificationDate": "2026-09-28T08:20:36.012Z",
+   "alfcmis:nodeRef": "workspace://SpacesStore/b0ff8e88-57e3-4dee-80e8-267cf746a301",
+   "jconon_protocollo:numero": "0003763",
+   "jconon_protocollo:data": "2026-01-08T12:00:00Z"
+  },
+  {
+   "cmis:objectId": "b61d38bf-f490-4122-b1c7-6333d4ca2b31;1.0",
+   "cmis:name": "Utilizzo graduatoria bando 367.473 OTP IN.pdf",
+   "cmis:objectTypeId": "D:jconon_attachment:call_recruitment_provision",
+   "cmis:creationDate": "2026-04-17T10:06:41.578Z",
+   "cmis:lastModificationDate": "2026-04-17T10:06:41.982Z",
+   "alfcmis:nodeRef": "workspace://SpacesStore/b61d38bf-f490-4122-b1c7-6333d4ca2b31",
+   "jconon_protocollo:numero": "175370 ",
+   "jconon_protocollo:data": "2026-04-15T12:00:00Z"
+  },
+  {
+   "cmis:objectId": "bc8466a2-f081-4e6e-9c81-095140982974;1.0",
+   "cmis:name": "f367.473.pdf",
+   "cmis:objectTypeId": "D:jconon_attachment:call_errata_corrige",
+   "cmis:creationDate": "2026-04-22T15:58:51.047Z",
+   "cmis:lastModificationDate": "2026-04-22T15:58:51.503Z",
+   "alfcmis:nodeRef": "workspace://SpacesStore/bc8466a2-f081-4e6e-9c81-095140982974",
+   "jconon_protocollo:numero": "0183306",
+   "jconon_protocollo:data": "2026-04-21T12:00:00Z"
+  },
+  {
+   "cmis:objectId": "00000000-0000-0000-0000-000000000000",
+   "cmis:name": "membro.esempio.comm",
+   "cmis:objectTypeId": "D:jconon_commissione:metadata"
+  }
+ ],
+ "totalNumItems": 8,
+ "hasMoreItems": false
+}

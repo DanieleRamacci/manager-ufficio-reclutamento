@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>File segreteria</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #5d6677; --line: #dfe3ea;
+    --accent: #1f5fbf; --ok: #1d7a46; --warn: #a25b00; --err: #b3261e; --chip: #eef2f8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14171c; --card: #1c2027; --text: #e6e9ef; --muted: #9aa3b2; --line: #2e343e;
+            --accent: #7aa7ff; --ok: #5fcf8f; --warn: #f0b35a; --err: #ff8a80; --chip: #262c36; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  main { padding: 12px 16px 32px; width: 100%; display: grid; gap: 12px; }
+  h1 { font-size: 18px; margin: 0; } h2 { font-size: 15px; margin: 0 0 10px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+  .muted { color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr.cliccabile:hover { background: var(--chip); cursor: pointer; }
+  .chip { display: inline-block; padding: 1px 7px; margin: 1px 2px 1px 0; border-radius: 10px; background: var(--chip); font-size: 12px; white-space: nowrap; }
+  .chip.err { color: var(--err); } .chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); }
+  .filtri { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  input, select, button { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--card); color: var(--text); }
+  button { cursor: pointer; } button.primario { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .scroll { overflow-x: auto; }
+  .fogli { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+  .foglio { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+  .esito-ok { color: var(--ok); font-weight: 600; } .esito-err { color: var(--err); font-weight: 600; }
+  details summary { cursor: pointer; }
+  dialog { width: min(1100px, 95vw); max-height: 90vh; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); padding: 0; }
+  dialog .testa { display: flex; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--card); }
+  dialog .corpo { padding: 12px 16px; }
+  tr.fuori td { opacity: .6; }
+</style>
+<script src="/monitoraggio/menu.js" defer></script>
+</head>
+<body>
+<main>
+  <section>
+    <h1>File della segreteria</h1>
+    <p class="muted">Carica il file Excel di riepilogo (fogli Bandi, Graduatorie, Scorrimento). Ogni caricamento diventa una
+      versione: la più recente è quella usata nella tabella degli atti. Il file non viene salvato sul server, solo i dati
+      letti; i nominativi sono visibili solo dentro l'app.</p>
+    <form id="form" class="filtri">
+      <input type="file" id="file" accept=".xlsx" required>
+      <button class="primario" id="carica" type="submit">Carica file</button>
+      <span id="esito-carica"></span>
+      <a href="/monitoraggio/segreteria/file" style="margin-left:auto">Vedi il file come in Excel</a>
+    </form>
+  </section>
+
+  <section>
+    <h2>Versione in uso <span class="muted" id="versione-info"></span></h2>
+    <div class="fogli" id="rapporto"><div class="muted">Nessun file caricato.</div></div>
+    <div id="differenze" style="margin-top:12px"></div>
+  </section>
+
+  <section>
+    <h2>Atti del file <span class="muted" id="conteggio"></span></h2>
+    <div class="filtri">
+      <select id="categoria">
+        <option value="">Tutti</option><option value="bando">Bandi</option>
+        <option value="graduatoria">Graduatorie</option><option value="scorrimento">Scorrimenti</option>
+      </select>
+      <label class="muted">Mese <input type="month" id="mese"></label>
+      <label class="muted"><input type="checkbox" id="solo-ambito" checked> solo in ambito</label>
+      <label class="muted"><input type="checkbox" id="solo-non-collegati"> solo non trovati su URP/SOL</label>
+      <input type="search" id="q" placeholder="Bando o protocollo" size="20">
+    </div>
+    <div class="scroll"><table id="atti"></table></div>
+  </section>
+
+  <section>
+    <h2>Versioni caricate</h2>
+    <div class="scroll"><table id="versioni"></table></div>
+  </section>
+</main>
+
+<dialog id="dettaglio"><div class="testa"><div id="dettaglio-titolo"></div><button id="chiudi">Chiudi</button></div><div class="corpo scroll" id="dettaglio-corpo"></div></dialog>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const dataIt = (iso) => iso ? iso.slice(0, 10).split("-").reverse().join("/") : "";
+const oraIt = (iso) => iso ? new Date(iso).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" }) : "";
+const CATEGORIE = { bando: "Bando pubblicato", graduatoria: "Graduatoria", scorrimento: "Scorrimento" };
+const SOTTOTIPI = { ordinario: "scorrimento", subentro: "subentro", misto: "scorrimento e subentro" };
+const PROBLEMI = { senza_bando: "senza numero di bando", senza_protocollo: "senza protocollo", data_illeggibile: "data non leggibile",
+  numero_discordante: "N. Bando diverso da N Bando", senza_tipologia: "scorrimento senza tipologia" };
+const FOGLI = { bandi: "Bandi", graduatorie: "Graduatorie", scorrimento: "Scorrimento" };
+let versioneVista = null;
+let atti = [];
+
+async function json(url, opzioni) {
+  const r = await fetch(url, { cache: "no-store", ...opzioni });
+  const corpo = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(corpo.error || `HTTP ${r.status}`);
+  return corpo;
+}
+
+function disegnaRapporto(v) {
+  if (!v || !v.rapporto || !v.rapporto.fogli) { $("rapporto").innerHTML = `<div class="muted">Nessun file caricato.</div>`; return; }
+  $("versione-info").textContent = `· ${esc(v.nome_file)} · caricato ${oraIt(v.caricata_il)}${v.utente ? " da " + v.utente : ""} · ${v.atti} atti da ${v.righe} righe`;
+  $("rapporto").innerHTML = Object.entries(v.rapporto.fogli).map(([f, i]) => {
+    if (!i.trovato) return `<div class="foglio"><b>${FOGLI[f]}</b> <span class="esito-err">foglio non trovato</span></div>`;
+    const problemi = Object.entries(i.problemi).filter(([, righe]) => righe.length);
+    return `<div class="foglio"><b>${FOGLI[f]}</b> <span class="muted">(${esc(i.nome_foglio)})</span>
+      <div>${i.righe} righe · ${i.atti} atti${i.fuori_ambito ? ` · ${i.fuori_ambito} fuori ambito` : ""}</div>
+      ${i.colonne_mancanti.length ? `<div class="chip err">colonne mancanti: ${esc(i.colonne_mancanti.join(", "))}</div>` : ""}
+      ${i.colonne_non_riconosciute.length ? `<div class="muted">colonne non usate: ${esc(i.colonne_non_riconosciute.join(", "))}</div>` : ""}
+      ${problemi.length ? problemi.map(([k, righe]) => `<details><summary><span class="chip warn">${righe.length} righe ${PROBLEMI[k] || k}</span></summary>
+        <div class="muted">Righe Excel: ${righe.join(", ")}</div></details>`).join("") : `<div class="esito-ok">nessun problema</div>`}
+    </div>`;
+  }).join("");
+}
+
+async function disegnaDifferenze(versioneId) {
+  const d = await json(`/api/segreteria/versioni/${versioneId}/differenze`);
+  if (!d.precedente) { $("differenze").innerHTML = `<div class="muted">Prima versione caricata: nessun confronto.</div>`; return; }
+  const elenco = (lista) => lista.map(a => `<li>${CATEGORIE[a.categoria] || a.categoria} ${esc(a.numero_bando)}${a.codice_sotto ? " cod. " + esc(a.codice_sotto) : ""} · prot. ${esc(a.protocollo || "—")} del ${dataIt(a.data)}${a.persone ? ` · ${a.persone} persone` : ""}</li>`).join("");
+  const mod = d.modificati.map(m => `<li>${CATEGORIE[m.chiave.categoria]} ${esc(m.chiave.numero_bando)} · prot. ${esc(m.chiave.protocollo || "—")}: ${Object.entries(m.campi).map(([c, [a, b]]) => `${c} ${esc(a ?? "—")} → ${esc(b ?? "—")}`).join("; ")}</li>`).join("");
+  $("differenze").innerHTML = (d.nuovi.length + d.spariti.length + d.modificati.length) === 0
+    ? `<div class="muted">Nessuna differenza rispetto alla versione precedente.</div>`
+    : `<details open><summary><b>Rispetto alla versione precedente</b>: ${d.nuovi.length} nuovi · ${d.spariti.length} spariti · ${d.modificati.length} modificati</summary>
+       ${d.nuovi.length ? `<div>Nuovi</div><ul>${elenco(d.nuovi)}</ul>` : ""}
+       ${d.spariti.length ? `<div>Spariti</div><ul>${elenco(d.spariti)}</ul>` : ""}
+       ${d.modificati.length ? `<div>Modificati</div><ul>${mod}</ul>` : ""}</details>`;
+}
+
+async function caricaAtti() {
+  const p = new URLSearchParams();
+  if (versioneVista) p.set("versione", versioneVista);
+  const d = await json("/api/segreteria/atti?" + p);
+  atti = d.atti;
+  disegnaAtti();
+}
+
+function disegnaAtti() {
+  const cat = $("categoria").value, mese = $("mese").value, ambito = $("solo-ambito").checked;
+  const nonColl = $("solo-non-collegati").checked, q = $("q").value.trim().toLowerCase();
+  const righe = atti.filter(a => (!cat || a.categoria === cat) && (!mese || (a.data || "").startsWith(mese))
+    && (!ambito || a.in_ambito) && (!nonColl || !a.stato_collegamento)
+    && (!q || `${a.numero_bando} ${a.codice_originale} ${a.protocollo} ${a.protocollo_privato}`.toLowerCase().includes(q)));
+  $("conteggio").textContent = `(${righe.length} di ${atti.length})`;
+  $("atti").innerHTML = `<thead><tr><th>Data</th><th>N. bando</th><th>Codice nel file</th><th>Atto</th><th>Protocollo</th>
+    <th>Protocollo privato</th><th class="n">Persone</th><th>Su URP/SOL</th><th></th></tr></thead><tbody>` +
+    righe.map(a => `<tr class="cliccabile ${a.in_ambito ? "" : "fuori"}" data-id="${a.id}"><td>${dataIt(a.data)}</td>
+      <td><b>${esc(a.numero_bando)}</b>${a.codice_sotto ? ` <span class="muted">cod. ${esc(a.codice_sotto)}</span>` : ""}</td>
+      <td>${esc(a.codice_originale || "")}<div class="muted">${esc(a.titolo || "")}</div></td>
+      <td>${CATEGORIE[a.categoria]}${a.categoria === "scorrimento" ? (a.sottotipo ? ` <span class="chip">${SOTTOTIPI[a.sottotipo]}</span>` : ` <span class="chip warn">tipologia da completare</span>`) : ""}
+        ${a.tipo_procedura ? `<div class="muted">${esc(a.tipo_procedura)}</div>` : ""}</td>
+      <td>${esc(a.protocollo || "")}</td><td>${esc(a.protocollo_privato || "")}${a.data_privato ? ` <span class="muted">${dataIt(a.data_privato)}</span>` : ""}</td>
+      <td class="n">${a.categoria === "bando" ? "" : a.persone}</td>
+      <td>${a.stato_collegamento ? `<span class="chip ok">bando trovato</span>` : `<span class="chip err">bando non trovato</span>`}</td>
+      <td>${a.in_ambito ? "" : `<span class="chip">fuori ambito</span>`}</td></tr>`).join("") + "</tbody>";
+  document.querySelectorAll("#atti tr[data-id]").forEach(tr => tr.onclick = () => apriAtto(tr.dataset.id));
+}
+
+async function apriAtto(id) {
+  const a = atti.find(x => String(x.id) === String(id));
+  const { righe } = await json(`/api/segreteria/atti/${id}/righe`);
+  const colonne = [...new Set(righe.flatMap(r => Object.keys(r.valori)))];
+  $("dettaglio-titolo").innerHTML = `<b>${CATEGORIE[a.categoria]} · bando ${esc(a.numero_bando)}</b> · protocollo ${esc(a.protocollo || "—")} del ${dataIt(a.data)}
+    <div class="muted">${righe.length} righe del file (foglio ${esc(righe[0] ? righe[0].foglio : "")})</div>`;
+  $("dettaglio-corpo").innerHTML = `<table><thead><tr><th>Riga</th>${colonne.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>` +
+    righe.map(r => `<tr><td>${r.numero_riga}</td>${colonne.map(c => `<td>${esc(r.valori[c] ?? "")}</td>`).join("")}</tr>`).join("") + "</tbody></table>";
+  $("dettaglio").showModal();
+}
+
+async function caricaVersioni() {
+  const { versioni } = await json("/api/segreteria/versioni");
+  const inUso = versioni.find(v => v.esito === "in_uso");
+  if (!versioneVista && inUso) versioneVista = inUso.id;
+  const vista = versioni.find(v => v.id === versioneVista);
+  disegnaRapporto(vista);
+  if (vista) await disegnaDifferenze(vista.id);
+  $("versioni").innerHTML = `<thead><tr><th>Caricata</th><th>Utente</th><th>File</th><th>Esito</th><th class="n">Righe</th><th class="n">Atti</th><th></th></tr></thead><tbody>` +
+    versioni.map(v => `<tr><td>${oraIt(v.caricata_il)}</td><td>${esc(v.utente || "")}</td><td>${esc(v.nome_file || "")}</td>
+      <td>${v.esito === "in_uso" ? `<span class="chip ok">in uso</span>` : v.esito === "rifiutata" ? `<span class="chip err" title="${esc(v.rapporto && v.rapporto.errore)}">rifiutata</span>` : "precedente"}</td>
+      <td class="n">${v.righe}</td><td class="n">${v.atti}</td>
+      <td>${v.esito !== "rifiutata" && v.id !== versioneVista ? `<button data-v="${v.id}">vedi</button>` : (v.id === versioneVista ? "in vista" : "")}</td></tr>`).join("") + "</tbody>";
+  document.querySelectorAll("#versioni button[data-v]").forEach(b => b.onclick = async () => { versioneVista = Number(b.dataset.v); await caricaVersioni(); await caricaAtti(); });
+}
+
+$("form").onsubmit = async (e) => {
+  e.preventDefault();
+  const file = $("file").files[0];
+  if (!file) return;
+  $("carica").disabled = true;
+  $("esito-carica").innerHTML = "⏳ Lettura del file…";
+  try {
+    const dati = new FormData();
+    dati.append("file", file);
+    const r = await json("/api/segreteria/carica", { method: "POST", body: dati });
+    versioneVista = r.versione.id;
+    $("esito-carica").innerHTML = `<span class="esito-ok">Caricato: ${r.versione.atti} atti da ${r.versione.righe} righe</span> · <a href="/monitoraggio">vedi la tabella degli atti</a>`;
+    await caricaVersioni();
+    await caricaAtti();
+  } catch (err) {
+    $("esito-carica").innerHTML = `<span class="esito-err">${esc(err.message)}</span>`;
+    await caricaVersioni();
+  } finally {
+    $("carica").disabled = false;
+  }
+};
+["categoria", "mese", "solo-ambito", "solo-non-collegati", "q"].forEach(id => $(id).addEventListener("input", disegnaAtti));
+$("chiudi").onclick = () => $("dettaglio").close();
+
+(async () => {
+  try { await caricaVersioni(); await caricaAtti(); }
+  catch (e) { $("rapporto").innerHTML = `<div class="chip err">Errore: ${esc(e.message)}</div>`; }
+})();
+</script>
+</body>
+</html>

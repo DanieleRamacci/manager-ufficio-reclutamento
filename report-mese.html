@@ -26,7 +26,7 @@
       background: linear-gradient(180deg, #f7faff 0%, var(--bg) 200px);
       font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     }
-    .wrap { max-width: 1400px; margin: 0 auto; padding: 20px; }
+    .wrap { width: 100%; padding: 12px 16px; box-sizing: border-box; }
     nav { margin: 8px 0 20px; display: flex; flex-wrap: wrap; gap: 8px; }
     nav a {
       text-decoration: none;
@@ -142,16 +142,11 @@
       .table-wrap { max-height: none; }
     }
   </style>
+  <script src="/monitoraggio/menu.js" defer></script>
 </head>
 <body>
   <div class="wrap">
-    <nav>
-      <a href="index.html">Controllo Bandi</a>
-      <a href="access.html">Accessibilità URP</a>
-      <a href="verifica-access.html">Verifica PDF</a>
-      <a href="mobilita-urp.html">Mobilità</a>
-      <a href="report-mese.html">Bandi SOL</a>
-    </nav>
+    
 
     <h1>Bandi Selezioni Online</h1>
     <div class="muted mb12">Tabella unica con dati SOL e membri gruppo RDP (responsabile/i) ricavati da API interne.</div>
@@ -266,10 +261,9 @@
       return await res.json();
     }
 
-    async function loadRdp(forceRemote = false) {
-      const qs = forceRemote ? "&nocache=1" : "";
-      const res = await fetch(`/api/bandi-rdp?filterType=all&offset=20&includeDetails=1${qs}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status} su /api/bandi-rdp`);
+    async function loadRdp() {
+      const res = await fetch("/api/riepilogo-rdp", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status} su /api/riepilogo-rdp`);
       return await res.json();
     }
 
@@ -280,7 +274,14 @@
         if (!code) return;
         rdpByCode.set(code, {
           rdp_group: x.rdp_group || "",
-          rdp_members: Array.isArray(x.rdp_members) ? x.rdp_members : []
+          rdp_members: Array.isArray(x.rdp_members) ? x.rdp_members : [],
+          rdp_error: x.rdp_error || "",
+          call_status: x.call_status || "",
+          call_structure: x.call_structure || "",
+          call_profile: x.call_profile || "",
+          call_num_posti: x.call_num_posti || "",
+          call_date_start: x.call_date_start || "",
+          call_date_end: x.call_date_end || ""
         });
       });
 
@@ -298,13 +299,13 @@
           graduatoria_allegato: !!s.graduatoria_allegato,
           rdp_group: rdp.rdp_group,
           rdp_members: rdp.rdp_members,
-          rdp_error: rdp.rdp_error || "",
-          call_status: rdp.call_status || "",
-          call_structure: rdp.call_structure || "",
-          call_profile: rdp.call_profile || "",
-          call_num_posti: rdp.call_num_posti || "",
-          call_date_start: rdp.call_date_start || "",
-          call_date_end: rdp.call_date_end || "",
+          rdp_error: rdp.rdp_error,
+          call_status: rdp.call_status,
+          call_structure: rdp.call_structure,
+          call_profile: rdp.call_profile,
+          call_num_posti: rdp.call_num_posti,
+          call_date_start: rdp.call_date_start,
+          call_date_end: rdp.call_date_end,
           link: code ? `https://selezionionline.cnr.it/jconon/call-detail?callCode=${encodeURIComponent(code)}` : ""
         };
       });
@@ -494,6 +495,26 @@
       document.getElementById("btnReload").disabled = true;
       document.getElementById("btnRefreshRemote").disabled = true;
       try {
+        if (forceRemote) {
+          const avvio = await fetch("/api/run", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ urp: false, mob: false, sol: true })
+          });
+          if (!avvio.ok) throw new Error(`HTTP ${avvio.status} avviando la raccolta SOL`);
+          const limite = Date.now() + 10 * 60 * 1000;
+          let completata = false;
+          while (Date.now() < limite) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            const stato = await loadJSON("/api/status");
+            if (!stato.running) {
+              completata = true;
+              break;
+            }
+            setStatus("Raccolta SOL in corso; attendo il completamento...", "warn");
+          }
+          if (!completata) throw new Error("La raccolta SOL è ancora in corso dopo 10 minuti");
+        }
         // 1) Mostra subito i dati SOL (senza attendere RDP/dettagli)
         const sol = await loadJSON("/_static/bandi-concorsi-pubblici-sol.json");
         STATE.rows = buildRows(sol, []);
@@ -539,10 +560,26 @@
       setStatus("Caricamento graduatorie mese in corso...");
       document.getElementById("btnLoadGradMonth").disabled = true;
       try {
-        const res = await fetch(`/api/sol/graduatorie?month=${encodeURIComponent(month)}&include_docs=1&include_rdp=1`, { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status} su /api/sol/graduatorie`);
+        const [year, monthNumber] = month.split("-").map(Number);
+        const lastDay = new Date(year, monthNumber, 0).getDate();
+        const dal = `${month}-01`;
+        const al = `${month}-${String(lastDay).padStart(2, "0")}`;
+        const res = await fetch(`/api/atti?dal=${encodeURIComponent(dal)}&al=${encodeURIComponent(al)}`, { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status} su /api/atti`);
         const payload = await res.json();
-        const items = payload.items || [];
+        const items = (payload.atti || []).filter(r => r.atto === "graduatoria").map(r => ({
+          codice: r.codice || "",
+          titolo: r.titolo_bando || r.titolo || "",
+          struttura: "",
+          profilo: "",
+          numero_posti: "",
+          data_pubblicazione_inpa: "",
+          data_pubblicazione_graduatoria: r.data || "",
+          documenti_graduatoria: r.fonti?.sol?.stato === "presente" ? [r.fonti.sol] : [],
+          rdp_group: r.rdp_origine || "",
+          rdp_members: (r.rdp || []).map(p => [p.nome, p.cognome].filter(Boolean).join(" ")),
+          link_bando: r.link_codice || r.fonti?.sol?.url || ""
+        }));
 
         STATE.rows = mapGraduatorieMonthRows(items);
         renderTipologiaFilter(STATE.rows);

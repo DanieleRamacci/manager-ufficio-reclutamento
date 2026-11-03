@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monitoraggio bandi</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #5d6677; --line: #dfe3ea;
+    --accent: #1f5fbf; --ok: #1d7a46; --warn: #a25b00; --err: #b3261e; --chip: #eef2f8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14171c; --card: #1c2027; --text: #e6e9ef; --muted: #9aa3b2; --line: #2e343e;
+            --accent: #7aa7ff; --ok: #5fcf8f; --warn: #f0b35a; --err: #ff8a80; --chip: #262c36; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+           padding: 14px 20px; background: var(--card); border-bottom: 1px solid var(--line); }
+  h1 { font-size: 18px; margin: 0; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  main { padding: 12px 16px 32px; width: 100%; display: grid; gap: 12px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+  .muted { color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+  .fonte { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+  .fonte b { font-size: 15px; }
+  .esito { font-weight: 600; }
+  .esito.completata { color: var(--ok); } .esito.completata_con_errori { color: var(--warn); }
+  .esito.fallita { color: var(--err); } .esito.in_corso { color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr.cliccabile:hover { background: var(--chip); cursor: pointer; }
+  .chip { display: inline-block; padding: 1px 7px; margin: 1px 2px 1px 0; border-radius: 10px; background: var(--chip); font-size: 12px; white-space: nowrap; }
+  .chip.err { color: var(--err); } .chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); }
+  .filtri { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .schede-atti { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+  .schede-atti [role="tab"][aria-selected="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .avviso-solleciti { margin: 4px 0 10px; }
+  .azioni-sollecito { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+  .azioni-sollecito button { white-space: nowrap; }
+  #testo-sollecito { width: min(900px, 88vw); min-height: 220px; margin: 12px; font: 13px/1.45 ui-monospace, monospace; }
+  #dialog-sollecito .azioni { display: flex; justify-content: flex-end; padding: 0 12px 12px; }
+  input, select, button { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--card); color: var(--text); }
+  button { cursor: pointer; } button.primario { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .scroll { overflow-x: auto; }
+  dialog { width: min(1100px, 95vw); max-height: 90vh; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); padding: 0; }
+  dialog .testa { display: flex; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--card); }
+  dialog .corpo { padding: 12px 16px; }
+  .colonne { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 14px; }
+  .assente { opacity: .55; text-decoration: line-through; }
+  a { color: var(--accent); }
+  td.f { text-align: center; white-space: nowrap; font-size: 12px; font-weight: 600; min-width: 92px; }
+  td.f.presente { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+  td.f.mancante { background: color-mix(in srgb, var(--err) 18%, transparent); color: var(--err); }
+  td.f.non_applicabile, td.f.non_caricato { color: var(--muted); font-weight: 400; }
+  td.f a { color: inherit; }
+  td.f.apribile { cursor: pointer; }
+  td.f.diverso { background: color-mix(in srgb, var(--err) 18%, transparent); color: var(--err); }
+  .difformita .chip { display: inline-block; margin: 1px 2px 1px 0; white-space: normal; }
+  a.punteggi-sol { font-size: 12px; white-space: nowrap; }
+  tr.riga-candidati tr.evidenziata > td { font-weight: 600; }
+  #atti tr.aperta > td, #atti-graduatorie-mese tr.aperta > td, #atti-scorrimenti-mese tr.aperta > td { background: var(--chip); }
+  #atti tr.riga-candidati > td { background: var(--bg); padding: 6px 10px 12px; }
+  button.btn-candidati-atto { margin-top: 4px; }
+  button.btn-candidati { padding: 2px 8px; font-size: 12px; white-space: nowrap; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent);
+             border-radius: 50%; animation: gira .8s linear infinite; vertical-align: middle; }
+  @keyframes gira { to { transform: rotate(360deg); } }
+  #atti-graduatorie-mese tr.riga-candidati > td, #atti-scorrimenti-mese tr.riga-candidati > td { background: var(--bg); padding: 6px 10px 12px; }
+  tr.riga-candidati:hover { background: transparent !important; cursor: default; }
+  .candidati table th, .candidati table td { white-space: nowrap; font-size: 12px; }
+  td.f.apribile:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
+</style>
+<script src="/monitoraggio/menu.js" defer></script>
+<script src="/monitoraggio/solleciti.js" defer></script>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Monitoraggio bandi, graduatorie e scorrimenti</h1>
+    <div class="muted" id="prossima"></div>
+  </div>
+  <div class="filtri" style="margin:0">
+    <select id="fonte-raccolta">
+      <option value="urp,sol">URP e Selezioni Online</option>
+      <option value="urp">Solo URP</option>
+      <option value="sol">Solo Selezioni Online</option>
+    </select>
+    <label class="muted"><input type="checkbox" id="completa"> completa</label>
+    <button class="primario" id="aggiorna">Aggiorna dati</button>
+    <button id="aggiorna-rdp" title="Legge gli RdP da Selezioni Online con il tuo accesso SSO">Aggiorna referenti</button>
+    <span class="muted" id="stato-rdp"></span>
+  </div>
+</header>
+
+<main>
+  <section>
+    <h2>Stato delle fonti</h2>
+    <div class="grid2" id="stato"></div>
+  </section>
+
+  <nav class="schede-atti" role="tablist" aria-label="Viste degli atti">
+    <button type="button" role="tab" id="tab-stato-atti" aria-selected="true" aria-controls="panel-stato-atti">Stato complessivo</button>
+    <button type="button" role="tab" id="tab-graduatorie-mese" aria-selected="false" aria-controls="panel-graduatorie-mese">Graduatorie del mese <span id="conteggio-graduatorie-mese"></span></button>
+    <button type="button" role="tab" id="tab-scorrimenti-mese" aria-selected="false" aria-controls="panel-scorrimenti-mese">Scorrimenti del mese <span id="conteggio-scorrimenti-mese"></span></button>
+    <label class="muted">Mese <input type="month" id="mese-solleciti"></label>
+  </nav>
+
+  <section id="panel-stato-atti" role="tabpanel" aria-labelledby="tab-stato-atti">
+    <h2>Stato complessivo degli atti <span class="muted" id="conteggio-atti"></span></h2>
+    <div class="muted" style="margin-bottom:8px">Ogni atto compare una sola volta. Verde: presente sulla fonte · rosso: mancante · grigio: non applicabile o fonte non ancora caricata.</div>
+    <div class="filtri">
+      <label class="muted">Mese <input type="month" id="atti-mese"></label>
+      <button type="button" id="atti-tutto" title="Dal 1° gennaio 2026 a oggi">Tutto il periodo</button>
+      <label class="muted">Dal <input type="date" id="atti-dal"></label>
+      <label class="muted">Al <input type="date" id="atti-al"></label>
+      <select id="atti-tipo">
+        <option value="">Tutti gli atti</option><option value="bando">Bandi pubblicati</option>
+        <option value="graduatoria">Graduatorie</option><option value="scorrimento">Scorrimenti</option>
+        <option value="rettifica">Rettifiche graduatoria</option>
+      </select>
+      <select id="atti-tipologia"><option value="">Tutte le tipologie</option></select>
+      <select id="atti-manca">
+        <option value="">Qualsiasi fonte</option><option value="sol">Manca su Selezioni Online</option>
+        <option value="urp">Manca su URP</option><option value="segreteria">Manca nel file segreteria</option>
+      </select>
+      <label class="muted" title="manca su una fonte o SOL non torna con le fonti (punteggi, protocolli, scorrimenti)"><input type="checkbox" id="atti-incompleti"> solo con difformità</label>
+      <label class="muted"><input type="checkbox" id="atti-protdiv"> protocollo diverso</label>
+      <select id="atti-rdp"><option value="">Tutti gli RdP</option></select>
+      <input type="search" id="atti-q" placeholder="Bando, codice, protocollo" size="22">
+    </div>
+    <div class="scroll"><table id="atti"></table></div>
+  </section>
+
+  <section id="panel-graduatorie-mese" role="tabpanel" aria-labelledby="tab-graduatorie-mese" hidden>
+    <h2>Graduatorie del mese e difformità dei punteggi <span class="muted" id="conteggio-graduatorie-label"></span></h2>
+    <div class="muted" style="margin-bottom:8px">Le difformità delle verifiche punteggi sono unite alla graduatoria corrispondente. Apri la sottotabella da ogni graduatoria per vedere il dettaglio dei candidati e dei punteggi.</div>
+    <div class="filtri">
+      <button class="primario" type="button" id="punteggi-verifica">Verifica punteggi SOL</button>
+      <button type="button" id="punteggi-excel" title="Scarica il riepilogo dei punteggi del mese selezionato">Scarica Excel punteggi</button>
+      <span class="muted" id="conteggio-punteggi"></span>
+      <span class="muted" id="punteggi-stato" aria-live="polite"></span>
+    </div>
+    <div class="muted avviso-solleciti" id="freschezza-graduatorie"></div>
+    <div class="scroll"><table id="atti-graduatorie-mese"></table></div>
+  </section>
+
+  <section id="panel-scorrimenti-mese" role="tabpanel" aria-labelledby="tab-scorrimenti-mese" hidden>
+    <h2>Scorrimenti del mese con difformità <span class="muted" id="conteggio-scorrimenti-label"></span></h2>
+    <div class="muted avviso-solleciti" id="freschezza-scorrimenti"></div>
+    <div class="scroll"><table id="atti-scorrimenti-mese"></table></div>
+  </section>
+
+  <dialog id="dialog-sollecito">
+    <div class="testa"><b id="titolo-sollecito">Testo del sollecito</b><button type="button" id="chiudi-sollecito">Chiudi</button></div>
+    <textarea id="testo-sollecito" readonly aria-label="Testo da copiare manualmente"></textarea>
+    <div class="azioni muted" id="avviso-copia-manuale">La copia automatica non è disponibile: seleziona e copia il testo.</div>
+  </dialog>
+
+  <section>
+    <h2>Mese per mese <span class="muted" id="dal"></span></h2>
+    <div class="muted" id="stati-collegamento" style="margin-bottom:8px"></div>
+    <div class="scroll"><table id="mesi"></table></div>
+  </section>
+
+  <section>
+    <h2>Bandi <span class="muted" id="conteggio"></span></h2>
+    <div class="filtri">
+      <input type="search" id="q" placeholder="Codice o titolo" size="24">
+      <select id="tipologia"><option value="">Tutte le tipologie</option></select>
+      <select id="stato-coll"><option value="">Tutti gli stati</option></select>
+      <label class="muted">Pubblicati nel mese <input type="month" id="mese"></label>
+      <label class="muted"><input type="checkbox" id="solo-segnalazioni"> solo con segnalazioni</label>
+    </div>
+    <div class="scroll"><table id="bandi"></table></div>
+  </section>
+</main>
+
+<dialog id="dettaglio"><div class="testa"><div id="dettaglio-titolo"></div><button id="chiudi">Chiudi</button></div><div class="corpo" id="dettaglio-corpo"></div></dialog>
+
+<script>
+const TIPOLOGIE = { tempo_indeterminato: "Tempo indeterminato", reclutamento_speciale: "Reclutamento speciale",
+  categorie_protette: "Categorie protette", mobilita: "Mobilità", comando: "Comando" };
+const STATI = { entrambi: "URP e SOL", solo_urp: "Solo URP", solo_sol: "Solo SOL", fuori_periodo_urp: "Fuori periodo URP" };
+const ESITI = { completata: "completata", completata_con_errori: "completata con errori", fallita: "fallita", in_corso: "in corso" };
+const SEGNALAZIONI = {
+  bando_solo_urp: "bando solo su URP", bando_solo_sol: "bando solo su SOL",
+  graduatoria_mancante_sol: "graduatoria mancante su SOL", graduatoria_mancante_urp: "graduatoria mancante su URP",
+  scorrimento_mancante_sol: "scorrimento mancante su SOL", scorrimento_mancante_urp: "scorrimento mancante su URP",
+  rettifica_mancante_sol: "rettifica mancante su SOL", rettifica_mancante_urp: "rettifica mancante su URP" };
+const SOTTOTIPI = { subentro: "subentro", ulteriore: "ulteriore", utilizzo: "utilizzo", non_specificato: "non specificato",
+  ordinario: "scorrimento", misto: "scorrimento e subentro" };
+
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const dataIt = (iso) => iso ? iso.slice(0, 10).split("-").reverse().join("/") : "";
+const oraIt = (iso) => iso ? new Date(iso).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" }) : "";
+const meseIt = (m) => m ? new Date(m + "-01T00:00:00").toLocaleDateString("it-IT", { month: "long", year: "numeric" }) : "";
+let bandi = [];
+let timer = null;
+let statoFonti = null;
+let attiMese = [];
+let righeAttiMese = [];
+
+async function json(url, opzioni) {
+  const r = await fetch(url, { cache: "no-store", ...opzioni });
+  const corpo = await r.json().catch(() => ({}));
+  if (!r.ok && r.status !== 409 && r.status !== 401) throw new Error(corpo.error || corpo.msg || `HTTP ${r.status}`);
+  return { status: r.status, corpo };
+}
+
+function cardFonte(nome, s) {
+  const u = s.in_corso || s.ultima;
+  if (!u) return `<div class="fonte"><b>${nome}</b><div class="muted">Nessuna raccolta eseguita</div></div>`;
+  const dichiarati = u.totale_dichiarato ? Object.values(u.totale_dichiarato).reduce((a, b) => a + b, 0) : null;
+  const errori = u.errori ? ` · <a href="/api/raccolta/${u.id}/errori" target="_blank">${u.errori} errori</a>` : "";
+  const riuscita = s.ultima_riuscita && s.ultima_riuscita.id !== u.id
+    ? `<div class="muted">Ultima riuscita: ${oraIt(s.ultima_riuscita.fine)}</div>` : "";
+  return `<div class="fonte"><b>${nome}</b> · <span class="esito ${u.esito}">${ESITI[u.esito] || u.esito}</span>
+    <div>${s.in_corso ? "Avviata " + oraIt(u.inizio) : "Fine " + oraIt(u.fine)} · ${esc(u.modalita)}${u.avviata_da ? " · " + esc(u.avviata_da) : ""}</div>
+    ${s.in_corso ? "" : `<div>${u.bandi_trovati} bandi${dichiarati !== null ? " su " + dichiarati + " dichiarati" : ""} · ${u.documenti_trovati} documenti · ${u.nuovi} nuovi · ${u.aggiornati} aggiornati${errori}</div>`}
+    ${u.messaggio ? `<div class="chip err">${esc(u.messaggio)}</div>` : ""}${riuscita}</div>`;
+}
+
+async function caricaStato() {
+  const { corpo } = await json("/api/raccolta/stato");
+  statoFonti = corpo.fonti;
+  $("stato").innerHTML = cardFonte("URP", corpo.fonti.urp) + cardFonte("Selezioni Online", corpo.fonti.sol);
+  $("prossima").textContent = corpo.prossima_notturna ? "Prossima raccolta notturna: " + oraIt(corpo.prossima_notturna) : "Raccolta notturna disattivata";
+  const inCorso = corpo.fonti.urp.in_corso || corpo.fonti.sol.in_corso;
+  $("aggiorna").disabled = !!inCorso;
+  $("aggiorna").textContent = inCorso ? "Raccolta in corso…" : "Aggiorna dati";
+  clearTimeout(timer);
+  if (inCorso) timer = setTimeout(caricaStato, 10000);
+  // a fine raccolta si ricaricano i dati
+  if (eraInCorso && !inCorso) { await caricaAtti(); await caricaSolleciti(); await caricaRiepilogo(); await caricaBandi(); }
+  eraInCorso = !!inCorso;
+  return inCorso;
+}
+let eraInCorso = false;
+
+async function caricaRiepilogo() {
+  const { corpo } = await json("/api/riepilogo");
+  $("dal").textContent = `(dal ${dataIt(corpo.dal)})`;
+  $("stati-collegamento").innerHTML = Object.entries(corpo.stati_collegamento)
+    .map(([k, v]) => `<span class="chip">${STATI[k] || k}: ${v}</span>`).join("");
+  const n = (r, k) => r[k] || 0;
+  const scorr = (r, f) => {
+    const det = ["subentro", "ulteriore", "utilizzo"].filter(t => r[`scorrimento_${t}_${f}`])
+      .map(t => `${SOTTOTIPI[t]} ${r[`scorrimento_${t}_${f}`]}`).join(", ");
+    return `${n(r, "scorrimento_" + f)}${det ? ` <span class="muted">(${det})</span>` : ""}`;
+  };
+  $("mesi").innerHTML = `<thead><tr><th>Mese</th><th class="n">Bandi pubblicati</th>
+      <th class="n">Graduatorie URP</th><th class="n">Graduatorie SOL</th>
+      <th class="n">Scorrimenti URP</th><th class="n">Scorrimenti SOL</th>
+      <th class="n">Rettifiche URP</th><th class="n">Rettifiche SOL</th></tr></thead><tbody>` +
+    corpo.mesi.map(r => `<tr class="cliccabile" data-mese="${r.mese}"><td>${meseIt(r.mese)}</td><td class="n">${n(r, "bandi")}</td>
+      <td class="n">${n(r, "graduatoria_urp")}</td><td class="n">${n(r, "graduatoria_sol")}</td>
+      <td class="n">${scorr(r, "urp")}</td><td class="n">${scorr(r, "sol")}</td>
+      <td class="n">${n(r, "rettifica_urp")}</td><td class="n">${n(r, "rettifica_sol")}</td></tr>`).join("") + "</tbody>";
+  document.querySelectorAll("#mesi tr[data-mese]").forEach(tr => tr.onclick = () => { $("mese").value = tr.dataset.mese; disegnaBandi(); impostaMese(tr.dataset.mese); $("atti").scrollIntoView({ behavior: "smooth" }); });
+}
+
+async function caricaBandi() {
+  const { corpo } = await json("/api/bandi");
+  bandi = corpo.bandi;
+  disegnaBandi();
+}
+
+function disegnaBandi() {
+  const q = $("q").value.trim().toLowerCase(), tip = $("tipologia").value, st = $("stato-coll").value;
+  const mese = $("mese").value, soloSegn = $("solo-segnalazioni").checked;
+  const righe = bandi.filter(b => (!q || `${b.codice} ${b.titolo}`.toLowerCase().includes(q))
+    && (!tip || b.tipologia === tip) && (!st || b.stato_collegamento === st)
+    && (!mese || (b.data_pubblicazione || "").startsWith(mese)) && (!soloSegn || b.segnalazioni.length));
+  $("conteggio").textContent = `(${righe.length} di ${bandi.length})`;
+  const link = (b, f, et) => { const s = b.schede.find(x => x.fonte === f); return s ? `<a href="${esc(s.url)}" target="_blank" onclick="event.stopPropagation()">${et}</a>` : ""; };
+  $("bandi").innerHTML = `<thead><tr><th>Codice</th><th>Tipologia</th><th>Pubblicato</th><th>Fonti</th>
+      <th class="n">Graduatorie</th><th class="n">Scorrimenti</th><th>Segnalazioni</th><th>Link</th></tr></thead><tbody>` +
+    righe.slice(0, 500).map(b => {
+      const s = b.documenti.scorrimento;
+      const det = ["subentro", "ulteriore", "utilizzo"].filter(t => s[t]).map(t => `${SOTTOTIPI[t]} ${s[t]}`).join(", ");
+      const statoCls = b.stato_collegamento === "entrambi" ? "ok" : b.stato_collegamento === "fuori_periodo_urp" ? "" : "warn";
+      return `<tr class="cliccabile" data-id="${b.id}"><td><b>${esc(b.codice || "—")}</b><div class="muted">${esc((b.titolo || "").slice(0, 90))}</div></td>
+        <td>${TIPOLOGIE[b.tipologia] || esc(b.tipologia)}</td><td>${dataIt(b.data_pubblicazione)}</td>
+        <td><span class="chip ${statoCls}">${STATI[b.stato_collegamento] || ""}</span></td>
+        <td class="n">${b.documenti.graduatoria}</td><td class="n">${s.totale}${det ? `<div class="muted">${det}</div>` : ""}</td>
+        <td>${b.segnalazioni.map(t => `<span class="chip err">${SEGNALAZIONI[t] || esc(t)}</span>`).join("")}</td>
+        <td>${link(b, "urp", "URP")} ${link(b, "sol", "SOL")}</td></tr>`;
+    }).join("") + "</tbody>" + (righe.length > 500 ? `<tfoot><tr><td colspan="8" class="muted">Mostrati i primi 500: usa i filtri.</td></tr></tfoot>` : "");
+  document.querySelectorAll("#bandi tr[data-id]").forEach(tr => tr.onclick = () => apriDettaglio(tr.dataset.id));
+}
+
+const ATTI = { bando: "Bando pubblicato", graduatoria: "Graduatoria", scorrimento: "Scorrimento", rettifica: "Rettifica graduatoria" };
+const CELLE = { presente: "presente", mancante: "mancante", non_applicabile: "fuori periodo", non_caricato: "non caricato" };
+let atti = [];
+
+async function caricaAtti() {
+  const p = new URLSearchParams();
+  if ($("atti-dal").value) p.set("dal", $("atti-dal").value);
+  if ($("atti-al").value) p.set("al", $("atti-al").value);
+  const { corpo } = await json("/api/atti?" + p);
+  if (!$("atti-dal").value) $("atti-dal").value = corpo.dal;
+  atti = corpo.atti;
+  // elenco degli RdP per il filtro, dai referenti presenti nelle righe
+  const scelto = $("atti-rdp").value;
+  const persone = new Map();
+  atti.forEach(a => (a.rdp || []).forEach(r => persone.set(r.email || nomeRdp(r), nomeRdp(r))));
+  $("atti-rdp").innerHTML = `<option value="">Tutti gli RdP${persone.size ? "" : " (non ancora letti)"}</option>` +
+    [...persone].sort((x, y) => x[1].localeCompare(y[1])).map(([k, n]) => `<option value="${esc(k)}">${esc(n)}</option>`).join("");
+  $("atti-rdp").value = scelto;
+  disegnaAtti();
+}
+
+const nomeRdp = (r) => [r.cognome, r.nome].filter(Boolean).join(" ") || r.email || "";
+
+const linkPunteggi = (url) => url ? `<div><a class="punteggi-sol" href="${esc(url)}" target="_blank" title="Pagina dei punteggi del concorso su Selezioni Online (serve il login)">Punteggi su SOL ↗</a></div>` : "";
+
+function disegnaAtti() {
+  const tipo = $("atti-tipo").value, tip = $("atti-tipologia").value, manca = $("atti-manca").value;
+  const inc = $("atti-incompleti").checked, pd = $("atti-protdiv").checked, q = $("atti-q").value.trim().toLowerCase();
+  const rdp = $("atti-rdp").value;
+  const righe = atti.filter(a => (!tipo || a.atto === tipo) && (!tip || a.tipologia === tip)
+    && (!manca || a.fonti[manca].stato === "mancante") && (!inc || a.difforme) && (!pd || a.protocollo_diverso)
+    && (!rdp || (a.rdp || []).some(r => (r.email || nomeRdp(r)) === rdp))
+    && (!q || `${a.numero_bando} ${a.codice} ${a.protocollo} ${a.titolo}`.toLowerCase().includes(q)));
+  $("conteggio-atti").textContent = `(${righe.length} di ${atti.length} · ${atti.filter(a => a.difforme).length} con difformità)`;
+  renderTabellaAtti("atti", righe, false);
+}
+
+function renderTabellaAtti(id, righe, conSollecito) {
+  const DOVE = { sol: "Apri il bando su Selezioni Online (tutti gli allegati)", urp: "Apri il bando su URP (tutti gli allegati)",
+    segreteria: "Apri il file della segreteria" };
+  const cella = (c, fonte) => `<td class="f ${c.stato}${c.url ? " apribile" : ""}"${c.url ? ` data-url="${esc(c.url)}" title="${DOVE[fonte]}"` : ""}>${CELLE[c.stato]}${c.protocollo && c.stato === "presente" ? `<div class="muted" style="font-weight:400">${esc(c.protocollo)}</div>` : ""}</td>`;
+  const righeHtml = righe.slice(0, 1000).map((a, i) => `<tr class="cliccabile" data-id="${a.bando_id}" data-riga="${i}"><td>${dataIt(a.data)}</td><td><b>${esc(a.numero_bando || "")}</b></td>
+      <td>${esc(a.codice || "")}</td><td>${TIPOLOGIE[a.tipologia] || esc(a.tipologia)}</td>
+      <td>${ATTI[a.atto] || a.atto}${a.sottotipo && a.sottotipo !== "non_specificato"
+        ? (a.sottotipo_origine === "segreteria"
+            ? ` <span class="chip ok" title="dal file della segreteria">${SOTTOTIPI[a.sottotipo]}</span>`
+            : ` <span class="muted" title="ricavato dal titolo: indicativo">(${SOTTOTIPI[a.sottotipo]}?)</span>`) : ""}
+        ${a.persone ? `<div class="muted">${a.persone} ${a.persone === 1 ? "persona" : "persone"} nel file segreteria</div>` : ""}
+        ${a.atto === "graduatoria" ? chipPunteggi(a.punteggi) + riepilogoPunteggi(a.punteggi) +
+          `<button type="button" class="btn-candidati btn-candidati-atto" data-scheda="${a.punteggi?.scheda_id || ""}">${a.punteggi?.candidati ? `👥 ${a.punteggi.con_punteggi ?? ""} candidati ▾` : "👥 Apri dettaglio punteggi ▾"}</button>`
+          : a.punteggi ? chipPunteggi(a.punteggi) + (a.punteggi.candidati
+            ? `<button type="button" class="btn-candidati btn-candidati-atto" data-scheda="${a.punteggi.scheda_id}">👥 ${a.punteggi.con_punteggi} candidati ▾</button>`
+            : (verificaInCorso ? `<span class="spinner" title="Scaricamento dei candidati da Selezioni Online"></span>` : "")) : ""}
+        ${linkPunteggi(a.url_punteggi)}</td>
+      <td>${esc(a.protocollo || "")}</td>${cella(a.fonti.sol, "sol")}${cella(a.fonti.urp, "urp")}${cella(a.fonti.segreteria, "segreteria")}
+      <td>${(a.rdp || []).map(r => `<div title="${esc(r.email || "")}">${esc(nomeRdp(r))}</div>`).join("")}${a.rdp_origine === "tutti i codici" && (a.rdp || []).length ? `<div class="muted">(tutti i codici)</div>` : ""}</td>
+      <td class="difformita">${a.note.map(n => `<span class="chip err">${esc(n)}</span>`).join("")}${conSollecito ? `<div class="azioni-sollecito">${attiMese.some(x => x.numero_bando === a.numero_bando && (x.rdp || []).some(r => r.email)) ? `<button type="button" class="btn-copia-email">Copia destinatari RdP</button>` : `<span class="chip warn">email RdP non disponibile</span>`}<button type="button" class="btn-copia-sollecito">Copia messaggio completo</button></div><span class="muted stato-copia" aria-live="polite"></span>` : ""}</td></tr>`).join("");
+  $(id).innerHTML = `<thead><tr><th>Data</th><th>N. bando</th><th>Codice</th><th>Tipologia</th><th>Atto</th><th>Protocollo</th>
+      <th>Selezioni Online</th><th>URP</th><th>File segreteria</th><th>RdP</th><th>Note</th></tr></thead><tbody>` +
+    (righeHtml || `<tr><td colspan="11" class="muted">${conSollecito ? "Nessuna difformità rilevata per questo mese." : "Nessun atto nel periodo selezionato."}</td></tr>`) + "</tbody>" +
+    (righe.length > 1000 ? `<tfoot><tr><td colspan="11" class="muted">Mostrati i primi 1000: usa i filtri.</td></tr></tfoot>` : "");
+  document.querySelectorAll(`#${id} button.btn-candidati-atto`).forEach(b => b.onclick = (e) => {
+    e.stopPropagation();
+    const a = righe[Number(b.closest("tr").dataset.riga)];
+    const punteggi = a.punteggi || {};
+    const datiPunteggi = punteggi.record || {};
+    apriCandidati(Number(b.dataset.scheda), b.closest("tr"), { tabella: `#${id}`, colonne: 11,
+      r: { ...datiPunteggi, protocollo: datiPunteggi.protocollo || a.protocollo, data: datiPunteggi.data || a.data,
+        scorrimento: a.atto === "scorrimento" ? a.protocollo : datiPunteggi.scorrimento,
+        domande: punteggi.domande, candidati_disponibili: !!punteggi.candidati,
+        messaggio_non_disponibile: punteggi.scheda_id
+          ? "Collega Selezioni Online e premi Verifica punteggi per caricare la sottotabella dei candidati."
+          : "Non è disponibile una scheda punteggi SOL collegata a questa graduatoria." } });
+  });
+  document.querySelectorAll(`#${id} a.punteggi-sol`).forEach(l => l.onclick = (e) => e.stopPropagation());
+  document.querySelectorAll(`#${id} td.f[data-url]`).forEach(td => td.onclick = (e) => {
+    e.stopPropagation();
+    window.open(td.dataset.url, "_blank");
+  });
+  document.querySelectorAll(`#${id} tr[data-id]`).forEach(tr => tr.onclick = () => {
+    if (tr.dataset.id !== "null") apriDettaglio(tr.dataset.id); else location.href = "/monitoraggio/segreteria";
+  });
+  const preparaCopia = async (b, creaEsito) => {
+    const riga = righe[Number(b.closest("tr").dataset.riga)];
+    const gruppo = attiMese.filter(a => a.numero_bando === riga.numero_bando);
+    const esito = await creaEsito(riga, gruppo);
+    const stato = b.closest("td").querySelector(".stato-copia");
+    if (esito.copiato) {
+      stato.textContent = esito.titolo === "Indirizzi RdP" ? "Indirizzi email copiati negli appunti." : "Messaggio completo copiato negli appunti.";
+      const testoOriginale = b.textContent;
+      b.textContent = "Copiato";
+      setTimeout(() => { b.textContent = testoOriginale; stato.textContent = ""; }, 3500);
+    } else {
+      $("titolo-sollecito").textContent = esito.titolo;
+      $("testo-sollecito").value = esito.testo;
+      $("avviso-copia-manuale").textContent = "Copia automatica non disponibile: seleziona il contenuto qui sopra e copialo manualmente.";
+      $("dialog-sollecito").showModal();
+      $("testo-sollecito").focus();
+      $("testo-sollecito").select();
+    }
+  };
+  document.querySelectorAll(`#${id} button.btn-copia-email`).forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    preparaCopia(b, (_riga, gruppo) => window.Solleciti.copiaEmail(gruppo));
+  });
+  document.querySelectorAll(`#${id} button.btn-copia-sollecito`).forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    const riga = righe[Number(b.closest("tr").dataset.riga)];
+    const gruppo = attiMese.filter(a => a.numero_bando === riga.numero_bando);
+    preparaCopia(b, () => window.Solleciti.copiaMessaggio(riga, gruppo, $("mese-solleciti").value));
+  });
+}
+
+function avvisoFreschezza() {
+  if (!statoFonti) return "Stato aggiornamento fonti non disponibile.";
+  return ["sol", "urp"].map(k => {
+    const f = statoFonti[k], nome = k === "sol" ? "Selezioni Online" : "URP";
+    const ultima = f?.ultima;
+    const riuscita = f?.ultima_riuscita;
+    const riferimento = riuscita ? `Ultima raccolta riuscita: ${oraIt(riuscita.fine)}.` : "Nessuna raccolta riuscita disponibile.";
+    if (f?.in_corso) return `${nome}: raccolta in corso (${oraIt(ultima?.inizio)}); le assenze potrebbero non essere aggiornate. ${riferimento}`;
+    if (ultima?.esito === "fallita" || ultima?.esito === "completata_con_errori")
+      return `${nome}: ultima raccolta ${ESITI[ultima.esito] || ultima.esito} (${oraIt(ultima.fine)}); le assenze potrebbero non essere confermate. ${riferimento}`;
+    return `${nome}: ${riferimento}`;
+  }).join(" ");
+}
+
+function problemiGraduatoriaPunteggi(riga) {
+  return (riga.difformita || []).filter(n => !/(?:scorrimento|assunzione idoneo)/i.test(n));
+}
+
+function punteggiPerRiga(riga) {
+  return { domande: riga.domande, con_punteggi: riga.con_punteggi, esito: riga.esito,
+    verificato_il: riga.verificato_il, vincitori: riga.vincitori, idonei: riga.idonei,
+    scorrimento: riga.scorrimento, senza_protocollo: riga.senza_protocollo, senza_esito: riga.senza_esito,
+    scheda_id: riga.scheda_id, candidati: !!riga.candidati_disponibili, record: riga };
+}
+
+function righeGraduatoriaUnificate() {
+  const mese = $("mese-solleciti").value;
+  const righe = [...righeAttiMese];
+  const sintetiche = [];
+  const stessaScheda = (a, p) => a.bando_id && p.bando_id ? a.bando_id === p.bando_id : a.numero_bando === p.numero_bando;
+  const problemi = righePunteggi.filter(p => (p.data || "").startsWith(mese));
+
+  problemi.forEach(p => {
+    const note = problemiGraduatoriaPunteggi(p);
+    const candidate = righe.filter(a => a.atto === "graduatoria" && stessaScheda(a, p));
+    const esatte = candidate.filter(a => a.codice === p.codice ||
+      (p.codice_sotto && String(a.codice_sotto || "") === String(p.codice_sotto)));
+    const conData = candidate.filter(a => a.data === p.data);
+    const destinazione = esatte.length === 1 ? esatte[0]
+      : conData.length === 1 ? conData[0]
+      : candidate.length === 1 ? candidate[0] : null;
+
+    if (destinazione) {
+      destinazione.punteggi = punteggiPerRiga(p);
+      destinazione.url_punteggi = p.url_punteggi || destinazione.url_punteggi;
+      destinazione.link_codice = p.url || destinazione.link_codice;
+      destinazione.rdp = p.rdp?.length ? p.rdp : destinazione.rdp;
+      destinazione.codice = p.codice || destinazione.codice;
+      destinazione.note = [...new Set([...(destinazione.note || []), ...note.filter(n =>
+        !(n === "graduatoria non allegata su SOL" && (destinazione.note || []).some(x => x.includes("senza documento pubblico"))))])];
+      if (note.length) destinazione.difforme = true;
+      destinazione.scoreRecord = p;
+      return;
+    }
+
+    if (!note.length) return;
+
+    const contesto = righe.find(a => stessaScheda(a, p));
+    const fonteNessunDato = { stato: "non_caricato" };
+    sintetiche.push({
+      bando_id: p.bando_id, numero_bando: p.numero_bando, codice: p.codice,
+      codice_sotto: p.codice_sotto, tipologia: contesto?.tipologia, titolo: p.documento || "Graduatoria",
+      titolo_bando: contesto?.titolo_bando, atto: "graduatoria", data: p.data, protocollo: p.protocollo,
+      fonti: { sol: { stato: p.allegato_sol ? "presente" : "mancante", protocollo: p.protocollo, url: p.url },
+        urp: { ...fonteNessunDato }, segreteria: { ...fonteNessunDato } },
+      note: [...new Set(note)], rdp: p.rdp || [], link_codice: p.url, url_punteggi: p.url_punteggi,
+      punteggi: punteggiPerRiga(p), scoreRecord: p, difforme: true, incompleto: !p.allegato_sol,
+      protocollo_diverso: note.some(n => n.startsWith("protocollo graduatoria diverso")),
+    });
+  });
+
+  return [...righe, ...sintetiche].filter(a => a.difforme && ["graduatoria", "scorrimento"].includes(a.atto));
+}
+
+function disegnaSolleciti() {
+  attiMese = righeGraduatoriaUnificate();
+  const graduatorie = attiMese.filter(a => a.atto === "graduatoria");
+  const scorrimenti = attiMese.filter(a => a.atto === "scorrimento");
+  $("conteggio-graduatorie-mese").textContent = `(${graduatorie.length})`;
+  $("conteggio-scorrimenti-mese").textContent = `(${scorrimenti.length})`;
+  $("conteggio-graduatorie-label").textContent = `(${graduatorie.length})`;
+  $("conteggio-scorrimenti-label").textContent = `(${scorrimenti.length})`;
+  $("freschezza-graduatorie").textContent = avvisoFreschezza();
+  $("freschezza-scorrimenti").textContent = avvisoFreschezza();
+  renderTabellaAtti("atti-graduatorie-mese", graduatorie, true);
+  renderTabellaAtti("atti-scorrimenti-mese", scorrimenti, true);
+}
+
+async function caricaSolleciti(aggiornaPunteggi = true) {
+  const mese = $("mese-solleciti").value;
+  if (!mese) return;
+  const [anno, numero] = mese.split("-").map(Number);
+  const ultimo = new Date(anno, numero, 0).getDate();
+  const { corpo } = await json(`/api/atti?dal=${mese}-01&al=${mese}-${String(ultimo).padStart(2, "0")}`);
+  righeAttiMese = corpo.atti.filter(a => ["graduatoria", "scorrimento"].includes(a.atto));
+  if (aggiornaPunteggi) await caricaPunteggi();
+  else disegnaSolleciti();
+}
+
+const sottotipoDoc = (d) => d.sottotipo ? `<div class="muted" title="ricavato dal titolo: indicativo">${SOTTOTIPI[d.sottotipo]}${d.sottotipo_ordinale ? " (" + d.sottotipo_ordinale + "°)" : ""}</div>` : "";
+const linkDoc = (d) => d.url ? `<a href="${esc(d.url)}" target="_blank">${esc(d.titolo)}</a>` : esc(d.titolo);
+// "367.434 CA - TRIESTE Codice 05" -> "05 Trieste"
+function etichettaSede(s) {
+  const sede = ((s.codice_originale || "").split(" - ")[1] || "").replace(/\s*codice\s*\d+\s*$/i, "").trim();
+  const sedeBella = sede ? sede.charAt(0) + sede.slice(1).toLowerCase() : "";
+  return s.codice_sotto ? `${String(s.codice_sotto).padStart(2, "0")}${sedeBella ? " " + sedeBella : ""}` : "comuni a tutti";
+}
+
+function tabellaUrp(scheda) {
+  const docs = scheda.documenti.filter(d => d.categoria !== "altro");
+  return `<h2>URP · <a href="${esc(scheda.url)}" target="_blank">${esc(scheda.codice_originale || "scheda")}</a></h2>
+    <div class="muted">Protocollo bando ${esc(scheda.protocollo || "—")} · pubblicato ${dataIt(scheda.data_pubblicazione)}</div>
+    <table><thead><tr><th>Categoria</th><th>Documento</th><th>Protocollo</th><th>Data</th></tr></thead><tbody>` +
+    docs.map(d => `<tr class="${d.presente ? "" : "assente"}"><td>${esc(d.categoria)}${sottotipoDoc(d)}</td>
+      <td>${linkDoc(d)}</td><td>${esc(d.protocollo || "")}</td><td>${dataIt(d.data_protocollo)}</td></tr>`).join("") +
+    `</tbody></table><div class="muted">${scheda.documenti.length - docs.length} altri documenti (avvisi, curriculum, commissioni…)</div>`;
+}
+
+function tabellaSol(schede) {
+  // un documento uguale (stessa categoria, protocollo e titolo) in più codici si mostra una volta sola
+  const ordinate = [...schede].sort((a, b) => (Number(a.codice_sotto) || 0) - (Number(b.codice_sotto) || 0));
+  const visti = new Map(), righe = [];
+  ordinate.forEach(s => {
+    const docs = s.documenti.filter(d => d.categoria !== "altro");
+    const haGrad = s.documenti.some(d => d.categoria === "graduatoria");
+    if (s.data_pubbl_graduatoria && !haGrad && s.codice_sotto)
+      righe.push({ sede: etichettaSede(s), url: s.url, avviso: `data graduatoria ${dataIt(s.data_pubbl_graduatoria)} senza documento pubblico` });
+    docs.forEach(d => {
+      const k = `${d.categoria}|${d.protocollo}|${d.titolo}`;
+      if (visti.has(k)) { visti.get(k).codici += 1; return; }
+      const riga = { sede: etichettaSede(s), url: s.url, d, codici: 1 };
+      visti.set(k, riga);
+      righe.push(riga);
+    });
+  });
+  const altri = schede.reduce((n, s) => n + s.documenti.filter(d => d.categoria === "altro").length, 0);
+  const pagine = ordinate.filter(s => s.url_punteggi);
+  const punteggiSol = !pagine.length ? "" : pagine.length === 1
+    ? `<div><a href="${esc(pagine[0].url_punteggi)}" target="_blank">Punteggi su Selezioni Online ↗</a> <span class="muted">(serve il login)</span></div>`
+    : `<div>Punteggi su Selezioni Online <span class="muted">(serve il login)</span>: ${pagine.map(s =>
+        `<a href="${esc(s.url_punteggi)}" target="_blank">${esc(etichettaSede(s))}</a>`).join(" · ")}</div>`;
+  return `<h2>Selezioni Online · ${schede.length > 1 ? `${schede.length} schede (codici/sedi)` : `<a href="${esc(schede[0].url)}" target="_blank">${esc(schede[0].codice_originale)}</a>`}</h2>${punteggiSol}
+    <table><thead><tr><th>Codice / sede</th><th>Categoria</th><th>Documento</th><th>Protocollo</th><th>Data</th></tr></thead><tbody>` +
+    righe.map(r => r.avviso
+      ? `<tr><td><a href="${esc(r.url)}" target="_blank">${esc(r.sede)}</a></td><td colspan="4"><span class="chip err">${esc(r.avviso)}</span></td></tr>`
+      : `<tr class="${r.d.presente ? "" : "assente"}"><td>${r.codici > 1 ? `<span class="muted">${r.codici} codici</span>` : `<a href="${esc(r.url)}" target="_blank">${esc(r.sede)}</a>`}</td>
+        <td>${esc(r.d.categoria)}${sottotipoDoc(r.d)}</td><td>${linkDoc(r.d)}</td><td>${esc(r.d.protocollo || "")}</td><td>${dataIt(r.d.data_protocollo)}</td></tr>`).join("") +
+    `</tbody></table><div class="muted">${altri} altri documenti (avvisi, curriculum, commissioni…)</div>`;
+}
+
+async function apriDettaglio(id) {
+  const { corpo: b } = await json(`/api/bandi/${id}`);
+  $("dettaglio-titolo").innerHTML = `<b>${esc(b.codice)}</b> · ${TIPOLOGIE[b.tipologia] || ""} · ${STATI[b.stato_collegamento] || ""}
+    <div class="muted">${esc(b.titolo || "")}</div>${b.profilo ? `<div class="muted">${esc(b.profilo)} · ${esc(b.sede || "")} · posti ${esc(b.numero_posti ?? "")}</div>` : ""}`;
+  const segn = b.segnalazioni.length ? `<h2>Segnalazioni</h2><ul>${b.segnalazioni.map(s =>
+    `<li><span class="chip err">${SEGNALAZIONI[s.tipo] || s.tipo}</span> protocollo ${esc(s.protocollo)} del ${dataIt(s.data)} · ${esc(s.titolo)}</li>`).join("")}</ul>` : "";
+  // RdP raggruppati per codice: nei bandi con più codici ogni sede ha i suoi
+  const voceRdp = (r) => `<span class="${r.attivo ? "" : "assente"}">${esc(nomeRdp(r))}${r.email ? ` · <a href="mailto:${esc(r.email)}">${esc(r.email)}</a>` : ` <span class="chip warn">email mancante</span>`}${r.attivo ? "" : ` <span class="muted">non più RdP dal ${dataIt(r.ultima_rilevazione)}</span>`}</span>`;
+  const conRdp = b.schede.filter(s => s.fonte === "sol" && (s.referenti || []).length)
+    .sort((x, y) => (Number(x.codice_sotto) || 0) - (Number(y.codice_sotto) || 0));
+  const rdp = !conRdp.length
+    ? `<div class="muted">RdP non ancora letti o non indicati su Selezioni Online.</div>`
+    : conRdp.length === 1
+      ? `<h2>RdP (da Selezioni Online)</h2><ul>${conRdp[0].referenti.map(r => `<li>${voceRdp(r)}</li>`).join("")}</ul>`
+      : `<h2>RdP per codice (da Selezioni Online)</h2><table><thead><tr><th>Codice / sede</th><th>RdP</th></tr></thead><tbody>${conRdp.map(s =>
+          `<tr><td><a href="${esc(s.url)}" target="_blank">${esc(etichettaSede(s))}</a></td><td>${s.referenti.map(voceRdp).join("<br>")}</td></tr>`).join("")}</tbody></table>`;
+  $("dettaglio-corpo").innerHTML = rdp + segn + `<div class="colonne">${b.schede.filter(s => s.fonte === "urp").map(tabellaUrp).join("")}${b.schede.some(s => s.fonte === "sol") ? tabellaSol(b.schede.filter(s => s.fonte === "sol")) : ""}</div>`;
+  $("dettaglio").showModal();
+}
+
+$("chiudi").onclick = () => $("dettaglio").close();
+$("chiudi-sollecito").onclick = () => $("dialog-sollecito").close();
+
+// ---- punteggi delle graduatorie (spec 004)
+const ESITI_PUNTEGGI = { completi: ["ok", "punteggi completi"], parziali: ["warn", "punteggi parziali"],
+  mancanti: ["err", "punteggi mancanti"], protocollo_mancante: ["err", "protocollo graduatoria mancante"],
+  nessuna_domanda: ["", "nessuna domanda"], errore: ["err", "verifica non riuscita"] };
+const ESITI_CANDIDATO = { V: "vincitore", I: "idoneo", S: "scorrimento" };
+function chipPunteggi(p) {
+  if (!p || !p.esito) return `<div><span class="chip warn" title="Avvia la verifica per leggere i punteggi su Selezioni Online">punteggi non verificati</span></div>`;
+  const [cls, testo] = ESITI_PUNTEGGI[p.esito] || ["", p.esito];
+  const n = p.domande !== null && p.domande !== undefined ? ` ${p.con_punteggi}/${p.domande}` : "";
+  return `<div><span class="chip ${cls}" title="verificato ${oraIt(p.verificato_il)}">${testo}${n}</span></div>`;
+}
+function riepilogoPunteggi(p) {
+  if (!p) return "";
+  const parti = [];
+  if (p.vincitori !== null && p.vincitori !== undefined) parti.push(`V ${p.vincitori}`);
+  if (p.idonei !== null && p.idonei !== undefined) parti.push(`I ${p.idonei}`);
+  if (p.scorrimento !== null && p.scorrimento !== undefined) parti.push(`S ${p.scorrimento}`);
+  if (p.senza_protocollo) parti.push(`${p.senza_protocollo} senza prot.`);
+  if (p.senza_esito) parti.push(`${p.senza_esito} senza esito`);
+  return parti.length ? `<div class="muted">${parti.map(esc).join(" · ")}</div>` : "";
+}
+const meseDi = (scarto) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + scarto); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
+const periodoPunteggi = () => `mese=${$("mese-solleciti").value || meseDi(0)}`;
+let righePunteggi = [];
+let verificaInCorso = false;
+let solCollegato = false;
+const avvioAutomatico = new Set();   // periodi per cui lo scaricamento dei candidati è già partito da solo
+
+async function caricaPunteggi() {
+  const { corpo } = await json(`/api/punteggi?${periodoPunteggi()}`);
+  righePunteggi = corpo.righe;
+  const eraInCorsoVerifica = verificaInCorso;
+  verificaInCorso = corpo.in_corso;
+  if (eraInCorsoVerifica !== verificaInCorso) { disegnaAtti(); disegnaSolleciti(); }
+  const u = corpo.ultima || {};
+  const stessoPeriodo = u.dal === corpo.dal && u.al === corpo.al;
+  $("punteggi-stato").innerHTML = corpo.in_corso ? "⏳ verifica in corso…"
+    : u.esito === "fallita" ? `<span class="chip err">${esc(u.messaggio)}</span>`
+    : u.esito === "completata" && stessoPeriodo ? `ultima verifica: ${u.completi} completi, ${u.parziali} parziali, ${u.mancanti} senza punteggi, ${u.protocollo_mancante} senza protocollo${u.errore ? `, ${u.errore} non riuscite` : ""}` : "";
+  $("conteggio-punteggi").textContent = `(${corpo.righe.length} graduatorie)`;
+  $("punteggi-excel").disabled = !corpo.righe.some(r => r.candidati_disponibili);
+  disegnaSolleciti();
+  // collegati a SOL ma candidati non ancora scaricati per questo periodo: si scaricano da soli
+  if (solCollegato && !corpo.in_corso && corpo.righe.some(r => !r.candidati_disponibili) && !avvioAutomatico.has(periodoPunteggi())) {
+    avvioAutomatico.add(periodoPunteggi());
+    avviaVerifica(true);
+  }
+  if (corpo.in_corso) setTimeout(caricaPunteggi, 4000);
+  else if (u.esito === "completata" && !caricaPunteggi.aggiornati) {
+    caricaPunteggi.aggiornati = true;
+    await caricaAtti();
+    await caricaSolleciti(false);
+  }
+}
+
+const ESITO_LETTERA = { V: "vincitore", I: "idoneo", S: "scorrimento", R: "R" };
+const normProt = (p) => String(p ?? "").trim().replace(/^0+/, "");
+
+// tabella a tendina con tutti i candidati della graduatoria, sotto la riga cliccata
+// opzioni: tabella (selettore), colonne (colspan), r = { protocollo, data, domande, candidati_disponibili } della graduatoria
+async function apriCandidati(schedaId, tr, opzioni = {}) {
+  const tabella = opzioni.tabella || "#atti-graduatorie-mese", colonne = opzioni.colonne || 11;
+  const aperta = tr.nextElementSibling && tr.nextElementSibling.classList.contains("riga-candidati");
+  document.querySelectorAll(`${tabella} tr.riga-candidati`).forEach(x => x.remove());
+  document.querySelectorAll(`${tabella} tr.aperta`).forEach(x => x.classList.remove("aperta"));
+  if (aperta) return;
+  const r = opzioni.r || righePunteggi.find(x => x.scheda_id === schedaId);
+  const riga = document.createElement("tr");
+  riga.className = "riga-candidati";
+  riga.innerHTML = `<td colspan="${colonne}"><div class="muted">Caricamento…</div></td>`;
+  tr.after(riga);
+  tr.classList.add("aperta");
+  if (!r.candidati_disponibili) {
+    riga.firstElementChild.innerHTML = `<div class="muted">${esc(r.messaggio_non_disponibile || "Elenco non disponibile: collega Selezioni Online e premi Verifica punteggi.")}</div>`;
+    return;
+  }
+  let corpo;
+  try { ({ corpo } = await json(`/api/punteggi/candidati/${schedaId}`)); }
+  catch (e) { riga.firstElementChild.innerHTML = `<span class="chip err">${esc(e.message)}</span>`; return; }
+  const prove = corpo.prove || [];
+  const ordinati = [...corpo.candidati].sort((x, y) => (x.graduatoria ?? 9999) - (y.graduatoria ?? 9999));
+  const protDoc = normProt(r.protocollo), dataDoc = (r.data || "").slice(0, 10);
+  const scorrNoti = new Map();   // protocollo -> data dell'atto di scorrimento nelle fonti
+  (corpo.scorrimenti_noti || []).forEach(g => g.protocolli.forEach(p => scorrNoti.set(normProt(p), g.data)));
+  let senza = 0, protDiv = 0, dataDiv = 0, sSenza = 0, sDiv = 0;
+  const righe = ordinati.map(c => {
+    const prot = normProt(c.numero_protocollo_graduatoria), data = (c.data_protocollo_graduatoria || "").slice(0, 10);
+    const cellaProt = !prot ? (senza++, `<td class="f mancante">mancante</td>`)
+      : protDoc && prot !== protDoc ? (protDiv++, `<td class="f diverso" title="diverso dal documento allegato (${esc(r.protocollo)})">${esc(c.numero_protocollo_graduatoria)}</td>`)
+      : `<td>${esc(c.numero_protocollo_graduatoria)}</td>`;
+    const cellaData = !data ? `<td class="f mancante">mancante</td>`
+      : dataDoc && data !== dataDoc ? (dataDiv++, `<td class="f diverso" title="diversa dal documento allegato (${dataIt(dataDoc)})">${dataIt(data)}</td>`)
+      : `<td>${dataIt(data)}</td>`;
+    const esito = (c.esito || "").toUpperCase();
+    const pa = normProt(c.numero_protocollo_assunzione_idoneo), da = (c.data_protocollo_assunzione_idoneo || "").slice(0, 10);
+    let cellaPa = `<td>${esc(c.numero_protocollo_assunzione_idoneo || "")}</td>`, cellaDa = `<td>${dataIt(da)}</td>`;
+    if (esito === "S" && !pa) { sSenza++; cellaPa = `<td class="f mancante" title="candidato S senza protocollo di assunzione idoneo">mancante</td>`; }
+    else if (esito === "S" && !scorrNoti.has(pa)) { sDiv++; cellaPa = `<td class="f diverso" title="scorrimento non presente in URP, file segreteria o allegati SOL">${esc(c.numero_protocollo_assunzione_idoneo)}</td>`; }
+    else if (esito === "S" && scorrNoti.get(pa) && da && da !== scorrNoti.get(pa)) { sDiv++; cellaDa = `<td class="f diverso" title="nelle fonti: ${dataIt(scorrNoti.get(pa))}">${dataIt(da)}</td>`; }
+    else if (esito !== "S" && pa) cellaPa = `<td class="f diverso" title="protocollo di assunzione idoneo con esito diverso da S">${esc(c.numero_protocollo_assunzione_idoneo)}</td>`;
+    const evidenziata = r.scorrimento && pa === normProt(r.scorrimento);
+    return `<tr${evidenziata ? ` class="evidenziata" title="assunto con questo scorrimento"` : ""}><td class="n">${esc(c.graduatoria ?? "")}</td><td>${esc((c.cognome || "").toUpperCase())}</td><td>${esc(c.nome || "")}</td>
+      <td>${dataIt(c.data_nascita)}</td><td>${esc(c.codice_fiscale || "")}</td><td>${esc(c.username || "")}</td>
+      <td>${esc(c.email || "")}</td><td>${esc(c.email_pec || "")}</td>
+      ${prove.map(p => { const v = (c.prove || {})[String(p.n)] || {}; return `<td class="n">${v.non_ammesso ? `<span class="chip warn">non ammesso</span>` : esc(v.punteggio ?? "")}</td>`; }).join("")}
+      <td class="n"><b>${esc(c.totale_punteggio ?? "")}</b></td>
+      <td>${esito ? `<b>${esc(esito)}</b> <span class="muted">${esc(ESITO_LETTERA[esito] && ESITO_LETTERA[esito] !== esito ? ESITO_LETTERA[esito] : "")}</span>` : `<span class="chip err">mancante</span>`}</td>
+      <td>${esc(c.note || "")}</td>${cellaProt}${cellaData}
+      ${cellaPa}${cellaDa}</tr>`;
+  }).join("");
+  const conta = (l) => ordinati.filter(c => (c.esito || "").toUpperCase() === l).length;
+  riga.firstElementChild.innerHTML = `<div class="candidati">
+    <div class="muted" style="margin:4px 0 6px">${ordinati.length} candidati con punteggi su ${n0(r.domande)} domande ·
+      V ${conta("V")} · I ${conta("I")} · S ${conta("S")}${conta("R") ? ` · R ${conta("R")}` : ""} ·
+      ${r.scorrimento ? `scorrimento: protocollo ${esc(r.scorrimento)}` : `graduatoria nelle fonti: protocollo ${esc(r.protocollo || "—")} del ${dataIt(r.data)}`} ·
+      ${senza ? `<span class="chip err">${senza} senza protocollo graduatoria</span>` : ""}${protDiv ? ` <span class="chip err">${protDiv} con protocollo graduatoria diverso</span>` : ""}${dataDiv ? ` <span class="chip err">${dataDiv} con data graduatoria diversa</span>` : ""}
+      ${sSenza ? ` <span class="chip err">${sSenza} S senza protocollo assunzione</span>` : ""}${sDiv ? ` <span class="chip err">${sDiv} S con protocollo/data assunzione che non torna con le fonti</span>` : ""}
+      · letti ${oraIt(corpo.verificato_il)}, solo in memoria
+      ${corpo.url_punteggi ? ` · <a href="${esc(corpo.url_punteggi)}" target="_blank"><b>Apri i punteggi su Selezioni Online ↗</b></a>` : ""}</div>
+    <div class="scroll"><table><thead><tr><th class="n">Pos.</th><th>Cognome</th><th>Nome</th><th>Data di nascita</th><th>Codice fiscale</th>
+      <th>Username</th><th>Email</th><th>Email PEC</th>
+      ${prove.map(p => `<th class="n" title="Punteggio ${p.n}${p.min !== null && p.min !== undefined ? ` · min ${esc(p.min)}` : ""}">${esc(p.nome)}${p.max ? ` <span class="muted">/${esc(p.max)}</span>` : ""}</th>`).join("")}
+      <th class="n">Totale</th><th>Esito</th><th>Note</th><th>N. prot. graduatoria</th><th>Data prot. graduatoria</th>
+      <th>N. prot. assunzione idoneo</th><th>Data prot. assunzione idoneo</th></tr></thead><tbody>${righe}</tbody></table></div></div>`;
+}
+const n0 = (v) => v ?? "—";
+
+$("punteggi-excel").onclick = () => { window.location.href = `/api/punteggi/excel?${periodoPunteggi()}`; };
+async function avviaVerifica(automatica = false) {
+  const { status, corpo } = await json("/api/punteggi/verifica", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mese: $("mese-solleciti").value || meseDi(0) }) });
+  if (status === 401) { if (!automatica) alert(corpo.error); return; }
+  if (status === 409 && !automatica) alert(corpo.msg);
+  caricaPunteggi.aggiornati = false;
+  await caricaPunteggi();
+}
+$("punteggi-verifica").onclick = () => avviaVerifica(false);
+document.addEventListener("sol-sessione", (e) => {
+  const collegato = !!(e.detail && e.detail.collegato);
+  const appenaCollegato = collegato && !solCollegato;
+  solCollegato = collegato;
+  if (appenaCollegato) caricaPunteggi().catch(() => {});
+  $("punteggi-verifica").disabled = !collegato;
+  $("punteggi-verifica").title = collegato ? "" : "Collega prima Selezioni Online dal menu in alto";
+});
+// La verifica e il caricamento dei punteggi partono insieme alla tabella mensile.
+$("atti-rdp").addEventListener("input", disegnaAtti);
+
+async function caricaStatoRdp() {
+  const { corpo } = await json("/api/referenti/stato");
+  const u = corpo.ultimo;
+  $("aggiorna-rdp").disabled = !!(u && u.esito === "in_corso");
+  $("stato-rdp").innerHTML = (!corpo.collegato && !corpo.senza_token)
+    ? (corpo.login ? `<a href="${esc(corpo.login)}">accedi</a> per leggere gli RdP` : "login SSO non configurato")
+    : !u ? "RdP mai letti"
+    : u.esito === "in_corso" ? "⏳ lettura RdP in corso…"
+    : u.esito === "fallito" ? `<span class="chip err" title="${esc(u.messaggio || "")}">lettura RdP fallita</span>`
+    : `RdP letti ${oraIt(u.fine)} (${u.referenti} su ${u.bandi} bandi)${corpo.senza_token && !corpo.collegato ? " · lettura senza login, temporanea" : ""}`;
+  if (u && u.esito === "in_corso") setTimeout(async () => { if (!(await caricaStatoRdp())) await caricaAtti(); }, 5000);
+  return u && u.esito === "in_corso";
+}
+
+$("aggiorna-rdp").onclick = async () => {
+  const { status, corpo } = await json("/api/referenti/aggiorna", { method: "POST" });
+  if (status === 401) { if (corpo.login) location.href = corpo.login; else alert(corpo.error); return; }
+  if (status === 409) alert(corpo.msg);
+  await caricaStatoRdp();
+};
+caricaStatoRdp().catch(() => {});
+["atti-tipo", "atti-tipologia", "atti-manca", "atti-incompleti", "atti-protdiv", "atti-q"].forEach(id => $(id).addEventListener("input", disegnaAtti));
+["atti-dal", "atti-al"].forEach(id => $(id).addEventListener("change", () => { $("atti-mese").value = ""; caricaAtti(); }));
+
+// Mese: dal 1° all'ultimo giorno del mese scelto
+function impostaMese(mese) {
+  $("atti-mese").value = mese;
+  if (!mese) return;
+  const [a, m] = mese.split("-").map(Number);
+  const ultimo = new Date(a, m, 0).getDate();
+  $("atti-dal").value = `${mese}-01`;
+  $("atti-al").value = `${mese}-${String(ultimo).padStart(2, "0")}`;
+  caricaAtti();
+}
+$("atti-mese").addEventListener("change", () => impostaMese($("atti-mese").value));
+$("atti-tutto").onclick = () => { $("atti-mese").value = ""; $("atti-dal").value = ""; $("atti-al").value = ""; caricaAtti(); };
+function selezionaSchedaAtti(id) {
+  const schede = ["stato-atti", "graduatorie-mese", "scorrimenti-mese"];
+  schede.forEach(nome => {
+    const attiva = nome === id;
+    $(`tab-${nome}`).setAttribute("aria-selected", String(attiva));
+    $(`panel-${nome}`).hidden = !attiva;
+  });
+}
+[["tab-stato-atti", "stato-atti"], ["tab-graduatorie-mese", "graduatorie-mese"], ["tab-scorrimenti-mese", "scorrimenti-mese"]]
+  .forEach(([tab, panel]) => $(tab).addEventListener("click", () => selezionaSchedaAtti(panel)));
+$("mese-solleciti").value = meseDi(0);
+$("mese-solleciti").addEventListener("change", () => caricaSolleciti().catch(e => {
+  $("freschezza-graduatorie").textContent = `Impossibile caricare le difformità: ${e.message}`;
+  $("freschezza-scorrimenti").textContent = `Impossibile caricare le difformità: ${e.message}`;
+}));
+$("atti-tipologia").innerHTML += Object.entries(TIPOLOGIE).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+["q", "tipologia", "stato-coll", "mese", "solo-segnalazioni"].forEach(id => $(id).addEventListener("input", disegnaBandi));
+$("tipologia").innerHTML += Object.entries(TIPOLOGIE).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+$("stato-coll").innerHTML += Object.entries(STATI).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+
+$("aggiorna").onclick = async () => {
+  const fonti = $("fonte-raccolta").value.split(",");
+  const { status, corpo } = await json("/api/raccolta/avvia", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fonti, completa: $("completa").checked }) });
+  if (status === 409) alert(corpo.msg);
+  await caricaStato();
+};
+
+(async () => {
+  try { await caricaStato(); await caricaAtti(); await caricaSolleciti(); await caricaRiepilogo(); await caricaBandi(); }
+  catch (e) { $("stato").innerHTML = `<div class="chip err">Errore: ${esc(e.message)}</div>`; }
+})();
+</script>
+</body>
+</html>

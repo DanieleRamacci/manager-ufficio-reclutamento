@@ -1,0 +1,9 @@
+Flask==3.1.2
+Flask-Session==0.5.0
+PyJWT[crypto]>=2.8
+beautifulsoup4==4.13.4
+gunicorn==23.0.0
+openpyxl==3.1.5
+pdfminer.six>=20221105
+python-dotenv>=1.0
+requests==2.32.3

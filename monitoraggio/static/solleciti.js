@@ -1,0 +1,56 @@
+(() => {
+  const emailRdp = (righe) => [...new Set(righe.flatMap(r => (r.rdp || []).map(p => (p.email || "").trim()).filter(Boolean)))];
+
+  function rilievi(riga) {
+    const atto = riga.atto === "graduatoria" ? "la graduatoria" : "il provvedimento di assunzione idoneo (scorrimento/utilizzo della graduatoria)";
+    const rilievi = [...(riga.note || [])];
+    const fonti = { sol: "Selezioni Online", urp: "URP", segreteria: "file di riepilogo della segreteria" };
+    Object.entries(fonti).forEach(([chiave, nome]) => {
+      if (riga.fonti?.[chiave]?.stato !== "mancante") return;
+      rilievi.push(`${atto} non risulta tra i dati attualmente disponibili da ${nome}`);
+    });
+    return [...new Set(rilievi.filter(Boolean))];
+  }
+
+  function messaggio(riga, righeBando, mese) {
+    const destinatari = emailRdp(righeBando);
+    const numero = riga.numero_bando || "numero non disponibile";
+    const codici = [...new Set(righeBando.map(r => r.codice).filter(Boolean))];
+    const codice = codici.length ? `Codici/sedi interessati: ${codici.join(", ")}\n\n` : "";
+    const url = righeBando.map(r => r.link_codice || r.fonti?.sol?.url).find(Boolean);
+    const urlRiga = riga.link_codice || riga.fonti?.sol?.url;
+    const collegamento = url || urlRiga;
+    const voci = righeBando.flatMap(r => {
+      const note = rilievi(r);
+      if (!note.length) return [];
+      const tipo = r.atto === "graduatoria" ? "Graduatoria" : "Provvedimento di assunzione idoneo / scorrimento";
+      const riferimento = [r.codice || "", tipo, r.data ? r.data.slice(0, 10).split("-").reverse().join("/") : "", r.protocollo ? `prot. ${r.protocollo}` : ""]
+        .filter(Boolean).join(" · ");
+      return note.map(n => `- ${riferimento}: ${n}`);
+    });
+    const noteFinali = [...new Set(voci)];
+    const meseTesto = mese ? new Date(`${mese}-01T00:00:00`).toLocaleDateString("it-IT", { month: "long", year: "numeric" }) : "mese selezionato";
+    const oggetto = `${numero} — Monitoraggio mensile ${meseTesto}`;
+    const email = destinatari.length ? destinatari.join("; ") : "Nessun indirizzo email RdP disponibile";
+    const corpo = `Buongiorno gentili tutte e tutti,\n\nnell'ambito del monitoraggio mensile di ${meseTesto}, nella scheda Selezioni Online del bando ${numero} abbiamo rilevato le seguenti difformità:\n\n${codice}${(noteFinali.length ? noteFinali : ["- Verifica richiesta sui dati del bando."]).join("\n")}\n\nVi chiediamo cortesemente di verificare quanto indicato e di comunicarci l'avvenuta correzione.\n\nGrazie per la collaborazione.\nCordiali saluti.`;
+    const completo = `Destinatari (da incollare nel campo A):\n${email}\n\nOggetto:\n${oggetto}\n\nLink al bando su Selezioni Online:\n${collegamento || "Link non disponibile"}\n\nTesto:\n${corpo}`;
+    return { destinatari: destinatari.join("; "), oggetto, corpo, completo, collegamento, mese };
+  }
+
+  async function copia(contenuto, titolo) {
+    try {
+      if (!contenuto || !navigator.clipboard?.writeText) throw new Error("Appunti non disponibili");
+      await navigator.clipboard.writeText(contenuto);
+      return { copiato: true, testo: contenuto, titolo };
+    } catch {
+      return { copiato: false, testo: contenuto || "Nessun indirizzo email RdP disponibile.", titolo };
+    }
+  }
+
+  window.Solleciti = {
+    destinatari: (righe) => emailRdp(righe),
+    crea: messaggio,
+    copiaEmail: (righe) => copia(emailRdp(righe).join("; "), "Indirizzi RdP"),
+    copiaMessaggio: (riga, righeBando, mese) => copia(messaggio(riga, righeBando, mese).completo, "Sollecito completo"),
+  };
+})();

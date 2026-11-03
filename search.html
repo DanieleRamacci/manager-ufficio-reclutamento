@@ -11,12 +11,10 @@
     summary { cursor: pointer; font-weight: bold; color: #2a5d9f; }
     pre { background: #f4f4f4; padding: 10px; border: 1px solid #ccc; overflow-x: auto; }
   </style>
+  <script src="/monitoraggio/menu.js" defer></script>
 </head>
 <body>
-    <nav style="margin-bottom: 20px;">
-  <a href="index.html" style="margin-right: 15px;">Controllo Bandi</a>
-  <a href="search.html">Ricerca Libera</a>
-</nav>
+    
   <h1>🔍 Ricerca libera tra i Bandi CNR (URP e Selezioni Online)</h1>
 
   <input type="text" id="searchInput" placeholder="Inserisci codice bando, titolo, protocollo, ecc...">
@@ -37,19 +35,26 @@
     let solData = [];
 
     async function caricaDati() {
-      const urpResp = await fetch("bandi-completi-urp.json");
-      urpData = await urpResp.json();
+      const urpResp = await fetch("/_static/bandi-completi-urp.json");
+      const sezioniUrp = await urpResp.json();
+      urpData = Object.values(sezioniUrp).flat();
 
-      const solResp = await fetch("bandi_concorsi_pubblici_completi.json");
+      const solResp = await fetch("/_static/bandi-concorsi-pubblici-sol.json");
       solData = await solResp.json();
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, ch => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
+      })[ch]);
     }
 
     function formatJSONTree(data) {
       const html = Object.entries(data).map(([key, value]) => {
         if (typeof value === 'object' && value !== null) {
-          return `<details><summary>${key}</summary>${formatJSONTree(value)}</details>`;
+          return `<details><summary>${escapeHtml(key)}</summary>${formatJSONTree(value)}</details>`;
         } else {
-          return `<div><strong>${key}</strong>: ${value}</div>`;
+          return `<div><strong>${escapeHtml(key)}</strong>: ${escapeHtml(value)}</div>`;
         }
       }).join('');
       return html;
