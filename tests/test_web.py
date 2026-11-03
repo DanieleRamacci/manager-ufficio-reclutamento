@@ -57,7 +57,7 @@ def test_le_pagine_legacy_non_migrate_non_sono_servite(db):
     app = Flask(__name__)
     app.register_blueprint(web.crea_blueprint_pagine_esistenti())
     client = app.test_client()
-    assert client.get("/verifica-access.html").status_code == 404
+    assert client.get("/rdp-tool.html").status_code == 404
     assert client.get("/privacy.html").status_code == 404
 
 

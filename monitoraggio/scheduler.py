@@ -19,18 +19,28 @@ def modalita(giorno: datetime) -> str:
     return "completa" if giorno.weekday() == config.raccolta_completa_giorno() else "notturna"
 
 
-def esegui(fonti, modalita_raccolta: str, avviata_da: str) -> None:
+def _raccogli_fonte(fonte: str, modalita_raccolta: str, avviata_da: str) -> None:
     conn = db.connetti()
     db.inizializza(conn)
     try:
-        for fonte in fonti:
-            try:
-                raccogli(conn, fonte, modalita=modalita_raccolta, avviata_da=avviata_da,
-                         dopo_scrittura=lambda c, f: collegamento.collega(c))
-            except RaccoltaInCorso:
-                log.info("Raccolta pianificata saltata: %s già in corso", fonte)
+        raccogli(conn, fonte, modalita=modalita_raccolta, avviata_da=avviata_da,
+                 dopo_scrittura=lambda c, f: collegamento.collega(c))
+    except RaccoltaInCorso:
+        log.info("Raccolta pianificata saltata: %s già in corso", fonte)
+    except Exception:
+        log.exception("Raccolta pianificata di %s non riuscita", fonte)
     finally:
         conn.close()
+
+
+def esegui(fonti, modalita_raccolta: str, avviata_da: str) -> None:
+    """Una fonte per thread: il controllo dei PDF di URP può durare ore e non deve far aspettare SOL."""
+    lavori = [threading.Thread(target=_raccogli_fonte, args=(f, modalita_raccolta, avviata_da), daemon=True)
+              for f in fonti]
+    for lavoro in lavori:
+        lavoro.start()
+    for lavoro in lavori:
+        lavoro.join()
 
 
 def fonti_mai_lette() -> list[str]:

@@ -289,7 +289,7 @@ def raccogli(conn, fonte: str, *, client=None, modalita: str = "manuale", avviat
         chiudi(conn, raccolta_id, "fallita", totale_dichiarato=dichiarati, messaggio=str(e))
         return riepilogo(conn, raccolta_id)
 
-    if fonte == "urp" and config.controllo_pdf() and da_controllare:
-        from .accessibilita import controlla_documenti
-        controlla_documenti(conn, da_controllare)
+    if fonte == "urp" and config.controllo_pdf():
+        from .accessibilita import controlla_documenti, documenti_da_valutare
+        controlla_documenti(conn, sorted({*da_controllare, *documenti_da_valutare(conn)}))
     return riepilogo(conn, raccolta_id)

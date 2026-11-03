@@ -12,13 +12,18 @@ USER_AGENT = "Mozilla/5.0 (compatible; CNR-BandiBot/1.0)"
 
 # --- URP ---
 URP_BASE = "https://www.urp.cnr.it"
-URP_SEZIONI_PREDEFINITE = "tempo-indeterminato,bandi-pubblici-mobilita,categorie-riservatarie"
+URP_SEZIONI_PREDEFINITE = ("tempo-indeterminato,bandi-pubblici-mobilita,categorie-riservatarie,tempo-determinato,"
+                           "direttori-dipartimentiistituti,avviamento-numerico-selezione-ans-categorie-riservatarie,"
+                           "borse-ricerca")
+# le sezioni senza tipologia servono solo alle pagine URP e restano fuori dal monitoraggio
 # tipologia del bando per sezione URP (la mobilità può diventare "comando" dal testo)
 URP_TIPOLOGIA = {
     "tempo-indeterminato": "tempo_indeterminato",
     "bandi-pubblici-mobilita": "mobilita",
     "categorie-riservatarie": "categorie_protette",
 }
+
+URP_PERCORSI = {"borse-ricerca": "borse-di-ricerca"}  # nome usato dalle pagine -> percorso su URP
 
 # --- Selezioni Online (research R1, R2) ---
 SOL_BASE = "https://selezionionline.cnr.it/jconon"
@@ -60,7 +65,7 @@ def urp_sezioni() -> list[str]:
 
 def urp_url_sezione(sezione: str) -> str:
     # senza barra finale: con la barra URP risponde 301 (research R7)
-    return f"{URP_BASE}/documenti/{sezione}"
+    return f"{URP_BASE}/documenti/{URP_PERCORSI.get(sezione, sezione)}"
 
 
 def pausa_urp() -> float:

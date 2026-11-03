@@ -1,10 +1,12 @@
 """Controllo di accessibilità dei PDF (spostato da scraper-urp.py, research R9).
 
-Si esegue solo sui documenti nuovi o con link cambiato, e solo per criteri e tracce:
-sono gli unici di cui le pagine mostrano l'accessibilità.
+Si esegue su tutti i PDF elencati dalle pagine URP (access.html li conta tutti), una sola volta per
+documento salvo link cambiato. Il primo giro dura ore: i documenti rimasti indietro per un riavvio
+vengono ripresi alla raccolta successiva.
 """
 import io
 import json
+import threading
 import time
 
 import requests
@@ -23,7 +25,7 @@ try:
 except Exception:
     PIKEPDF_AVAILABLE = False
 
-CATEGORIE_CONTROLLATE = ("criteri", "tracce")
+_controllo_in_corso = threading.Lock()
 
 
 def _download_pdf(url: str, max_size_mb: float = 25.0) -> bytes | None:
@@ -62,7 +64,7 @@ def _pdf_tag_info(pdf_bytes: bytes) -> dict:
         return info
     try:
         with pikepdf.open(io.BytesIO(pdf_bytes)) as pdf:
-            root = pdf.root
+            root = pdf.Root
             markinfo = root.get("/MarkInfo", None)
             if isinstance(markinfo, pikepdf.Dictionary):
                 info["is_tagged"] = bool(markinfo.get("/Marked", False))
@@ -122,18 +124,56 @@ def valuta_accessibilita_pdf(url: str) -> dict:
     return out
 
 
+def _livello_e_punteggio(has_text: bool, is_tagged: bool, has_struct: bool, lang: str | None) -> tuple[str, int]:
+    if not has_text:
+        return "non_accessibile", 0
+    punti = 40 * is_tagged + 40 * has_struct + (20 if lang else 0)
+    return ("accessibile", punti) if punti >= 60 else ("parziale", max(40, punti))
+
+
+def valuta_file(dati: bytes, nome: str) -> dict:
+    """Valuta un file caricato dalla pagina Verifica PDF; resta in memoria e non viene salvato."""
+    out = {"filename": nome, "checked": False, "is_pdf": (nome or "").lower().endswith(".pdf"),
+           "has_text": False, "is_tagged": False, "has_struct_tree": False, "lang": None, "has_title": False,
+           "accessible": False, "level": "non_accessibile", "score": 0, "note": ""}
+    if not out["is_pdf"]:
+        out["note"] = "Non PDF – non valutabile"
+        return out
+    tag = _pdf_tag_info(dati)
+    out.update(checked=True, has_text=_pdf_has_text(dati), is_tagged=tag["is_tagged"],
+               has_struct_tree=tag["has_struct_tree"], lang=tag["lang"], has_title=bool(tag["title"]))
+    out["level"], out["score"] = _livello_e_punteggio(out["has_text"], out["is_tagged"], out["has_struct_tree"], out["lang"])
+    out["accessible"] = out["level"] == "accessibile"
+    if not out["has_text"]:
+        out["note"] = "Sembra scansione (nessun testo estraibile)"
+    elif out["level"] == "parziale":
+        out["note"] = "Testo presente ma mancano tag/struttura/lingua"
+    return out
+
+
+def documenti_da_valutare(conn) -> list[int]:
+    """Documenti URP mai valutati. Il documento principale resta fuori: le pagine non lo elencano."""
+    return [r["id"] for r in conn.execute(
+        "SELECT d.id FROM documento d JOIN scheda s ON s.id = d.scheda_id WHERE s.fonte = 'urp' AND d.presente = 1 "
+        "AND d.categoria != 'bando' AND d.accessibilita IS NULL AND d.url LIKE 'http%'")]
+
+
 def controlla_documenti(conn, documento_ids: list[int]) -> int:
-    """Valuta i PDF dei documenti indicati (solo criteri e tracce) e salva il risultato."""
-    if not documento_ids:
+    """Valuta i PDF dei documenti indicati e salva il risultato. Un solo controllo alla volta."""
+    if not documento_ids or not _controllo_in_corso.acquire(blocking=False):
         return 0
-    segnaposto = ", ".join("?" * len(documento_ids))
-    righe = conn.execute(
-        f"SELECT id, url FROM documento WHERE id IN ({segnaposto}) AND categoria IN "
-        f"({', '.join('?' * len(CATEGORIE_CONTROLLATE))}) AND url LIKE 'http%'",
-        (*documento_ids, *CATEGORIE_CONTROLLATE)).fetchall()
-    for riga in righe:
-        risultato = valuta_accessibilita_pdf(riga["url"])
-        conn.execute("UPDATE documento SET accessibilita = ? WHERE id = ?",
-                     (json.dumps(risultato, ensure_ascii=False), riga["id"]))
-        time.sleep(config.pausa_urp())
-    return len(righe)
+    controllati = 0
+    try:
+        for doc_id in documento_ids:
+            riga = conn.execute("SELECT url FROM documento WHERE id = ? AND categoria != 'bando' AND url LIKE 'http%'",
+                                (doc_id,)).fetchone()
+            if not riga:
+                continue
+            risultato = valuta_accessibilita_pdf(riga["url"])
+            conn.execute("UPDATE documento SET accessibilita = ? WHERE id = ?",
+                         (json.dumps(risultato, ensure_ascii=False), doc_id))
+            controllati += 1
+            time.sleep(config.pausa_urp())
+    finally:
+        _controllo_in_corso.release()
+    return controllati

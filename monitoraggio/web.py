@@ -12,8 +12,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from flask import Blueprint, jsonify, request, send_from_directory
+from werkzeug.utils import secure_filename
 
-from . import atti, collegamento, compat, config, db, punteggi, referenti, segreteria, sol_sessione
+from . import accessibilita, atti, collegamento, compat, config, db, punteggi, referenti, segreteria, sol_sessione
 
 # esito dell'ultima verifica dei punteggi (solo conteggi, in memoria)
 ULTIMA_VERIFICA: dict = {}
@@ -22,6 +23,7 @@ from .raccolta import RaccoltaInCorso, avvia, errori, raccogli, stato
 
 STATIC = Path(__file__).resolve().parent / "static"
 MAX_FILE_SEGRETERIA = 15 * 1024 * 1024
+MAX_FILE_PDF = 25 * 1024 * 1024
 
 # Menu comune di tutte le pagine (spec 001, FR-023): definito solo qui.
 # "pagina" = file HTML nella cartella del progetto; "route" = pagina servita da questo modulo.
@@ -209,8 +211,8 @@ def riepilogo_mensile(conn) -> dict:
     for r in conn.execute(
             "SELECT substr(d.data_protocollo, 1, 7) AS mese, s.fonte, d.categoria, d.sottotipo, "
             "COUNT(DISTINCT COALESCE(d.protocollo, d.id)) AS n FROM documento d JOIN scheda s ON s.id = d.scheda_id "
-            "WHERE d.presente = 1 AND d.data_protocollo >= ? AND d.categoria IN ('graduatoria', 'scorrimento', 'rettifica') "
-            "GROUP BY 1, 2, 3, 4", (dal,)):
+            "WHERE d.presente = 1 AND s.bando_id IS NOT NULL AND d.data_protocollo >= ? "
+            "AND d.categoria IN ('graduatoria', 'scorrimento', 'rettifica') GROUP BY 1, 2, 3, 4", (dal,)):
         mesi[r["mese"]][f"{r['categoria']}_{r['fonte']}"] += r["n"]
         if r["categoria"] == "scorrimento":
             mesi[r["mese"]][f"scorrimento_{r['sottotipo']}_{r['fonte']}"] += r["n"]
@@ -619,7 +621,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
 # pagine esistenti che il server locale sa servire: le altre (firme, RdP, ispezione SOL)
 # dipendono dalle route di avvia_tool.py e in locale risultano "non disponibili"
 PAGINE_LOCALI = {"index.html", "access.html", "mobilita-urp.html", "report-mese.html",
-                 "search.html", "stato-avanzamento.html"}
+                 "search.html", "stato-avanzamento.html", "verifica-access.html"}
 
 
 def crea_blueprint_pagine_esistenti(protezione=lambda f: f) -> Blueprint:
@@ -668,6 +670,28 @@ def crea_blueprint_pagine_esistenti(protezione=lambda f: f) -> Blueprint:
         risposta, codice = avvia_raccolta(fonti, False, "pagina")
         return jsonify({"ok": risposta["ok"], "msg": "Run avviata" if risposta["ok"] else "Una run è già in corso"}), \
             (200 if codice == 202 else codice)
+
+    def _valuta_caricato(file) -> dict:
+        nome = secure_filename(file.filename or "documento.pdf")
+        dati = file.read(MAX_FILE_PDF + 1)
+        if len(dati) > MAX_FILE_PDF:
+            return {**accessibilita.valuta_file(b"", "non-valutato"), "filename": nome, "note": "File oltre 25 MB"}
+        return accessibilita.valuta_file(dati, nome)
+
+    @bp.post("/api/check-access")
+    @protezione
+    def check_access():
+        if "file" not in request.files:
+            return jsonify({"ok": False, "error": "Parametro 'file' assente"}), 400
+        return jsonify({"ok": True, "result": _valuta_caricato(request.files["file"])})
+
+    @bp.post("/api/check-access-batch")
+    @protezione
+    def check_access_batch():
+        file = request.files.getlist("files")
+        if not file:
+            return jsonify({"ok": False, "error": "Parametro 'files' assente"}), 400
+        return jsonify({"ok": True, "results": [_valuta_caricato(f) for f in file]})
 
     @bp.get("/<nome>")
     @protezione

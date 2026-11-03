@@ -159,7 +159,7 @@ def test_esegui_collega_e_salta_le_raccolte_in_corso(db, monkeypatch):
             raise raccolta.RaccoltaInCorso(fonte)
     monkeypatch.setattr(scheduler, "raccogli", finto)
     scheduler.esegui(scheduler.FONTI, "notturna", "pianificata")
-    assert chiamate == [("urp", "notturna", "pianificata"), ("sol", "notturna", "pianificata")]
+    assert sorted(chiamate) == [("sol", "notturna", "pianificata"), ("urp", "notturna", "pianificata")]
 
 
 def test_fonti_mai_lette(db):

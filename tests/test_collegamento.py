@@ -141,3 +141,13 @@ def test_campi_bando_presi_da_sol(db):
     assert (b["codice"], b["profilo"], b["sede"], b["numero_posti"], b["gruppo_rdp"]) == (
         "367.910 RIC IASI", "Ricercatore", "Roma", 2, "RDP_x")
     assert b["data_pubblicazione"] == "2026-01-30"
+
+
+def test_sezioni_urp_fuori_ambito_restano_fuori_dal_monitoraggio(db):
+    salva(db, "urp", [scheda("urp", "/node/9", "BORSA 1", "367.900", tipologia=None, sezione="borse-ricerca",
+                             documenti=[doc("g1", "graduatoria", "111")]),
+                      scheda("urp", "/node/1", "367.479 CTER", "367.479", documenti=[doc("g2", "graduatoria", "222")])])
+    collegamento.collega(db)
+    assert bando_di(db, "urp", "/node/9") is None
+    assert bando_di(db, "urp", "/node/1") is not None
+    assert db.execute("SELECT COUNT(*) FROM bando").fetchone()[0] == 1
