@@ -441,7 +441,7 @@ function controlliInvio(a) {
 function apriInvio(riga, gruppo) {
   const m = window.Solleciti.crea(riga, gruppo, monitoraggio);
   const destinatari = window.Solleciti.destinatari(gruppo);
-  const corpo = m.corpo + (m.collegamento ? `\n\nLink al bando su Selezioni Online:\n${m.collegamento}` : "");
+  const corpo = m.corpo + (m.link ? `\n\n${m.link}` : "");
   invioAperto = { numero_bando: riga.numero_bando, destinatari, oggetto: m.oggetto, corpo };
   $("titolo-sollecito").textContent = `Sollecito per il bando ${riga.numero_bando}`;
   $("testo-sollecito").value = `A: ${destinatari.join("; ")}\nOggetto: ${m.oggetto}\n\n${corpo}`;
