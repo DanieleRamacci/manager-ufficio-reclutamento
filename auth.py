@@ -82,9 +82,14 @@ def token_valido(margine: int = 30) -> str | None:
     return session.get("access_token")
 
 
+verifica_utente = None  # chi usa questo login può decidere lui chi è ammesso (monitoraggio/wsgi.py)
+
+
 def _utente_ammesso(claims: dict) -> bool:
     """Con UTENTI_AMMESSI (email separate da virgole) entrano solo quegli utenti CNR: il realm accetta
     anche SPID/CIE e l'app mostra dati personali dei candidati."""
+    if verifica_utente:
+        return verifica_utente(claims)
     ammessi = {e.strip().lower() for e in os.getenv("UTENTI_AMMESSI", "").split(",") if e.strip()}
     if not ammessi:
         return claims.get("is_cnr_user") is not False
