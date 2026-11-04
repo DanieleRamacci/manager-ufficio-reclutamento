@@ -109,6 +109,11 @@
     <button type="button" role="tab" id="tab-graduatorie-mese" aria-selected="false" aria-controls="panel-graduatorie-mese">Graduatorie del mese <span id="conteggio-graduatorie-mese"></span></button>
     <button type="button" role="tab" id="tab-scorrimenti-mese" aria-selected="false" aria-controls="panel-scorrimenti-mese">Scorrimenti del mese <span id="conteggio-scorrimenti-mese"></span></button>
     <label class="muted">Mese <input type="month" id="mese-solleciti"></label>
+    <label class="muted">Tipologia <select id="tipologia-solleciti">
+      <option value="">Tutte</option>
+      <option value="indeterminato" title="Su Selezioni Online: concorsi pubblici, con reclutamento speciale e categorie protette">Tempo indeterminato (concorsi pubblici)</option>
+      <option value="mobilita">Mobilità e comandi</option>
+    </select></label>
   </nav>
 
   <section id="panel-stato-atti" role="tabpanel" aria-labelledby="tab-stato-atti">
@@ -560,10 +565,15 @@ function righeGraduatoriaUnificate() {
   return [...righe, ...sintetiche].filter(a => a.difforme && ["graduatoria", "scorrimento"].includes(a.atto));
 }
 
+// Tipologie monitorate. Una riga senza tipologia nota compare sempre: il filtro non deve nascondere una difformità.
+const GRUPPI_TIPOLOGIA = { indeterminato: ["tempo_indeterminato", "reclutamento_speciale", "categorie_protette"],
+                           mobilita: ["mobilita", "comando"] };
 function disegnaSolleciti() {
   attiMese = righeGraduatoriaUnificate();
-  const graduatorie = attiMese.filter(a => a.atto === "graduatoria");
-  const scorrimenti = attiMese.filter(a => a.atto === "scorrimento");
+  const gruppo = GRUPPI_TIPOLOGIA[$("tipologia-solleciti").value];
+  const visibili = gruppo ? attiMese.filter(a => !a.tipologia || gruppo.includes(a.tipologia)) : attiMese;
+  const graduatorie = visibili.filter(a => a.atto === "graduatoria");
+  const scorrimenti = visibili.filter(a => a.atto === "scorrimento");
   $("conteggio-graduatorie-mese").textContent = `(${graduatorie.length})`;
   $("conteggio-scorrimenti-mese").textContent = `(${scorrimenti.length})`;
   $("conteggio-graduatorie-label").textContent = `(${graduatorie.length})`;
@@ -854,6 +864,8 @@ function selezionaSchedaAtti(id) {
 [["tab-stato-atti", "stato-atti"], ["tab-graduatorie-mese", "graduatorie-mese"], ["tab-scorrimenti-mese", "scorrimenti-mese"]]
   .forEach(([tab, panel]) => $(tab).addEventListener("click", () => selezionaSchedaAtti(panel)));
 $("mese-solleciti").value = parametri.get("mese") || meseDi(0);
+$("tipologia-solleciti").value = parametri.get("tipologia") || "";
+$("tipologia-solleciti").addEventListener("change", disegnaSolleciti);
 if (parametri.get("mese")) impostaMese(parametri.get("mese"));
 if (monitoraggio) {
   selezionaSchedaAtti("graduatorie-mese");

@@ -8,6 +8,7 @@ from ..normalizza import codice_norm, codice_sotto, data_iso, numero_bando, prot
 from .http import FonteErrore
 
 TIPO_COMMISSIONE = "D:jconon_commissione"
+PREFISSO_ALLEGATO_BANDO = "D:jconon_attachment:call"
 
 
 def query_bandi(tipo: str) -> str:
@@ -17,7 +18,8 @@ def query_bandi(tipo: str) -> str:
 
 
 def query_allegati(object_id: str) -> str:
-    return f"SELECT * FROM jconon_attachment:document root WHERE IN_FOLDER(root,'{object_id}')"
+    # IN_TREE e non IN_FOLDER: in alcuni bandi graduatorie e provvedimenti non sono nel primo livello della scheda
+    return f"SELECT * FROM jconon_attachment:document root WHERE IN_TREE(root,'{object_id}')"
 
 
 def _cerca(client, query: str) -> tuple[list[dict], int]:
@@ -122,7 +124,12 @@ def documento_da_item(item: dict, url_scheda: str | None = None) -> dict:
     }
 
 
+def _allegato_del_bando(item: dict) -> bool:
+    """Solo i documenti del bando: l'albero della scheda contiene anche le domande dei candidati."""
+    tipo = item.get("cmis:objectTypeId") or ""
+    return tipo.startswith(PREFISSO_ALLEGATO_BANDO) and not tipo.startswith(TIPO_COMMISSIONE)
+
+
 def allegati_bando(client, object_id: str, url_scheda: str | None = None) -> list[dict]:
     items, _ = _cerca(client, query_allegati(object_id))
-    return [documento_da_item(it, url_scheda) for it in items
-            if not (it.get("cmis:objectTypeId") or "").startswith(TIPO_COMMISSIONE)]
+    return [documento_da_item(it, url_scheda) for it in items if _allegato_del_bando(it)]

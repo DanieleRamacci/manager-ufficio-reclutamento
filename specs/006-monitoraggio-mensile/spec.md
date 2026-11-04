@@ -131,6 +131,8 @@ Nella pagina del monitoraggio l'amministratore vede le difformità del periodo p
 
 - **FR-020**: La pagina di accesso MUST offrire il pulsante "Accedi come visualizzatore autorizzato": chi è autorizzato riceve nella propria casella un link monouso valido 15 minuti ed entra in sola lettura, anche se il suo ruolo è amministratore. Il sistema MUST NOT rivelare chi è autorizzato e MUST inviare il link solo all'indirizzo registrato.
 
+- **FR-021**: Le viste delle graduatorie e degli scorrimenti del mese MUST permettere di filtrare per tipologia monitorata: tempo indeterminato (su Selezioni Online concorsi pubblici, con reclutamento speciale e categorie protette) e mobilità con comandi. Le righe senza tipologia nota MUST restare visibili.
+
 ### Key Entities
 
 - **Utente**: nome utente, ruolo, email facoltativa, attivo, autore e data dell'ultima modifica.

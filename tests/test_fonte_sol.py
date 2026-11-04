@@ -63,7 +63,7 @@ def test_scheda_da_item(fixture_path):
 def test_allegati_bando(fixture_path, client_finto):
     client = client_finto(json_per_chiave=lambda url, params: carica(fixture_path, "allegati_367473.json"))
     documenti = sol.allegati_bando(client, "id-bando")
-    assert "IN_FOLDER(root,'id-bando')" in client.richieste[0][1]["q"]
+    assert "IN_TREE(root,'id-bando')" in client.richieste[0][1]["q"]
     per_tipo = {d["tipo_fonte"].split(":")[-1]: d for d in documenti}
     assert "metadata" not in per_tipo  # membri di commissione ignorati
     grad = per_tipo["call_classification"]
@@ -73,3 +73,16 @@ def test_allegati_bando(fixture_path, client_finto):
     assert (utilizzo["categoria"], utilizzo["sottotipo"], utilizzo["protocollo"]) == ("scorrimento", "utilizzo", "175370")
     assert per_tipo["call_it"]["categoria"] == "bando"
     assert per_tipo["call_errata_corrige"]["categoria"] == "rettifica"
+
+
+def test_allegati_solo_del_bando_anche_in_sottocartella(client_finto):
+    from monitoraggio.fonti import sol as modulo
+    voce = lambda tipo, nome: {"cmis:objectId": nome, "cmis:name": nome, "cmis:objectTypeId": tipo,  # noqa: E731
+                               "jconon_protocollo:numero": "0461293", "jconon_protocollo:data": "2026-10-28"}
+    client = client_finto(json_per_chiave=lambda url, params: {"totalNumItems": 3, "hasMoreItems": False, "items": [
+        voce("D:jconon_attachment:call_recruitment_provision", "provvedimento"),
+        voce("D:jconon_commissione:metadata", "commissione"),
+        voce("D:jconon_attachment:curriculum_vitae", "curriculum-candidato")]})
+    docs = modulo.allegati_bando(client, "id-bando")
+    assert [d["titolo"] for d in docs] == ["provvedimento"]
+    assert docs[0]["categoria"] == "scorrimento" and docs[0]["protocollo"] == "461293"

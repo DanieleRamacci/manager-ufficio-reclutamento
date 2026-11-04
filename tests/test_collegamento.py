@@ -151,3 +151,25 @@ def test_sezioni_urp_fuori_ambito_restano_fuori_dal_monitoraggio(db):
     assert bando_di(db, "urp", "/node/9") is None
     assert bando_di(db, "urp", "/node/1") is not None
     assert db.execute("SELECT COUNT(*) FROM bando").fetchone()[0] == 1
+
+
+def test_archivio_si_collega_ai_bandi_esistenti_senza_crearne(db):
+    salva(db, "sol", [scheda("sol", "s1", "367.434 CA", "367.434")])
+    collegamento.collega(db)
+    salva(db, "urp", [scheda("urp", "/vecchio/367_434.pdf", "367.434 CA", "367.434", tipologia=None, sezione="archivio-vecchio",
+                             documenti=[doc("g1", "graduatoria", "509207", "2026-05-01")]),
+                      scheda("urp", "/vecchio/100.pdf", "100.1 CTER", "100.1", tipologia=None, sezione="archivio-vecchio")])
+    collegamento.collega(db)
+    assert bando_di(db, "urp", "/vecchio/367_434.pdf") == bando_di(db, "sol", "s1")
+    assert stato(db, "367.434 CA") == "entrambi"
+    assert bando_di(db, "urp", "/vecchio/100.pdf") is None
+    assert db.execute("SELECT COUNT(*) FROM bando").fetchone()[0] == 1
+
+
+def test_archivio_letto_prima_di_sol_si_collega_dopo(db):
+    salva(db, "urp", [scheda("urp", "/vecchio/367_434.pdf", "367.434 CA", "367.434", tipologia=None, sezione="archivio-vecchio")])
+    collegamento.collega(db)
+    assert bando_di(db, "urp", "/vecchio/367_434.pdf") is None
+    salva(db, "sol", [scheda("sol", "s1", "367.434 CA", "367.434")])
+    collegamento.collega(db)
+    assert bando_di(db, "urp", "/vecchio/367_434.pdf") == bando_di(db, "sol", "s1")

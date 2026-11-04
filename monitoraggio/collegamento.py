@@ -99,10 +99,14 @@ def collega(conn) -> None:
     try:
         # prima SOL (codici più puliti), poi URP
         schede = conn.execute(
-            "SELECT * FROM scheda WHERE bando_id IS NULL AND NOT (fonte = 'urp' AND tipologia IS NULL) "
-            "ORDER BY CASE fonte WHEN 'sol' THEN 0 ELSE 1 END, id").fetchall()
+            "SELECT * FROM scheda WHERE bando_id IS NULL AND (fonte != 'urp' OR tipologia IS NOT NULL OR sezione = ?) "
+            "ORDER BY CASE fonte WHEN 'sol' THEN 0 ELSE 1 END, id", (config.URP_ARCHIVIO_SEZIONE,)).fetchall()
         for s in schede:
-            bando_id = _trova_bando(conn, s) or _crea_bando(conn, s, ora)
+            # l'archivio storico vale solo per i bandi già nel monitoraggio: non ne crea di nuovi
+            archivio = s["fonte"] == "urp" and s["sezione"] == config.URP_ARCHIVIO_SEZIONE
+            bando_id = _trova_bando(conn, s) or (None if archivio else _crea_bando(conn, s, ora))
+            if bando_id is None:
+                continue
             conn.execute("UPDATE scheda SET bando_id = ? WHERE id = ?", (bando_id, s["id"]))
         _aggiorna_bandi(conn, ora)
         conn.execute("COMMIT")

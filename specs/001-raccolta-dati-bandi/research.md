@@ -35,7 +35,7 @@ sorgente di SOL (`cool-jconon`, copia locale in `~/Desktop/CNR/cool-jconon`).
 ## R3. Documenti dei bandi SOL
 
 - **Decision**: per ogni bando, una query
-  `SELECT * FROM jconon_attachment:document root WHERE IN_FOLDER(root,'<objectId del bando>')`.
+  `SELECT * FROM jconon_attachment:document root WHERE IN_TREE(root,'<objectId del bando>')`.
   Ogni allegato restituisce tipo (`cmis:objectTypeId`), nome file, `jconon_protocollo:numero`,
   `jconon_protocollo:data`, `cmis:creationDate`, `cmis:lastModificationDate`.
 - **Rationale**: dati strutturati, con protocollo e data, invece della lettura dell'HTML di
