@@ -225,13 +225,16 @@ def riepilogo_mensile(conn) -> dict:
 def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
                    pagine_disponibili: set[str] | None = None, token_utente=lambda: None,
                    login_url: str | None = None, logout_url: str | None = None,
-                   login_sol: bool = False) -> Blueprint:
+                   login_sol: bool = False, sessione_sol=None) -> Blueprint:
     """`token_utente()`: token SSO valido dell'utente collegato (rinnovato se serve) o None.
     `login_sol`: abilita il collegamento a Selezioni Online con finestra di login (solo prova locale);
-    altrimenti le chiamate a SOL usano il ticket ottenuto dal token SSO dell'utente."""
+    altrimenti le chiamate a SOL usano il ticket ottenuto dal token SSO dell'utente.
+    `sessione_sol`: ticket incollato dall'utente (monitoraggio/accesso.py), al posto di quanto sopra."""
     bp = Blueprint("monitoraggio", __name__)
 
     def _intestazioni_sol() -> dict:
+        if sessione_sol:
+            return sessione_sol.intestazioni() or {}
         if login_sol:
             return sol_sessione.intestazioni()
         token = token_utente()
@@ -267,7 +270,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
             return jsonify({"ok": False, "msg": "Verifica dei punteggi già in corso"}), 409
         intestazioni = _intestazioni_sol()
         if not intestazioni:
-            messaggio = "Collega prima Selezioni Online dal menu" if login_sol \
+            messaggio = "Collega prima Selezioni Online dal menu" if login_sol or sessione_sol \
                 else "Selezioni Online non ha concesso la sessione: esci e rifai l'accesso SSO"
             return jsonify({"error": messaggio}), 401
         dal, al = periodo
@@ -340,6 +343,8 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
     @bp.get("/api/sol/sessione")
     @protezione
     def api_sol_sessione():
+        if sessione_sol:
+            return jsonify(sessione_sol.stato())
         if not login_sol:  # niente collegamento separato: vale l'accesso SSO dell'utente
             return jsonify({**sol_sessione.stato(), "disponibile": False, "collegato": bool(token_utente())})
         return jsonify({**sol_sessione.stato(), "disponibile": True})
@@ -347,7 +352,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
     @bp.post("/api/sol/esci")
     @protezione
     def api_sol_esci():
-        sol_sessione.dimentica()
+        (sessione_sol or sol_sessione).dimentica()
         punteggi.dimentica_candidati()  # con la sessione si dimenticano anche i dati dei candidati
         return jsonify({"ok": True})
 
@@ -356,7 +361,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
     def api_referenti_aggiorna():
         token = token_utente()
         if not token and not referenti.senza_token_ammesso():
-            return jsonify({"error": "Per leggere i referenti da Selezioni Online serve l'accesso SSO",
+            return jsonify({"error": "Per leggere i referenti collega prima Selezioni Online",
                             "login": login_url}), 401
         conn = _conn()
         try:

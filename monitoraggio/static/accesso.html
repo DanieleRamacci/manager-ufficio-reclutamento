@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Accesso Monitoraggio bandi</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #f6f7fb; color: #1f2937; margin: 0; padding: 32px 16px; }
+    main { max-width: 620px; margin: 0 auto; background: #fff; border: 1px solid #e2e6ff; border-radius: 10px; padding: 24px; }
+    h1 { font-size: 1.35rem; margin: 0 0 16px; }
+    li { margin-bottom: 10px; line-height: 1.45; }
+    code { background: #eef2ff; border-radius: 4px; padding: 1px 5px; }
+    label { display: block; font-weight: 600; margin: 18px 0 6px; }
+    input[type=password] { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #c7cdea; border-radius: 6px; font-size: 1rem; }
+    button { margin-top: 14px; padding: 10px 18px; border: 0; border-radius: 6px; background: #3f51b5; color: #fff; font-size: 1rem; cursor: pointer; }
+    .errore { background: #fdecea; border: 1px solid #f5c2bd; color: #8a1f14; border-radius: 6px; padding: 10px 12px; margin-bottom: 16px; }
+    .nota { color: #5b6478; font-size: .9rem; margin-top: 18px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Accesso con Selezioni Online</h1>
+    {% if errore %}<div class="errore" role="alert">{{ errore }}</div>{% endif %}
+    <ol>
+      <li><a href="{{ sol_login }}" target="_blank" rel="noopener">Apri Selezioni Online</a> e fai il login come al solito.</li>
+      <li>Nella pagina di Selezioni Online premi <code>F12</code> (su Mac <code>Cmd+Opt+I</code>) e apri
+        <strong>Application</strong> → <strong>Cookies</strong> → <code>selezionionline.cnr.it</code>.
+        In Safari e Firefox la scheda si chiama Archiviazione.</li>
+      <li>Copia il <strong>valore</strong> del cookie <code>ticket</code> e incollalo qui sotto.</li>
+    </ol>
+    <form method="post" action="/login" autocomplete="off">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label for="ticket">Cookie ticket</label>
+      <input id="ticket" name="ticket" type="password" required autofocus>
+      <button type="submit">Entra</button>
+    </form>
+    <p class="nota">Il ticket dà accesso a Selezioni Online con il tuo account: non condividerlo. Dura circa un'ora e
+      resta solo nella memoria del server. Le pagine restano accessibili per 12 ore; per leggere punteggi e RdP dopo la
+      scadenza basta ricollegarlo.</p>
+  </main>
+</body>
+</html>

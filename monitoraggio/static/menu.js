@@ -98,8 +98,8 @@
         el.innerHTML = `SOL collegato fino alle ${ora(s.scade_il)} · <a href="#" id="mm-sol-esci">Scollega</a>`;
         document.getElementById("mm-sol-esci").onclick = async (e) => { e.preventDefault(); await fetch("/api/sol/esci", { method: "POST" }); aggiornaSol(); document.dispatchEvent(new Event("sol-sessione")); };
       } else {
-        el.innerHTML = `<a href="#" id="mm-sol-accedi">Collega Selezioni Online</a>${s.errore ? ` <span title="${esc(s.errore)}">⚠</span>` : ""}`;
-        document.getElementById("mm-sol-accedi").onclick = async (e) => { e.preventDefault(); await fetch("/api/sol/accedi", { method: "POST" }); aggiornaSol(); };
+        el.innerHTML = `<a href="${esc(s.login_url || "#")}" id="mm-sol-accedi">Collega Selezioni Online</a>${s.errore ? ` <span title="${esc(s.errore)}">⚠</span>` : ""}`;
+        if (!s.login_url) document.getElementById("mm-sol-accedi").onclick = async (e) => { e.preventDefault(); await fetch("/api/sol/accedi", { method: "POST" }); aggiornaSol(); };
       }
       if (!s.in_corso) document.dispatchEvent(new CustomEvent("sol-sessione", { detail: s }));
     } catch (e) { /* facoltativo */ }

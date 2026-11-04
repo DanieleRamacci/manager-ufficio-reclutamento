@@ -62,6 +62,23 @@ def valida(valore: str) -> bool:
         return False
 
 
+def identita(valore: str) -> dict | None:
+    """Chi è l'utente del ticket, secondo /rest/common (lo stesso oggetto `common.User` usato dalle pagine
+    di SOL). None se il ticket non è valido: senza un ticket valido SOL risponde con l'utente guest."""
+    try:
+        r = requests.get(f"{base_url()}/rest/common", headers={"Cookie": f"ticket={valore}"}, timeout=20,
+                         allow_redirects=False)
+        dati = r.json() if r.status_code == 200 else {}
+    except (requests.RequestException, ValueError):
+        log.warning("Selezioni Online: identità dell'utente non disponibile")
+        return None
+    utente = dati.get("User") if isinstance(dati, dict) else None
+    if not isinstance(utente, dict) or dati.get("isGuest") or utente.get("guest"):
+        return None
+    nome = str(utente.get("userName") or utente.get("id") or "").strip().lower()
+    return {"username": nome, "email": (utente.get("email") or "").strip().lower() or None} if nome else None
+
+
 def ticket_da_token(token: str) -> str | None:
     """Scambia il token SSO con il ticket di SOL: lo stesso del cookie `ticket` del login dal browser
     (entrambi da CustomKeyCloakAuthSuccessHandler.createTicketForUser). Il filtro Keycloak di SOL non

@@ -70,7 +70,7 @@ def _accesso_negato(messaggio: str) -> bool:
     return "HTTP 401" in messaggio or "HTTP 403" in messaggio
 
 
-def aggiorna(conn, token: str | None, utente: str | None, client=None, tutti: bool = False) -> dict:
+def aggiorna(conn, token: str | dict | None, utente: str | None, client=None, tutti: bool = False) -> dict:
     """Legge gli RdP con il token dell'utente, bando per bando, e li salva per le schede SOL."""
     if not token and not senza_token_ammesso():
         raise ValueError("Serve il token SSO dell'utente")
