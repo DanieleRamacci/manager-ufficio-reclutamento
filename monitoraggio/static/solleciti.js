@@ -32,7 +32,7 @@
     const meseTesto = mese ? new Date(`${mese}-01T00:00:00`).toLocaleDateString("it-IT", { month: "long", year: "numeric" }) : "mese selezionato";
     const oggetto = `${numero} — Monitoraggio mensile ${meseTesto}`;
     const email = destinatari.length ? destinatari.join("; ") : "Nessun indirizzo email RdP disponibile";
-    const corpo = `Buongiorno gentili tutte e tutti,\n\nnell'ambito del monitoraggio mensile di ${meseTesto}, nella scheda Selezioni Online del bando ${numero} abbiamo rilevato le seguenti difformità:\n\n${codice}${(noteFinali.length ? noteFinali : ["- Verifica richiesta sui dati del bando."]).join("\n")}\n\nVi chiediamo cortesemente di verificare quanto indicato e di comunicarci l'avvenuta correzione.\n\nGrazie per la collaborazione.\nCordiali saluti.`;
+    const corpo = `Buongiorno gentili tutte e tutti,\n\nnell'ambito del monitoraggio mensile di ${meseTesto}, nella scheda Selezioni Online del bando ${numero} abbiamo rilevato le seguenti difformità:\n\n${codice}${(noteFinali.length ? noteFinali : ["- Verifica richiesta sui dati del bando."]).join("\n\n")}\n\nVi chiediamo cortesemente di verificare quanto indicato e di comunicarci l'avvenuta correzione.\n\nGrazie per la collaborazione.\nCordiali saluti.`;
     const completo = `Destinatari (da incollare nel campo A):\n${email}\n\nOggetto:\n${oggetto}\n\nLink al bando su Selezioni Online:\n${collegamento || "Link non disponibile"}\n\nTesto:\n${corpo}`;
     return { destinatari: destinatari.join("; "), oggetto, corpo, completo, collegamento, mese };
   }
