@@ -67,7 +67,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         corpo = request.get_json(silent=True) or {}
         conn = _conn()
         try:
-            nome = utenti.imposta(conn, corpo.get("username"), corpo.get("ruolo"), utente_corrente())
+            nome = utenti.imposta(conn, corpo.get("username"), corpo.get("ruolo"), utente_corrente(), corpo.get("email"))
             return jsonify({"ok": True, "username": nome})
         except utenti.UtenteProtetto as e:
             return jsonify({"error": str(e)}), 409

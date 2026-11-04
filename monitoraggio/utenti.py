@@ -37,6 +37,26 @@ def _conn():
     return conn
 
 
+def email_di(nome: str) -> str:
+    """Dove mandare il link di accesso: l'indirizzo in tabella, altrimenti nome.cognome@cnr.it."""
+    nome = normalizza(nome)
+    conn = _conn()
+    try:
+        riga = conn.execute("SELECT email FROM utente WHERE username = ?", (nome,)).fetchone()
+    finally:
+        conn.close()
+    return riga["email"] if riga and riga["email"] else f"{nome}@{os.environ.get('ACCESSO_DOMINIO_EMAIL', 'cnr.it')}"
+
+
+def registra_accesso(nome: str) -> None:
+    conn = _conn()
+    try:
+        conn.execute("INSERT INTO utente_modifica (username, azione, quando) VALUES (?, 'link_accesso', ?)",
+                     (normalizza(nome), _adesso()))
+    finally:
+        conn.close()
+
+
 def ruolo(nome: str | None) -> str | None:
     nome = normalizza(nome)
     if not nome:
@@ -53,7 +73,7 @@ def ruolo(nome: str | None) -> str | None:
 
 def elenco(conn) -> list[dict]:
     fissi = iniziali()
-    righe = [{"username": u, "ruolo": AMMINISTRATORE, "iniziale": True, "aggiunto_da": None, "aggiunto_il": None}
+    righe = [{"username": u, "ruolo": AMMINISTRATORE, "iniziale": True, "email": None, "aggiunto_da": None, "aggiunto_il": None}
              for u in sorted(fissi)]
     righe += [{**dict(r), "iniziale": False} for r in conn.execute("SELECT * FROM utente ORDER BY username")
               if r["username"] not in fissi]
@@ -64,15 +84,19 @@ def registro(conn, limite: int = 50) -> list[dict]:
     return [dict(r) for r in conn.execute("SELECT * FROM utente_modifica ORDER BY id DESC LIMIT ?", (limite,))]
 
 
-def imposta(conn, nome: str, nuovo_ruolo: str, autore: str | None) -> str:
+def imposta(conn, nome: str, nuovo_ruolo: str, autore: str | None, email: str | None = None) -> str:
     nome = normalizza(nome)
+    email = (email or "").strip().lower() or None
     if not nome or nuovo_ruolo not in (AMMINISTRATORE, LETTURA):
         raise ValueError("Nome utente o ruolo non valido")
+    if email and "@" not in email:
+        raise ValueError("Email non valida")
     if nome in iniziali():
         raise UtenteProtetto(f"{nome} è un amministratore iniziale: si cambia solo dalla configurazione")
     ora = _adesso()
-    conn.execute("INSERT INTO utente (username, ruolo, aggiunto_da, aggiunto_il) VALUES (?, ?, ?, ?) "
-                 "ON CONFLICT(username) DO UPDATE SET ruolo = excluded.ruolo", (nome, nuovo_ruolo, autore, ora))
+    conn.execute("INSERT INTO utente (username, ruolo, email, aggiunto_da, aggiunto_il) VALUES (?, ?, ?, ?, ?) "
+                 "ON CONFLICT(username) DO UPDATE SET ruolo = excluded.ruolo, email = COALESCE(excluded.email, email)",
+                 (nome, nuovo_ruolo, email, autore, ora))
     conn.execute("INSERT INTO utente_modifica (username, azione, ruolo, autore, quando) VALUES (?, 'imposta', ?, ?, ?)",
                  (nome, nuovo_ruolo, autore, ora))
     return nome
@@ -94,7 +118,9 @@ def corrente() -> str | None:
 
 
 def ruolo_corrente() -> str | None:
-    return ruolo(corrente())
+    """Chi entra col link via email resta in lettura qualunque sia il suo ruolo."""
+    attuale = ruolo(corrente())
+    return LETTURA if attuale and session.get("solo_lettura") else attuale
 
 
 def protezioni(base, uscita=None):

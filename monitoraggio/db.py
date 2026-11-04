@@ -3,7 +3,7 @@ import sqlite3
 
 from . import config
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -209,6 +209,7 @@ SCHEMA_4 = """
 CREATE TABLE IF NOT EXISTS utente (
     username TEXT PRIMARY KEY,
     ruolo TEXT NOT NULL CHECK (ruolo IN ('amministratore', 'lettura')),
+    email TEXT,
     aggiunto_da TEXT,
     aggiunto_il TEXT NOT NULL
 );
@@ -297,4 +298,6 @@ def inizializza(conn: sqlite3.Connection) -> None:
                               ("data_diversa", "INTEGER"), ("scorrimenti_sol", "TEXT")):
             if colonna not in colonne:
                 conn.execute(f"ALTER TABLE punteggi_verifica ADD COLUMN {colonna} {tipo}")
+        if "email" not in {r[1] for r in conn.execute("PRAGMA table_info(utente)")}:  # versione 8
+            conn.execute("ALTER TABLE utente ADD COLUMN email TEXT")
         conn.execute("UPDATE schema_version SET versione = ?", (SCHEMA_VERSION,))

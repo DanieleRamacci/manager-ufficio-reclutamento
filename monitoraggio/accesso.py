@@ -4,7 +4,11 @@ Il server non può aprire Chrome né leggere il cookie di un altro sito: l'utent
 suo browser e incolla qui il valore del cookie `ticket`, lo stesso usato dalla prova locale, oppure lo
 invia il programma scaricabile da questa pagina (static/collega_sol.py). SOL dice chi è l'utente; entra
 solo chi è autorizzato (monitoraggio/utenti.py). Il ticket resta in memoria, per utente, mai su disco.
+
+I visualizzatori possono entrare anche con un link monouso mandato alla loro casella: senza ticket e sempre
+in sola lettura. La casella è quella in tabella, mai un indirizzo scritto da chi chiede il link.
 """
+import logging
 import io
 import re
 import secrets
@@ -17,10 +21,14 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, redirect, render_template_string, request, send_file, session
 
-from . import sol_sessione, utenti
+from . import config, posta, sol_sessione, utenti
+
+log = logging.getLogger(__name__)
 
 DURATA_ACCESSO = timedelta(hours=12)
 DURATA_LINK = timedelta(minutes=2)
+DURATA_LINK_EMAIL = timedelta(minutes=15)
+ATTESA_TRA_EMAIL = timedelta(minutes=1)
 _PAGINA = Path(__file__).resolve().parent / "static" / "accesso.html"
 _PROGRAMMA = Path(__file__).resolve().parent / "static" / "collega_sol.py"
 _FORMATO_TICKET = re.compile(r"[\w.\-=]{8,512}")
@@ -28,6 +36,8 @@ _FORMATO_TICKET = re.compile(r"[\w.\-=]{8,512}")
 _lock = threading.Lock()
 _ticket: dict[str, tuple[str, datetime]] = {}
 _link: dict[str, tuple[dict, datetime]] = {}  # codice monouso -> utente, per entrare dal programma
+_link_email: dict[str, tuple[str, datetime]] = {}  # codice monouso -> utente, per i visualizzatori
+_ultima_email: dict[str, datetime] = {}
 
 bp = Blueprint("accesso", __name__)
 
@@ -73,6 +83,8 @@ def intestazioni() -> dict | None:
 
 
 def stato() -> dict:
+    if session.get("solo_lettura"):  # chi è in sola lettura non collega Selezioni Online
+        return {"collegato": False, "in_corso": False, "errore": None, "disponibile": False, "scade_il": None}
     with _lock:
         voce = _ticket.get(session.get("user"))
     valido = bool(voce and voce[1] > _adesso())
@@ -86,9 +98,9 @@ def dimentica() -> None:
         _ticket.pop(session.get("user"), None)
 
 
-def _mostra(errore: str | None = None, codice: int = 200):
-    return render_template_string(_PAGINA.read_text(encoding="utf-8"), errore=errore,
-                                  sol_login=f"{sol_sessione.base_url()}/sso/login",
+def _mostra(errore: str | None = None, codice: int = 200, messaggio: str | None = None, codice_link: str | None = None):
+    return render_template_string(_PAGINA.read_text(encoding="utf-8"), errore=errore, messaggio=messaggio,
+                                  codice_link=codice_link, sol_login=f"{sol_sessione.base_url()}/sso/login",
                                   next=_next_sicuro(request.values.get("next"))), codice
 
 
@@ -113,10 +125,11 @@ def _riconosci(testo: str) -> tuple[dict | None, str | None, int]:
     return chi, None, 200
 
 
-def _apri_sessione(chi: dict) -> None:
+def _apri_sessione(chi: dict, solo_lettura: bool = False) -> None:
     session.clear()
     session["user"] = chi["username"]
     session["user_email"] = chi["email"] or chi["username"]
+    session["solo_lettura"] = solo_lettura
     session["accesso_fino"] = (_adesso() + DURATA_ACCESSO).isoformat()
 
 
@@ -153,6 +166,57 @@ def completa():
     if not voce or voce[1] <= _adesso():
         return _mostra("Il link è scaduto o è già stato usato: avvia di nuovo il programma.", 401)
     _apri_sessione(voce[0])
+    return redirect("/monitoraggio")
+
+
+@bp.post("/login/visualizzatore")
+def chiedi_link():
+    """Risponde sempre allo stesso modo, per non rivelare chi è autorizzato."""
+    if not posta.configurata():
+        return _mostra("L'accesso via email non è attivo: chiedi a un amministratore.", 503)
+    nome = utenti.normalizza(request.form.get("username"))
+    risposta = _mostra(messaggio="Se l'utente è autorizzato, riceverà a breve un'email con il link di accesso. "
+                                 "Il link vale 15 minuti.")
+    if not re.fullmatch(r"[\w.\-]{2,100}", nome) or not utenti.ruolo(nome):
+        return risposta
+    ora = _adesso()
+    with _lock:
+        if nome in _ultima_email and ora - _ultima_email[nome] < ATTESA_TRA_EMAIL:
+            return risposta
+        _ultima_email[nome] = ora
+        for vecchio in [k for k, v in _link_email.items() if v[1] <= ora]:
+            del _link_email[vecchio]
+        codice = secrets.token_urlsafe(32)
+        _link_email[codice] = (nome, ora + DURATA_LINK_EMAIL)
+    try:
+        posta.invia([utenti.email_di(nome)], "Accesso al monitoraggio bandi",
+                    "Buongiorno,\n\nper entrare nel monitoraggio in sola lettura apri questo link entro 15 minuti:\n"
+                    f"{config.sito_url()}/login/visualizzatore?codice={codice}\n\n"
+                    "Se non hai chiesto tu l'accesso, puoi ignorare questa email.\n")
+        utenti.registra_accesso(nome)
+    except posta.PostaErrore:
+        log.warning("Link di accesso non inviato")
+    return risposta
+
+
+@bp.get("/login/visualizzatore")
+def conferma_link():
+    """Solo una pagina con un pulsante: i controlli di sicurezza della posta aprono i link da soli
+    e, se bastasse aprirlo, lo consumerebbero prima dell'utente."""
+    with _lock:
+        voce = _link_email.get(request.args.get("codice", ""))
+    if not voce or voce[1] <= _adesso():
+        return _mostra("Il link è scaduto o è già stato usato: chiedine uno nuovo.", 401)
+    return _mostra(codice_link=request.args["codice"])
+
+
+@bp.post("/login/visualizzatore/entra")
+def entra_con_link():
+    with _lock:
+        voce = _link_email.pop(request.form.get("codice", ""), None)
+    if not voce or voce[1] <= _adesso() or not utenti.ruolo(voce[0]):
+        return _mostra("Il link è scaduto o è già stato usato: chiedine uno nuovo.", 401)
+    _apri_sessione({"username": voce[0], "email": None}, solo_lettura=True)
     return redirect("/monitoraggio")
 
 

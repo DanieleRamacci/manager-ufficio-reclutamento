@@ -129,9 +129,11 @@ Nella pagina del monitoraggio l'amministratore vede le difformità del periodo p
 - **FR-018**: Il sistema MUST inviare tramite il server di posta configurato, con mittente e indirizzo di risposta configurabili; senza configurazione l'invio MUST essere disattivato restando disponibili copia e spunta.
 - **FR-019**: Il sistema MUST offrire una modalità di prova che recapita tutto a un solo indirizzo senza segnare i bandi come inviati.
 
+- **FR-020**: La pagina di accesso MUST offrire il pulsante "Accedi come visualizzatore autorizzato": chi è autorizzato riceve nella propria casella un link monouso valido 15 minuti ed entra in sola lettura, anche se il suo ruolo è amministratore. Il sistema MUST NOT rivelare chi è autorizzato e MUST inviare il link solo all'indirizzo registrato.
+
 ### Key Entities
 
-- **Utente**: nome utente, ruolo, attivo, autore e data dell'ultima modifica.
+- **Utente**: nome utente, ruolo, email facoltativa, attivo, autore e data dell'ultima modifica.
 - **Monitoraggio**: mese, periodo dei dati, link dei file condivisi, testo dell'email di richiesta, autore e data di creazione.
 - **Impostazioni email**: modello del testo e destinatari della richiesta di compilazione.
 - **Sollecito**: monitoraggio, bando, stato (inviata, inviata a mano), autore, data, destinatari, oggetto, rilievi al momento dell'invio.

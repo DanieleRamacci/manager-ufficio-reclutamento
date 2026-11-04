@@ -15,6 +15,7 @@
       <h2>Aggiungi una persona</h2>
       <form id="aggiungi" class="riga">
         <label>Nome utente di Selezioni Online <input id="nome" placeholder="nome.cognome" required autocomplete="off"></label>
+        <label>Email, se diversa da nome.cognome@cnr.it <input id="email" type="email" autocomplete="off"></label>
         <label>Ruolo <select id="ruolo"><option value="lettura">Lettura</option><option value="amministratore">Amministratore</option></select></label>
         <button class="primario" type="submit">Aggiungi</button>
       </form>
@@ -36,13 +37,13 @@
     }
     async function carica() {
       const { utenti, registro } = await chiama("/api/utenti");
-      $("utenti").innerHTML = `<thead><tr><th>Nome utente</th><th>Ruolo</th><th>Aggiunto da</th><th></th></tr></thead><tbody>` + utenti.map(u => `
-        <tr><td>${esc(u.username)}</td><td>${u.iniziale ? "Amministratore (dalla configurazione)" :
+      $("utenti").innerHTML = `<thead><tr><th>Nome utente</th><th>Email</th><th>Ruolo</th><th>Aggiunto da</th><th></th></tr></thead><tbody>` + utenti.map(u => `
+        <tr><td>${esc(u.username)}</td><td>${esc(u.email || `${u.username}@cnr.it`)}</td><td>${u.iniziale ? "Amministratore (dalla configurazione)" :
           `<select data-ruolo="${esc(u.username)}"><option value="lettura"${u.ruolo === "lettura" ? " selected" : ""}>Lettura</option><option value="amministratore"${u.ruolo === "amministratore" ? " selected" : ""}>Amministratore</option></select>`}</td>
           <td>${esc(u.aggiunto_da)} ${ora(u.aggiunto_il)}</td>
           <td>${u.iniziale ? "" : `<button type="button" data-togli="${esc(u.username)}">Togli</button>`}</td></tr>`).join("") + "</tbody>";
       $("registro").innerHTML = `<thead><tr><th>Quando</th><th>Chi</th><th>Modifica</th></tr></thead><tbody>` + (registro.map(r =>
-        `<tr><td>${ora(r.quando)}</td><td>${esc(r.autore)}</td><td>${r.azione === "togli" ? `Tolto ${esc(r.username)}` : `${esc(r.username)}: ${esc(r.ruolo)}`}</td></tr>`).join("")
+        `<tr><td>${ora(r.quando)}</td><td>${esc(r.autore)}</td><td>${r.azione === "togli" ? `Tolto ${esc(r.username)}` : r.azione === "link_accesso" ? `Link di accesso a ${esc(r.username)}` : `${esc(r.username)}: ${esc(r.ruolo)}`}</td></tr>`).join("")
         || `<tr><td colspan="3" class="muted">Nessuna modifica</td></tr>`) + "</tbody>";
       document.querySelectorAll("[data-ruolo]").forEach(s => s.onchange = () => imposta(s.dataset.ruolo, s.value));
       document.querySelectorAll("[data-togli]").forEach(b => b.onclick = async () => {
@@ -50,14 +51,14 @@
         try { errore(); await chiama(`/api/utenti/${encodeURIComponent(b.dataset.togli)}`, { method: "DELETE" }); await carica(); } catch (e) { errore(e.message); }
       });
     }
-    async function imposta(username, ruolo) {
+    async function imposta(username, ruolo, email) {
       try {
         errore();
-        await chiama("/api/utenti", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, ruolo }) });
+        await chiama("/api/utenti", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, ruolo, email }) });
         await carica();
       } catch (e) { errore(e.message); }
     }
-    $("aggiungi").onsubmit = async (e) => { e.preventDefault(); await imposta($("nome").value, $("ruolo").value); $("nome").value = ""; };
+    $("aggiungi").onsubmit = async (e) => { e.preventDefault(); await imposta($("nome").value, $("ruolo").value, $("email").value); $("nome").value = ""; $("email").value = ""; };
     carica().catch(e => errore(e.message));
   </script>
 </body>

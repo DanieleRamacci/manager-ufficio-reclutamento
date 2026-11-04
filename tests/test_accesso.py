@@ -1,4 +1,5 @@
 """Accesso al sito con il ticket di Selezioni Online."""
+import re
 import time
 
 from flask import Flask, session
@@ -185,3 +186,89 @@ def test_zip_del_programma(db, tmp_path, monkeypatch):
     assert voce.create_system == 3 and voce.external_attr >> 16 == 0o100755  # file normale ed eseguibile
     testo = zipfile.ZipFile(io.BytesIO(r.data)).read(voce).decode()
     assert testo.startswith("#!/bin/sh") and 'SERVER = "https://sito.esempio"' in testo and "__SERVER__" not in testo
+
+
+def _link_email(monkeypatch):
+    inviate = []
+    monkeypatch.setenv("SMTP_SERVER", "smtp.esempio")
+    monkeypatch.setenv("MAIL_SENDER", "noreply@esempio.it")
+    monkeypatch.setenv("SITO_URL", "https://sito.esempio")
+    monkeypatch.setattr(accesso.posta, "invia", lambda d, o, c: inviate.append((d, c)) or False)
+    monkeypatch.setattr(accesso, "_link_email", {})
+    monkeypatch.setattr(accesso, "_ultima_email", {})
+    return inviate
+
+
+def _percorso(testo):
+    return re.search(r"https://sito\.esempio(/login/visualizzatore\?codice=\S+)", testo).group(1)
+
+
+def test_visualizzatore_entra_in_sola_lettura_col_link(db, tmp_path, monkeypatch):
+    inviate = _link_email(monkeypatch)
+    utenti.imposta(db, "anna.bianchi", "lettura", "x")
+    c = _app(tmp_path, monkeypatch).test_client()
+    assert "Accedi come visualizzatore autorizzato" in c.get("/login").get_data(as_text=True)
+    assert c.post("/login/visualizzatore", data={"username": "Anna.Bianchi@altro.it"}).status_code == 200
+    assert inviate[0][0] == ["anna.bianchi@cnr.it"]  # mai il dominio scritto da chi chiede
+    percorso = _percorso(inviate[0][1])
+    codice = percorso.split("=")[1]
+    # i controlli della posta aprono il link: aprirlo non deve consumarlo né aprire la sessione
+    assert c.get(percorso).status_code == 200 and c.get(percorso).status_code == 200
+    assert c.get("/monitoraggio").status_code == 302
+    assert c.post("/login/visualizzatore/entra", data={"codice": codice}).headers["Location"] == "/monitoraggio"
+    assert c.get("/monitoraggio").status_code == 200
+    assert c.post("/login/visualizzatore/entra", data={"codice": codice}).status_code == 401  # una volta sola
+    assert c.get(percorso).status_code == 401
+    assert c.get("/api/sol/sessione").get_json()["disponibile"] is False
+    assert [r["azione"] for r in utenti.registro(db)][0] == "link_accesso"
+
+
+def test_stessa_risposta_per_chi_non_e_autorizzato(db, tmp_path, monkeypatch):
+    inviate = _link_email(monkeypatch)
+    utenti.imposta(db, "anna.bianchi", "lettura", "x")
+    c = _app(tmp_path, monkeypatch).test_client()
+    si = c.post("/login/visualizzatore", data={"username": "anna.bianchi"})
+    no = c.post("/login/visualizzatore", data={"username": "estraneo"})
+    assert si.status_code == no.status_code == 200 and si.get_data() == no.get_data() and len(inviate) == 1
+
+
+def test_link_non_ripetuto_subito_e_indirizzo_in_tabella(db, tmp_path, monkeypatch):
+    inviate = _link_email(monkeypatch)
+    utenti.imposta(db, "anna.bianchi", "lettura", "x", "anna@cnr.it")
+    c = _app(tmp_path, monkeypatch).test_client()
+    for _ in range(3):
+        c.post("/login/visualizzatore", data={"username": "anna.bianchi"})
+    assert len(inviate) == 1 and inviate[0][0] == ["anna@cnr.it"]
+
+
+def test_amministratore_col_link_resta_in_lettura(db, tmp_path, monkeypatch):
+    inviate = _link_email(monkeypatch)
+    app = _app(tmp_path, monkeypatch)
+    c = app.test_client()
+    c.post("/login/visualizzatore", data={"username": "mario.rossi"})  # è in UTENTI_AMMESSI
+    codice = _percorso(inviate[0][1]).split("=")[1]
+    c.post("/login/visualizzatore/entra", data={"codice": codice})
+    with c.session_transaction() as s:
+        assert s["solo_lettura"] is True and s["user"] == "mario.rossi"
+    with app.test_request_context():
+        session["user"], session["solo_lettura"] = "mario.rossi", True
+        assert utenti.ruolo_corrente() == "lettura"
+        session["solo_lettura"] = False
+        assert utenti.ruolo_corrente() == "amministratore"
+
+
+def test_utente_tolto_non_usa_il_link(db, tmp_path, monkeypatch):
+    inviate = _link_email(monkeypatch)
+    utenti.imposta(db, "anna.bianchi", "lettura", "x")
+    c = _app(tmp_path, monkeypatch).test_client()
+    c.post("/login/visualizzatore", data={"username": "anna.bianchi"})
+    utenti.togli(db, "anna.bianchi", "x")
+    codice = _percorso(inviate[0][1]).split("=")[1]
+    assert c.post("/login/visualizzatore/entra", data={"codice": codice}).status_code == 401
+
+
+def test_senza_posta_il_pulsante_lo_dice(db, tmp_path, monkeypatch):
+    monkeypatch.delenv("SMTP_SERVER", raising=False)
+    monkeypatch.delenv("MAIL_SENDER", raising=False)
+    c = _app(tmp_path, monkeypatch).test_client()
+    assert c.post("/login/visualizzatore", data={"username": "x.y"}).status_code == 503

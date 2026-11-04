@@ -50,6 +50,11 @@ def _env(nome: str, predefinito: str) -> str:
     return valore.strip() if valore and valore.strip() else predefinito
 
 
+def sito_url() -> str:
+    """Indirizzo pubblico per i link nelle email: mai dagli header della richiesta, che si possono falsificare."""
+    return _env("SITO_URL", "https://monitoraggio.concorsi.cnr.it").rstrip("/")
+
+
 def data_dir() -> Path:
     return Path(_env("DATA_DIR", str(ROOT / "instance")))
 
