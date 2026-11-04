@@ -13,6 +13,10 @@
     label { display: block; font-weight: 600; margin: 18px 0 6px; }
     input[type=password] { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #c7cdea; border-radius: 6px; font-size: 1rem; }
     button { margin-top: 14px; padding: 10px 18px; border: 0; border-radius: 6px; background: #3f51b5; color: #fff; font-size: 1rem; cursor: pointer; }
+    h2 { font-size: 1.05rem; margin: 0 0 8px; }
+    details { margin-top: 18px; border-top: 1px solid #e2e6ff; padding-top: 14px; }
+    summary { cursor: pointer; font-weight: 600; }
+    .pulsante { display: inline-block; padding: 7px 12px; border-radius: 6px; background: #3f51b5; color: #fff; text-decoration: none; }
     .errore { background: #fdecea; border: 1px solid #f5c2bd; color: #8a1f14; border-radius: 6px; padding: 10px 12px; margin-bottom: 16px; }
     .nota { color: #5b6478; font-size: .9rem; margin-top: 18px; }
   </style>
@@ -21,22 +25,31 @@
   <main>
     <h1>Accesso con Selezioni Online</h1>
     {% if errore %}<div class="errore" role="alert">{{ errore }}</div>{% endif %}
+    <h2>Con il programma (Mac)</h2>
     <ol>
-      <li><a href="{{ sol_login }}" target="_blank" rel="noopener">Apri Selezioni Online</a> e fai il login come al solito.</li>
-      <li>Nella pagina di Selezioni Online premi <code>F12</code> (su Mac <code>Cmd+Opt+I</code>) e apri
-        <strong>Application</strong> → <strong>Cookies</strong> → <code>selezionionline.cnr.it</code>.
-        In Safari e Firefox la scheda si chiama Archiviazione.</li>
-      <li>Copia il <strong>valore</strong> del cookie <code>ticket</code> e incollalo qui sotto.</li>
+      <li><a class="pulsante" href="/login/programma">Scarica Collega-SOL</a> e apri lo zip. Basta farlo una volta.</li>
+      <li>Avvia <code>Collega-SOL.command</code> (la prima volta: tasto destro → Apri).</li>
+      <li>Fai il login su Selezioni Online nella finestra che si apre: entri qui da solo.</li>
     </ol>
-    <form method="post" action="/login" autocomplete="off">
-      <input type="hidden" name="next" value="{{ next }}">
-      <label for="ticket">Cookie ticket</label>
-      <input id="ticket" name="ticket" type="password" required autofocus>
-      <button type="submit">Entra</button>
-    </form>
+    <details>
+      <summary>Oppure incolla il ticket a mano</summary>
+      <ol>
+        <li><a href="{{ sol_login }}" target="_blank" rel="noopener">Apri Selezioni Online</a> e fai il login come al solito.</li>
+        <li>Nella pagina di Selezioni Online premi <code>F12</code> (su Mac <code>Cmd+Opt+I</code>) e apri
+          <strong>Application</strong> → <strong>Cookies</strong> → <code>selezionionline.cnr.it</code>.
+          In Safari e Firefox la scheda si chiama Archiviazione.</li>
+        <li>Copia il <strong>valore</strong> del cookie <code>ticket</code> e incollalo qui sotto.</li>
+      </ol>
+      <form method="post" action="/login" autocomplete="off">
+        <input type="hidden" name="next" value="{{ next }}">
+        <label for="ticket">Cookie ticket</label>
+        <input id="ticket" name="ticket" type="password" required>
+        <button type="submit">Entra</button>
+      </form>
+    </details>
     <p class="nota">Il ticket dà accesso a Selezioni Online con il tuo account: non condividerlo. Dura circa un'ora e
       resta solo nella memoria del server. Le pagine restano accessibili per 12 ore; per leggere punteggi e RdP dopo la
-      scadenza basta ricollegarlo.</p>
+      scadenza basta avviare di nuovo il programma.</p>
   </main>
 </body>
 </html>

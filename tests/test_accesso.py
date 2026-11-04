@@ -145,3 +145,43 @@ def test_rdp_con_il_cookie_del_ticket():
     assert client.intestazioni == {"Cookie": f"ticket={TICKET}"}
     sol_rdp.rdp_bando(client, "TOK", "X")
     assert client.intestazioni == {"Authorization": "Bearer TOK"}
+
+
+def test_programma_invia_il_ticket_e_il_link_vale_una_volta(db, tmp_path, monkeypatch):
+    c = _app(tmp_path, monkeypatch).test_client()
+    r = c.post("/api/sol/ticket", data={"ticket": TICKET}, base_url="https://sito.esempio")
+    corpo = r.get_json()
+    assert r.status_code == 200 and corpo["utente"] == "mario.rossi" and TICKET not in r.get_data(as_text=True)
+    assert corpo["link"].startswith("https://sito.esempio/login/completa?codice=")
+    percorso = corpo["link"].split("sito.esempio", 1)[1]
+    assert c.get("/monitoraggio").status_code == 302  # il ticket da solo non apre sessioni nel browser
+    assert c.get(percorso).headers["Location"] == "/monitoraggio"
+    assert c.get("/monitoraggio").status_code == 200
+    assert c.get("/api/sol/sessione").get_json()["collegato"] is True
+    assert c.get(percorso).status_code == 401
+
+
+def test_link_scaduto_rifiutato(db, tmp_path, monkeypatch):
+    c = _app(tmp_path, monkeypatch).test_client()
+    monkeypatch.setattr(accesso, "DURATA_LINK", accesso.timedelta(seconds=-1))
+    corpo = c.post("/api/sol/ticket", data={"ticket": TICKET}, base_url="https://sito.esempio").get_json()
+    assert c.get(corpo["link"].split("sito.esempio", 1)[1]).status_code == 401
+
+
+def test_programma_rifiutato_per_utente_non_ammesso(db, tmp_path, monkeypatch):
+    c = _app(tmp_path, monkeypatch, nome="estraneo").test_client()
+    r = c.post("/api/sol/ticket", data={"ticket": TICKET})
+    assert r.status_code == 403 and r.get_json()["ok"] is False and "link" not in r.get_json()
+    assert c.post("/api/sol/ticket", data={"ticket": "x"}).status_code == 400
+
+
+def test_zip_del_programma(db, tmp_path, monkeypatch):
+    import io
+    import zipfile
+    c = _app(tmp_path, monkeypatch).test_client()
+    r = c.get("/login/programma", base_url="https://sito.esempio")
+    assert r.status_code == 200 and "Collega-SOL.zip" in r.headers["Content-Disposition"]
+    voce = zipfile.ZipFile(io.BytesIO(r.data)).getinfo("Collega-SOL.command")
+    assert voce.create_system == 3 and voce.external_attr >> 16 == 0o100755  # file normale ed eseguibile
+    testo = zipfile.ZipFile(io.BytesIO(r.data)).read(voce).decode()
+    assert testo.startswith("#!/bin/sh") and 'SERVER = "https://sito.esempio"' in testo and "__SERVER__" not in testo

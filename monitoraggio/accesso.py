@@ -1,26 +1,34 @@
 """Accesso al sito con il ticket di Selezioni Online, senza un client Keycloak dell'app.
 
 Il server non può aprire Chrome né leggere il cookie di un altro sito: l'utente fa il login su SOL nel
-suo browser e incolla qui il valore del cookie `ticket`, lo stesso usato dalla prova locale. SOL dice
-chi è l'utente; entra solo chi è in UTENTI_AMMESSI. Il ticket resta in memoria, per utente, mai su disco.
+suo browser e incolla qui il valore del cookie `ticket`, lo stesso usato dalla prova locale, oppure lo
+invia il programma scaricabile da questa pagina (static/collega_sol.py). SOL dice chi è l'utente; entra
+solo chi è in UTENTI_AMMESSI. Il ticket resta in memoria, per utente, mai su disco.
 """
+import io
 import os
 import re
+import secrets
+import stat
 import threading
+import zipfile
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
 
-from flask import Blueprint, redirect, render_template_string, request, session
+from flask import Blueprint, jsonify, redirect, render_template_string, request, send_file, session
 
 from . import sol_sessione
 
 DURATA_ACCESSO = timedelta(hours=12)
+DURATA_LINK = timedelta(minutes=2)
 _PAGINA = Path(__file__).resolve().parent / "static" / "accesso.html"
+_PROGRAMMA = Path(__file__).resolve().parent / "static" / "collega_sol.py"
 _FORMATO_TICKET = re.compile(r"[\w.\-=]{8,512}")
 
 _lock = threading.Lock()
 _ticket: dict[str, tuple[str, datetime]] = {}
+_link: dict[str, tuple[dict, datetime]] = {}  # codice monouso -> utente, per entrare dal programma
 
 bp = Blueprint("accesso", __name__)
 
@@ -95,25 +103,80 @@ def login():
     return _mostra()
 
 
-@bp.post("/login")
-def accedi():
-    ticket = pulisci_ticket(request.form.get("ticket", ""))
+def _riconosci(testo: str) -> tuple[dict | None, str | None, int]:
+    """Controlla il ticket e, se l'utente è ammesso, lo tiene in memoria. Ritorna (utente, errore, codice)."""
+    ticket = pulisci_ticket(testo)
     if not ticket:
-        return _mostra("Il valore incollato non sembra un ticket: copia solo il contenuto del cookie.", 400)
+        return None, "Il valore incollato non sembra un ticket: copia solo il contenuto del cookie.", 400
     chi = sol_sessione.identita(ticket)
     if not chi:
-        return _mostra("Selezioni Online non riconosce questo ticket: potrebbe essere scaduto. "
-                       "Rifai il login su Selezioni Online e copia di nuovo il cookie.", 401)
+        return None, ("Selezioni Online non riconosce questo ticket: potrebbe essere scaduto. "
+                      "Rifai il login su Selezioni Online e copia di nuovo il cookie."), 401
     if chi["username"] not in utenti_ammessi():
-        return _mostra(f"L'utente {chi['username']} non è autorizzato: va aggiunto a UTENTI_AMMESSI.", 403)
-    destinazione = _next_sicuro(request.form.get("next"))
+        return None, f"L'utente {chi['username']} non è autorizzato: va aggiunto a UTENTI_AMMESSI.", 403
+    with _lock:
+        _ticket[chi["username"]] = (ticket, _adesso() + sol_sessione.DURATA_TICKET)
+    return chi, None, 200
+
+
+def _apri_sessione(chi: dict) -> None:
     session.clear()
     session["user"] = chi["username"]
     session["user_email"] = chi["email"] or chi["username"]
     session["accesso_fino"] = (_adesso() + DURATA_ACCESSO).isoformat()
-    with _lock:
-        _ticket[chi["username"]] = (ticket, _adesso() + sol_sessione.DURATA_TICKET)
+
+
+@bp.post("/login")
+def accedi():
+    chi, errore, codice = _riconosci(request.form.get("ticket", ""))
+    if not chi:
+        return _mostra(errore, codice)
+    destinazione = _next_sicuro(request.form.get("next"))
+    _apri_sessione(chi)
     return redirect(destinazione)
+
+
+@bp.post("/api/sol/ticket")
+def ricevi_dal_programma():
+    """Dal programma sul computer dell'utente: niente sessione, vale il ticket stesso. Risponde con un link
+    monouso che apre la sessione nel browser abituale."""
+    chi, errore, codice = _riconosci(request.form.get("ticket", ""))
+    if not chi:
+        return jsonify({"ok": False, "error": errore}), codice
+    link = secrets.token_urlsafe(32)
+    ora = _adesso()
+    with _lock:
+        for vecchio in [k for k, v in _link.items() if v[1] <= ora]:
+            del _link[vecchio]
+        _link[link] = (chi, ora + DURATA_LINK)
+    return jsonify({"ok": True, "utente": chi["username"], "link": f"{request.host_url}login/completa?codice={link}"})
+
+
+@bp.get("/login/completa")
+def completa():
+    with _lock:
+        voce = _link.pop(request.args.get("codice", ""), None)
+    if not voce or voce[1] <= _adesso():
+        return _mostra("Il link è scaduto o è già stato usato: avvia di nuovo il programma.", 401)
+    _apri_sessione(voce[0])
+    return redirect("/monitoraggio")
+
+
+@bp.get("/login/programma")
+def programma():
+    """Il programma per Mac, in uno zip che conserva il permesso di esecuzione. Contiene solo l'indirizzo del sito."""
+    script = _PROGRAMMA.read_text(encoding="utf-8").replace("__SERVER__", request.host_url.rstrip("/"))
+    comando = ("#!/bin/sh\ncommand -v python3 >/dev/null 2>&1 || { echo 'Serve Python 3: incolla il ticket nella "
+               "pagina di accesso.'; exit 1; }\nexec python3 - <<'COLLEGA_SOL'\n" + script + "\nCOLLEGA_SOL\n")
+    voce = zipfile.ZipInfo("Collega-SOL.command", date_time=(2026, 1, 1, 0, 0, 0))
+    voce.create_system = 3  # Unix: senza tipo di file e sistema, Archive Utility toglie il permesso di esecuzione
+    voce.external_attr = (stat.S_IFREG | 0o755) << 16
+    voce.compress_type = zipfile.ZIP_DEFLATED
+    contenuto = io.BytesIO()
+    with zipfile.ZipFile(contenuto, "w") as archivio:
+        archivio.writestr(voce, comando)
+    contenuto.seek(0)
+    return send_file(contenuto, mimetype="application/zip", as_attachment=True, download_name="Collega-SOL.zip")
 
 
 @bp.get("/logout")
