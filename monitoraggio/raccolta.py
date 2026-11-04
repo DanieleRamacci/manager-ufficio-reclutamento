@@ -204,7 +204,7 @@ def scrivi(conn, fonte: str, schede: list[dict], id_in_elenco: list[str], ora: s
 
 # --------------------------------------------------------------------------- fonti
 
-def _leggi_urp(client) -> tuple[list[dict], list[str], list[tuple[str, str]], dict]:
+def _leggi_urp(conn, client) -> tuple[list[dict], list[str], list[tuple[str, str]], dict]:
     schede, id_in_elenco, errori, dichiarati = [], [], [], {}
     for sezione in config.urp_sezioni():
         links, totale = urp.elenco_sezione(client, sezione)
@@ -215,6 +215,16 @@ def _leggi_urp(client) -> tuple[list[dict], list[str], list[tuple[str, str]], di
                 schede.append(urp.dettaglio_bando(client, link, sezione))
             except Exception as e:  # un bando illeggibile non blocca gli altri
                 errori.append((link, str(e)))
+    if config.URP_ARCHIVIO_SEZIONE in config.urp_sezioni_pagine():
+        try:
+            archivio = urp.elenco_archivio(client)
+            schede.extend(archivio)
+            id_in_elenco.extend(s["id_esterno"] for s in archivio)
+            dichiarati[config.URP_ARCHIVIO_SEZIONE] = len(archivio)
+        except Exception as e:  # archivio irraggiungibile o cambiato: i bandi già salvati restano presenti
+            errori.append((config.URP_ARCHIVIO_SEZIONE, str(e)))
+            id_in_elenco.extend(r["id_esterno"] for r in conn.execute(
+                "SELECT id_esterno FROM scheda WHERE fonte = 'urp' AND sezione = ?", (config.URP_ARCHIVIO_SEZIONE,)))
     return schede, id_in_elenco, errori, dichiarati
 
 
@@ -269,7 +279,7 @@ def raccogli(conn, fonte: str, *, client=None, modalita: str = "manuale", avviat
     try:
         if fonte == "urp":
             client = client or Client(config.pausa_urp())
-            schede, id_in_elenco, errori, dichiarati = _leggi_urp(client)
+            schede, id_in_elenco, errori, dichiarati = _leggi_urp(conn, client)
         elif fonte == "sol":
             client = client or Client(config.pausa_sol())
             schede, id_in_elenco, errori, dichiarati = _leggi_sol(conn, client, modalita == "completa")

@@ -106,3 +106,34 @@ def test_mobilita_comando(fixture_path):
     html = leggi(fixture_path, "bando_7004.html").replace("CONCORSO PUBBLICO", "AVVISO DI COMANDO")
     scheda = urp.parse_dettaglio(html, "https://www.urp.cnr.it/node/1", "bandi-pubblici-mobilita")
     assert scheda["tipologia"] == "comando"
+
+
+def test_parse_archivio(fixture_path):
+    schede = urp.parse_archivio(leggi(fixture_path, "archivio.html"))
+    assert len(schede) == 2
+    s = schede[0]
+    assert s["sezione"] == "archivio-vecchio" and s["tipologia"] is None
+    assert s["codice_originale"] == "367.443 CTER ICAR" and s["numero_bando"] == "367.443"
+    assert s["protocollo"] == "415892" and s["data_pubblicazione"] == "2023-12-22"
+    assert s["url"].startswith("https://archivio.urp.cnr.it/copertine/") and "UNITÀ" in s["dati_extra"]
+    assert s["documenti"][0]["categoria"] == "bando"
+    d = s["documenti"][1]
+    assert d["protocollo"] == "15065" and d["data_protocollo"] == "2024-01-18" and d["url"].endswith("_proroga.pdf")
+    assert any(x["categoria"] == "criteri" for x in schede[1]["documenti"])
+
+
+def test_elenco_archivio_vuoto_e_un_errore(client_finto):
+    client = client_finto(testi={config.URP_ARCHIVIO_BASE + config.URP_ARCHIVIO_PAGINA: "<html></html>"})
+    with pytest.raises(FonteErrore):
+        urp.elenco_archivio(client)
+
+
+@pytest.mark.parametrize("testo,atteso", [
+    ("Criteri - Prot. 150366 del 06/05/2024 - Pubb. sito URP-CNR in data 07/05/2024", ("150366", "06-05-2024")),
+    ("Nomina ROC - Prot. AMMCEN n. 0084537/2022 del 21/11/2022", ("0084537", "21-11-2022")),
+    ("Graduatoria - prot. n. 73204 del 13/03/2023", ("73204", "13-03-2023")),
+    ("Criteri di valutazione - Pubb. sito URP-CNR in data 21/02/2023", (None, "21-02-2023")),
+    ("Tracce estratte per le prove di esame", (None, None)),
+])
+def test_protocollo_e_data_dell_archivio(testo, atteso):
+    assert urp._prot_e_data(testo) == atteso

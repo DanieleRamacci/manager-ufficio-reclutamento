@@ -6,6 +6,8 @@ leggevano dai file scritti dai vecchi script.
 import json
 from collections import defaultdict
 
+from . import config
+
 TIPO_DOCUMENTO_LEGACY = {"criteri": "criteri", "tracce": "tracce_prova_scritta"}
 TIPOLOGIA_SOL_LEGACY = {"tempo_indeterminato": "concorsi_pubblici"}
 
@@ -48,7 +50,7 @@ def _bando_urp(s, documenti) -> dict:
         "graduatoria_presente": bool(grad), "data_pubblicazione_graduatoria": ultima(grad),
         "estratto": extra.get("estratto", ""), "allegati": allegati,
         "scorrimento_utilizzo_presente": bool(scorr), "data_scorrimento_utilizzo": ultima(scorr),
-        "fonte": "urp_nuovo",
+        "fonte": "urp_archivio" if s["sezione"] == config.URP_ARCHIVIO_SEZIONE else "urp_nuovo",
     }
 
 

@@ -29,6 +29,7 @@ class FontiFinte:
         self.errori = errori or set()
         self.elenco_errore = elenco_errore
         monkeypatch.setattr(raccolta.config, "urp_sezioni", lambda: ["tempo-indeterminato"])
+        monkeypatch.setattr(raccolta.config, "urp_sezioni_pagine", lambda: ["tempo-indeterminato"])
         monkeypatch.setattr(raccolta.config, "controllo_pdf", lambda: False)
         monkeypatch.setattr(urp, "elenco_sezione", self.elenco)
         monkeypatch.setattr(urp, "dettaglio_bando", self.dettaglio)
@@ -142,3 +143,18 @@ def test_lock_scaduto_viene_liberato(db):
     db.execute("INSERT INTO raccolta (fonte, modalita, inizio, esito) VALUES ('urp', 'manuale', '2000-01-01T00:00:00Z', 'in_corso')")
     raccolta.avvia(db, "urp", "manuale", "test")
     assert conta(db, "raccolta", "esito = 'fallita' AND messaggio LIKE 'Interrotta%'") == 1
+
+
+def test_archivio_irraggiungibile_non_cancella_i_bandi(db, monkeypatch):
+    from monitoraggio.fonti import urp
+    from monitoraggio.fonti.http import FonteErrore
+    from tests.test_collegamento import ORA, scheda
+    monkeypatch.setattr(raccolta.config, "urp_sezioni", lambda: [])
+    salvata = scheda("urp", "/vecchio.pdf", "X 1", None, tipologia=None, sezione="archivio-vecchio")
+    raccolta.scrivi(db, "urp", [salvata], ["/vecchio.pdf"], ORA)
+
+    def fallisce(client):
+        raise FonteErrore("HTTP 404")
+    monkeypatch.setattr(urp, "elenco_archivio", fallisce)
+    schede, ids, errori, _ = raccolta._leggi_urp(db, None)
+    assert schede == [] and ids == ["/vecchio.pdf"] and errori == [("archivio-vecchio", "HTTP 404")]

@@ -45,7 +45,10 @@ class Client:
         raise ultimo_errore
 
     def get_text(self, url: str, params: dict | None = None) -> str:
-        return self._get(url, params, None).text
+        resp = self._get(url, params, None)
+        if "charset" not in resp.headers.get("Content-Type", "").lower():
+            resp.encoding = "utf-8"  # altrimenti requests assume latin-1 (archivio URP)
+        return resp.text
 
     def get_json(self, url: str, params: dict | None = None, headers: dict | None = None):
         resp = self._get(url, params, {"Accept": "application/json", **(headers or {})})

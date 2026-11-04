@@ -177,5 +177,66 @@ def parse_dettaglio(html: str, url: str, sezione: str) -> dict:
     }
 
 
+_ARCHIVIO_PROTOCOLLO = re.compile(r"\bProt(?:\.|ocoll[io])?\s*(?:[A-Z]{3,}\s*)?(?:n\.?\s*)?[:\-]?\s*(\d+)", re.I)
+_ARCHIVIO_DATA = re.compile(r"\b(?:del|in data)\s+(\d{2}[/.\- ]\d{2}[/.\- ]\d{4})", re.I)
+_ARCHIVIO_CODICE = re.compile(r"Codice\s+Bando\s+(.+?)(?:\s+-\s+Prot|\s*$)", re.I)
+
+
+def _prot_e_data(testo: str) -> tuple[str | None, str | None]:
+    """'Prot. AMMCEN n. 0079161/2021 del 24/11/2021' o, senza protocollo, 'Pubb. sito URP in data 21/02/2023'."""
+    prot = _ARCHIVIO_PROTOCOLLO.search(testo)
+    data = _ARCHIVIO_DATA.search(testo)
+    return prot.group(1) if prot else None, re.sub(r"[/. ]", "-", data.group(1)) if data else None
+
+
+def parse_archivio(html: str) -> list[dict]:
+    """Archivio storico URP: ogni bando è un <dt> con il link al bando e un <dd> con gli allegati."""
+    schede: dict[str, dict] = {}
+    soup = BeautifulSoup(html, "html.parser")
+    for dt in soup.find_all("dt"):
+        a = dt.find("a")
+        dd = dt.find_next_sibling("dd")
+        if not a or not dd:
+            continue
+        titolo = norm_space(a.get_text(" ", strip=True))
+        url = urljoin(config.URP_ARCHIVIO_BASE, a.get("href", "").lstrip("/"))
+        m = _ARCHIVIO_CODICE.search(titolo)
+        codice = norm_space(m.group(1)) if m else None
+        prot, data = _prot_e_data(titolo)
+        estratto = dd.get_text("\n", strip=True)
+        documenti = [_documento(url, titolo, prot, data, url, categoria_forzata="bando")]
+        visti = {url}
+        for li in dd.find_all("li"):
+            testo = norm_space(li.get_text(" ", strip=True))
+            link = li.find("a")
+            href = urljoin(config.URP_ARCHIVIO_BASE, link["href"].lstrip("/")) if link and link.get("href") else ""
+            id_doc, n = href or testo, 2
+            while id_doc in visti:
+                id_doc = f"{href or testo}#{n}"
+                n += 1
+            visti.add(id_doc)
+            documenti.append(_documento(id_doc, testo, *_prot_e_data(testo), href))
+        id_esterno = urlparse(url).path or titolo
+        while id_esterno in schede:
+            id_esterno += "#2"
+        schede[id_esterno] = {
+            "id_esterno": id_esterno, "sezione": config.URP_ARCHIVIO_SEZIONE, "tipologia": None,
+            "codice_originale": codice, "codice_norm": codice_norm(codice), "numero_bando": numero_bando(codice),
+            "codice_sotto": codice_sotto(codice), "titolo": titolo, "protocollo": protocollo(prot),
+            "protocollo_originale": prot, "data_pubblicazione": data_iso(data), "data_pubbl_graduatoria": None,
+            "url": url, "dati_extra": json.dumps({"estratto": estratto[:1000], "titolo_bando": titolo},
+                                                 ensure_ascii=False, sort_keys=True),
+            "modificata_fonte_il": None, "documenti": documenti,
+        }
+    return list(schede.values())
+
+
+def elenco_archivio(client) -> list[dict]:
+    schede = parse_archivio(client.get_text(config.URP_ARCHIVIO_BASE + config.URP_ARCHIVIO_PAGINA))
+    if not schede:
+        raise FonteErrore("Archivio URP: nessun bando trovato nella pagina")
+    return schede
+
+
 def dettaglio_bando(client, url: str, sezione: str) -> dict:
     return parse_dettaglio(client.get_text(url), url, sezione)

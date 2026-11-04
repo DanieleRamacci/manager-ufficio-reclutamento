@@ -14,7 +14,7 @@ USER_AGENT = "Mozilla/5.0 (compatible; CNR-BandiBot/1.0)"
 URP_BASE = "https://www.urp.cnr.it"
 URP_SEZIONI_PREDEFINITE = ("tempo-indeterminato,bandi-pubblici-mobilita,categorie-riservatarie,tempo-determinato,"
                            "direttori-dipartimentiistituti,avviamento-numerico-selezione-ans-categorie-riservatarie,"
-                           "borse-ricerca")
+                           "borse-ricerca,archivio-vecchio")
 # le sezioni senza tipologia servono solo alle pagine URP e restano fuori dal monitoraggio
 # tipologia del bando per sezione URP (la mobilità può diventare "comando" dal testo)
 URP_TIPOLOGIA = {
@@ -23,6 +23,9 @@ URP_TIPOLOGIA = {
     "categorie-riservatarie": "categorie_protette",
 }
 
+URP_ARCHIVIO_BASE = "https://archivio.urp.cnr.it/"
+URP_ARCHIVIO_PAGINA = "page_lv_3_pg_157_o_4_db_1.html?level=3&pg=157&Org=4&db=1"
+URP_ARCHIVIO_SEZIONE = "archivio-vecchio"  # solo per le pagine URP, come le sezioni senza tipologia
 URP_PERCORSI = {"borse-ricerca": "borse-di-ricerca"}  # nome usato dalle pagine -> percorso su URP
 
 # --- Selezioni Online (research R1, R2) ---
@@ -59,8 +62,13 @@ def sol_search_url() -> str:
     return _env("SOL_SEARCH_URL", f"{SOL_BASE}/rest/search")
 
 
-def urp_sezioni() -> list[str]:
+def urp_sezioni_pagine() -> list[str]:
     return [s.strip() for s in _env("URP_SEZIONI", URP_SEZIONI_PREDEFINITE).split(",") if s.strip()]
+
+
+def urp_sezioni() -> list[str]:
+    """Le sezioni del sito nuovo; l'archivio ha una pagina e un formato propri."""
+    return [s for s in urp_sezioni_pagine() if s != URP_ARCHIVIO_SEZIONE]
 
 
 def urp_url_sezione(sezione: str) -> str:

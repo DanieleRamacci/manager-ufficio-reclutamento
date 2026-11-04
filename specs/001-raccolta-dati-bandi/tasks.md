@@ -171,8 +171,8 @@ Pacchetto `monitoraggio/` e cartella `tests/` nella radice del repository, accan
 
 ## Phase 6d: Archivio storico URP per i bandi fuori periodo (FR-013c)
 
-- [ ] T054 [P] [US2] Salvare una fixture della pagina dell'archivio storico URP (`https://archivio.urp.cnr.it/page.php?level=3&pg=157&Org=4&db=1`) e scrivere i test del parser (codice bando, protocollo e data dal titolo, allegati con protocollo, data e categoria da classifica.py) in tests/test_fonte_urp_archivio.py
-- [ ] T055 [US2] Implementare `elenco_archivio(client)` riprendendo `parse_archivio_old_urp` di scraper-urp.py, con sezione `archivio` e tipologia ricavata dal testo, e includerlo nella raccolta URP (sezione configurabile in `URP_SEZIONI`) in monitoraggio/fonti/urp_archivio.py e monitoraggio/raccolta.py
+- [X] T054 [P] [US2] Salvare una fixture della pagina dell'archivio storico URP (`https://archivio.urp.cnr.it/page.php?level=3&pg=157&Org=4&db=1`) e scrivere i test del parser (codice bando, protocollo e data dal titolo, allegati con protocollo, data e categoria da classifica.py) in tests/test_fonte_urp_archivio.py
+- [X] T055 [US2] Implementare `elenco_archivio(client)` riprendendo `parse_archivio_old_urp` di scraper-urp.py, con sezione `archivio` e tipologia ricavata dal testo, e includerlo nella raccolta URP (sezione configurabile in `URP_SEZIONI`) in monitoraggio/fonti/urp_archivio.py e monitoraggio/raccolta.py
 - [ ] T056 [US2] Nel collegamento, calcolare il periodo URP includendo l'archivio e usare `fuori_periodo_urp` solo per i bandi più vecchi anche dell'archivio; test in tests/test_collegamento.py e monitoraggio/collegamento.py
 
 ---
