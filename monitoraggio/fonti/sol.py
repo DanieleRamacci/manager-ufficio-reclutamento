@@ -85,6 +85,7 @@ def scheda_da_item(item: dict, tipo: str) -> dict:
     }
     return {
         "id_esterno": item["cmis:objectId"],
+        "id_padre": item.get("cmis:parentId"),
         "sezione": tipo,
         "tipologia": config.SOL_TIPI.get(tipo),
         "codice_originale": codice,
@@ -122,6 +123,22 @@ def documento_da_item(item: dict, url_scheda: str | None = None) -> dict:
         # il download diretto richiede il login: si rimanda alla pagina pubblica del bando
         "url": url_scheda,
     }
+
+
+def togli_documenti_dei_figli(schede: list[dict], documenti_noti: dict[str, set[str]] | None = None) -> None:
+    """Nei bandi con più codici i codici stanno dentro la scheda padre: leggendo l'albero del padre
+    tornano anche i loro documenti, che appartengono al codice. `documenti_noti`: id dei documenti già
+    salvati per le schede, per i codici non riletti in questa raccolta."""
+    noti = documenti_noti or {}
+    figli: dict[str, set[str]] = {}
+    for s in schede:
+        if s.get("id_padre"):
+            letti = s.get("documenti")
+            figli.setdefault(s["id_padre"], set()).update(
+                {d["id_esterno"] for d in letti} if letti is not None else noti.get(s["id_esterno"], set()))
+    for s in schede:
+        if s.get("documenti") is not None and s["id_esterno"] in figli:
+            s["documenti"] = [d for d in s["documenti"] if d["id_esterno"] not in figli[s["id_esterno"]]]
 
 
 def _allegato_del_bando(item: dict) -> bool:

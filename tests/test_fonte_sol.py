@@ -86,3 +86,14 @@ def test_allegati_solo_del_bando_anche_in_sottocartella(client_finto):
     docs = modulo.allegati_bando(client, "id-bando")
     assert [d["titolo"] for d in docs] == ["provvedimento"]
     assert docs[0]["categoria"] == "scorrimento" and docs[0]["protocollo"] == "461293"
+
+
+def test_padre_senza_i_documenti_dei_codici():
+    from monitoraggio.fonti.sol import togli_documenti_dei_figli
+    doc = lambda i: {"id_esterno": i}  # noqa: E731
+    padre = {"id_esterno": "P", "id_padre": "radice", "documenti": [doc("bando"), doc("del-letto"), doc("del-non-letto")]}
+    letto = {"id_esterno": "C1", "id_padre": "P", "documenti": [doc("del-letto")]}
+    non_letto = {"id_esterno": "C2", "id_padre": "P", "documenti": None}
+    togli_documenti_dei_figli([padre, letto, non_letto], {"C2": {"del-non-letto"}})
+    assert [d["id_esterno"] for d in padre["documenti"]] == ["bando"]
+    assert [d["id_esterno"] for d in letto["documenti"]] == ["del-letto"]

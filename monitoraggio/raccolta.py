@@ -261,6 +261,11 @@ def _leggi_sol(conn, client, completa: bool) -> tuple[list[dict], list[str], lis
             scheda["documenti"] = sol.allegati_bando(client, scheda["id_esterno"], scheda["url"])
         except Exception as e:
             errori.append((scheda["url"], str(e)))
+    noti: dict[str, set[str]] = {}
+    for r in conn.execute("SELECT s.id_esterno AS scheda, d.id_esterno AS documento FROM documento d "
+                          "JOIN scheda s ON s.id = d.scheda_id WHERE s.fonte = 'sol'"):
+        noti.setdefault(r["scheda"], set()).add(r["documento"])
+    sol.togli_documenti_dei_figli(schede, noti)
     return schede, [s["id_esterno"] for s in schede], errori, dichiarati
 
 
