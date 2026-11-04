@@ -191,11 +191,13 @@ def togli_segno(conn, mese: str, numero_bando: str) -> None:
     conn.execute("DELETE FROM sollecito WHERE mese = ? AND numero_bando = ?", (mese, numero_bando))
 
 
-def email_rdp(conn, numero_bando: str) -> set[str]:
-    """Gli indirizzi degli RdP del bando, indipendenti da ciò che manda il browser."""
+def email_rdp(conn, bando: str) -> set[str]:
+    """Gli RdP del bando a cui appartiene il codice, indipendenti da ciò che manda il browser. La pagina
+    sceglie quelli del codice; i referenti del bando servono per gli atti senza codice."""
     righe = conn.execute(
-        "SELECT r.email FROM referente r JOIN scheda s ON s.id = r.scheda_id LEFT JOIN bando b ON b.id = s.bando_id "
-        "WHERE r.attivo = 1 AND r.email IS NOT NULL AND (b.numero_bando = ? OR s.numero_bando = ?)", (numero_bando, numero_bando))
+        "SELECT r.email FROM referente r JOIN scheda s ON s.id = r.scheda_id WHERE r.attivo = 1 AND r.email IS NOT NULL "
+        "AND (s.codice_originale = :b OR s.numero_bando = :b OR s.bando_id IN (SELECT bando_id FROM scheda "
+        "WHERE (codice_originale = :b OR numero_bando = :b) AND bando_id IS NOT NULL))", {"b": bando})
     return {r["email"].strip().lower() for r in righe}
 
 

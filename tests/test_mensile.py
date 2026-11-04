@@ -381,3 +381,27 @@ def test_starttls_solo_se_richiesto(db, monkeypatch):
     monkeypatch.setenv("SMTP_STARTTLS", "1")
     posta.invia(["a@b.it"], "o", "c")
     assert chiamate == ["starttls"]
+
+
+def test_sollecito_per_codice_con_i_referenti_del_bando(ambiente, db, monkeypatch):
+    inviati = []
+    _configura_posta(monkeypatch, inviati)
+    salva(db, "sol", [scheda("sol", "s5", "367.434 CA - TRIESTE Codice 05", "367.434", sotto="05"),
+                      scheda("sol", "s13", "367.434 CA - ROMA Codice 13", "367.434", sotto="13")])
+    from monitoraggio import collegamento
+    collegamento.collega(db)
+    for id_esterno, email in (("s5", "trieste@cnr.it"), ("s13", "roma@cnr.it")):
+        sid = db.execute("SELECT id FROM scheda WHERE id_esterno = ?", (id_esterno,)).fetchone()[0]
+        db.execute("INSERT INTO referente (scheda_id, chiave, nome, cognome, email, username, attivo, prima_rilevazione, "
+                   "ultima_rilevazione) VALUES (?, 'a', 'A', 'B', ?, 'a', 1, 'x', 'x')", (sid, email))
+    admin = ambiente()
+    mese = admin.post("/api/monitoraggi", json={"numero_mese": 5}).get_json()["mese"]
+    url = f"/api/monitoraggi/{mese}/solleciti"
+    codice = "367.434 CA - TRIESTE Codice 05"
+    r = admin.post(url + "/invia", json=_sollecito(codice, ["trieste@cnr.it"]))
+    assert r.status_code == 200 and inviati[0]["To"] == "trieste@cnr.it"
+    stati = admin.get(url).get_json()["solleciti"]
+    assert list(stati) == [codice]  # lo stato vale per il codice, non per tutto il bando
+    assert admin.put(f"{url}/367.434 CA - ROMA Codice 13", json={"inviata": True}).status_code == 200
+    assert len(admin.get(url).get_json()["solleciti"]) == 2
+    assert admin.post(url + "/invia", json=_sollecito("367.434 CA - ROMA Codice 13", ["estraneo@cnr.it"])).status_code == 400

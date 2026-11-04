@@ -14,9 +14,9 @@
 
   function messaggio(riga, righeBando, mese) {
     const destinatari = emailRdp(righeBando);
-    const numero = riga.numero_bando || "numero non disponibile";
     const codici = [...new Set(righeBando.map(r => r.codice).filter(Boolean))];
-    const codice = codici.length ? `Codici/sedi interessati: ${codici.join(", ")}\n\n` : "";
+    const numero = (codici.length === 1 ? codici[0] : riga.numero_bando) || "numero non disponibile";
+    const codice = codici.length > 1 ? `Codici/sedi interessati: ${codici.join(", ")}\n\n` : "";
     const url = righeBando.map(r => r.link_codice || r.fonti?.sol?.url).find(Boolean);
     const urlRiga = riga.link_codice || riga.fonti?.sol?.url;
     const collegamento = url || urlRiga;
@@ -58,6 +58,8 @@
   }
 
   window.Solleciti = {
+    // ogni codice ha i suoi RdP: un sollecito per codice, mai per l'intero numero di bando
+    chiave: (riga) => riga.codice || riga.numero_bando || "",
     destinatari: (righe) => emailRdp(righe),
     crea: messaggio,
     copiaEmail: (righe) => copia(emailRdp(righe).join("; "), "Indirizzi RdP"),

@@ -206,6 +206,7 @@ let bandi = [];
 let timer = null;
 let statoFonti = null;
 let attiMese = [];
+const righeDelCodice = (riga) => attiMese.filter(a => window.Solleciti.chiave(a) === window.Solleciti.chiave(riga));
 let righeAttiMese = [];
 
 async function json(url, opzioni) {
@@ -353,7 +354,7 @@ function renderTabellaAtti(id, righe, conSollecito) {
         ${linkPunteggi(a.url_punteggi)}</td>
       <td>${esc(a.protocollo || "")}</td>${cella(a.fonti.sol, "sol")}${cella(a.fonti.urp, "urp")}${cella(a.fonti.segreteria, "segreteria")}
       <td>${(a.rdp || []).map(r => `<div title="${esc(r.email || "")}">${esc(nomeRdp(r))}</div>`).join("")}${a.rdp_origine === "tutti i codici" && (a.rdp || []).length ? `<div class="muted">(tutti i codici)</div>` : ""}</td>
-      <td class="difformita">${a.note.map(n => `<span class="chip err">${esc(n)}</span>`).join("")}${conSollecito ? `<div class="azioni-sollecito">${attiMese.some(x => x.numero_bando === a.numero_bando && (x.rdp || []).some(r => r.email)) ? `<button type="button" class="btn-copia-email">Copia destinatari RdP</button>` : `<span class="chip warn">email RdP non disponibile</span>`}<button type="button" class="btn-copia-sollecito">Copia messaggio completo</button>${controlliInvio(a)}</div><span class="muted stato-copia" aria-live="polite"></span>` : ""}</td></tr>`).join("");
+      <td class="difformita">${a.note.map(n => `<span class="chip err">${esc(n)}</span>`).join("")}${conSollecito ? `<div class="azioni-sollecito">${righeDelCodice(a).some(x => (x.rdp || []).some(r => r.email)) ? `<button type="button" class="btn-copia-email">Copia destinatari RdP</button>` : `<span class="chip warn">email RdP non disponibile</span>`}<button type="button" class="btn-copia-sollecito">Copia messaggio completo</button>${controlliInvio(a)}</div><span class="muted stato-copia" aria-live="polite"></span>` : ""}</td></tr>`).join("");
   $(id).innerHTML = `<thead><tr><th>Data</th><th>N. bando</th><th>Codice</th><th>Tipologia</th><th>Atto</th><th>Protocollo</th>
       <th>Selezioni Online</th><th>URP</th><th>File segreteria</th><th>RdP</th><th>Note</th></tr></thead><tbody>` +
     (righeHtml || `<tr><td colspan="11" class="muted">${conSollecito ? "Nessuna difformità rilevata per questo mese." : "Nessun atto nel periodo selezionato."}</td></tr>`) + "</tbody>" +
@@ -381,7 +382,7 @@ function renderTabellaAtti(id, righe, conSollecito) {
   });
   const preparaCopia = async (b, creaEsito) => {
     const riga = righe[Number(b.closest("tr").dataset.riga)];
-    const gruppo = attiMese.filter(a => a.numero_bando === riga.numero_bando);
+    const gruppo = righeDelCodice(riga);
     const esito = await creaEsito(riga, gruppo);
     const stato = b.closest("td").querySelector(".stato-copia");
     if (esito.copiato) {
@@ -405,13 +406,13 @@ function renderTabellaAtti(id, righe, conSollecito) {
   document.querySelectorAll(`#${id} button.btn-copia-sollecito`).forEach(b => b.onclick = e => {
     e.stopPropagation();
     const riga = righe[Number(b.closest("tr").dataset.riga)];
-    const gruppo = attiMese.filter(a => a.numero_bando === riga.numero_bando);
+    const gruppo = righeDelCodice(riga);
     preparaCopia(b, () => window.Solleciti.copiaMessaggio(riga, gruppo, $("mese-solleciti").value));
   });
   document.querySelectorAll(`#${id} button.btn-invia-sollecito`).forEach(b => b.onclick = e => {
     e.stopPropagation();
     const riga = righe[Number(b.closest("tr").dataset.riga)];
-    apriInvio(riga, attiMese.filter(a => a.numero_bando === riga.numero_bando));
+    apriInvio(riga, righeDelCodice(riga));
   });
   document.querySelectorAll(`#${id} input.spunta-sollecito`).forEach(c => {
     c.onclick = e => e.stopPropagation();
@@ -419,7 +420,7 @@ function renderTabellaAtti(id, righe, conSollecito) {
   });
 }
 
-// Monitoraggio del mese: invio e spunta per bando, solo se la pagina è aperta da un monitoraggio
+// Monitoraggio del mese: invio e spunta per codice, solo se la pagina è aperta da un monitoraggio
 const parametri = new URLSearchParams(location.search);
 const monitoraggio = parametri.get("monitoraggio");
 let datiInvii = { solleciti: {}, posta: {} };
@@ -427,11 +428,11 @@ let invioAperto = null;
 
 function controlliInvio(a) {
   if (!monitoraggio) return "";
-  const stato = datiInvii.solleciti[a.numero_bando];
+  const stato = datiInvii.solleciti[window.Solleciti.chiave(a)];
   const etichettaStato = stato
     ? `${stato.stato === "inviata" ? "Inviata" : "Inviata a mano"} il ${oraIt(stato.quando)}${stato.autore ? ` da ${esc(stato.autore)}` : ""}`
     : "Non ancora inviata";
-  const conRdp = attiMese.some(x => x.numero_bando === a.numero_bando && (x.rdp || []).some(r => r.email));
+  const conRdp = righeDelCodice(a).some(x => (x.rdp || []).some(r => r.email));
   return `<button type="button" class="btn-invia-sollecito solo-admin"${datiInvii.posta.configurata && conRdp ? "" : " disabled"}
       title="${datiInvii.posta.configurata ? (conRdp ? "" : "Nessuna email RdP") : "Invio email non configurato"}">Anteprima e invio</button>
     <label class="solo-admin"><input type="checkbox" class="spunta-sollecito"${stato ? " checked" : ""}> inviata</label>
@@ -442,8 +443,8 @@ function apriInvio(riga, gruppo) {
   const m = window.Solleciti.crea(riga, gruppo, monitoraggio);
   const destinatari = window.Solleciti.destinatari(gruppo);
   const corpo = m.corpo + (m.link ? `\n\n${m.link}` : "");
-  invioAperto = { numero_bando: riga.numero_bando, destinatari, oggetto: m.oggetto, corpo };
-  $("titolo-sollecito").textContent = `Sollecito per il bando ${riga.numero_bando}`;
+  invioAperto = { numero_bando: window.Solleciti.chiave(riga), destinatari, oggetto: m.oggetto, corpo };
+  $("titolo-sollecito").textContent = `Sollecito per ${window.Solleciti.chiave(riga)}`;
   $("testo-sollecito").value = `A: ${destinatari.join("; ")}\nOggetto: ${m.oggetto}\n\n${corpo}`;
   $("avviso-copia-manuale").textContent = datiInvii.posta.prova
     ? `Modalità di prova: l'email andrà solo a ${datiInvii.posta.prova} e il bando non risulterà inviato.`
@@ -469,7 +470,7 @@ async function inviaSollecito(conferma = false) {
 }
 
 async function spuntaSollecito(riga, inviata) {
-  const r = await fetch(`/api/monitoraggi/${monitoraggio}/solleciti/${encodeURIComponent(riga.numero_bando)}`, {
+  const r = await fetch(`/api/monitoraggi/${monitoraggio}/solleciti/${encodeURIComponent(window.Solleciti.chiave(riga))}`, {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ inviata }) });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Errore ${r.status}`);
   await caricaInvii();

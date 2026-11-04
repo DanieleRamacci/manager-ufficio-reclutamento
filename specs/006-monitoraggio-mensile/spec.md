@@ -121,7 +121,7 @@ Nella pagina del monitoraggio l'amministratore vede le difformità del periodo p
 - **FR-010**: I dati dei candidati MUST NOT essere salvati nel database: compaiono solo nei file generati, dalla verifica in memoria.
 - **FR-011**: Il modello dell'email di richiesta MUST essere modificabile dagli amministratori, con segnaposto per mese, mese dei dati, nomi dei file, cartella e link dei file condivisi.
 - **FR-012**: I destinatari dell'email di richiesta MUST essere impostabili dall'app.
-- **FR-013**: Il sistema MUST preparare una email per bando con difformità, indirizzata agli RdP del bando e contenente solo i rilievi di quel bando.
+- **FR-013**: Il sistema MUST preparare una email per ogni codice (sotto-bando) con difformità, indirizzata ai soli RdP di quel codice e contenente solo i suoi rilievi e il suo link. Nei bandi con più codici gli RdP sono diversi per codice: le email MUST NOT accorparli.
 - **FR-014**: Le email MUST partire solo dopo un'azione esplicita di un amministratore, mai in automatico.
 - **FR-015**: Ogni invio MUST registrare esito, data, autore, destinatari e oggetto; un bando MUST risultare inviato solo a invio riuscito.
 - **FR-016**: Gli amministratori MUST poter spuntare o togliere a mano lo stato di invio, distinto dall'invio dall'app.
