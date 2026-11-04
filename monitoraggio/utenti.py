@@ -1,0 +1,121 @@
+"""Chi può entrare e cosa può fare (spec 006): tabella degli utenti con ruoli amministratore e lettura.
+
+Le persone in UTENTI_AMMESSI sono sempre amministratori e non si possono togliere dalla pagina, così
+nessuno resta chiuso fuori. Il ruolo si legge a ogni richiesta: togliere qualcuno ha effetto subito.
+"""
+import os
+from datetime import datetime, timezone
+from functools import wraps
+
+from flask import jsonify, session
+
+from . import db
+
+AMMINISTRATORE, LETTURA = "amministratore", "lettura"
+
+
+class UtenteProtetto(Exception):
+    pass
+
+
+def _adesso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def normalizza(nome: str | None) -> str:
+    """Nome utente di SOL (nome.cognome); un'email vale per la parte prima della @."""
+    return (nome or "").strip().lower().split("@")[0]
+
+
+def iniziali() -> set[str]:
+    return {normalizza(u) for u in os.environ.get("UTENTI_AMMESSI", "").split(",") if u.strip()}
+
+
+def _conn():
+    conn = db.connetti()
+    db.inizializza(conn)
+    return conn
+
+
+def ruolo(nome: str | None) -> str | None:
+    nome = normalizza(nome)
+    if not nome:
+        return None
+    if nome in iniziali():
+        return AMMINISTRATORE
+    conn = _conn()
+    try:
+        riga = conn.execute("SELECT ruolo FROM utente WHERE username = ?", (nome,)).fetchone()
+    finally:
+        conn.close()
+    return riga["ruolo"] if riga else None
+
+
+def elenco(conn) -> list[dict]:
+    fissi = iniziali()
+    righe = [{"username": u, "ruolo": AMMINISTRATORE, "iniziale": True, "aggiunto_da": None, "aggiunto_il": None}
+             for u in sorted(fissi)]
+    righe += [{**dict(r), "iniziale": False} for r in conn.execute("SELECT * FROM utente ORDER BY username")
+              if r["username"] not in fissi]
+    return righe
+
+
+def registro(conn, limite: int = 50) -> list[dict]:
+    return [dict(r) for r in conn.execute("SELECT * FROM utente_modifica ORDER BY id DESC LIMIT ?", (limite,))]
+
+
+def imposta(conn, nome: str, nuovo_ruolo: str, autore: str | None) -> str:
+    nome = normalizza(nome)
+    if not nome or nuovo_ruolo not in (AMMINISTRATORE, LETTURA):
+        raise ValueError("Nome utente o ruolo non valido")
+    if nome in iniziali():
+        raise UtenteProtetto(f"{nome} è un amministratore iniziale: si cambia solo dalla configurazione")
+    ora = _adesso()
+    conn.execute("INSERT INTO utente (username, ruolo, aggiunto_da, aggiunto_il) VALUES (?, ?, ?, ?) "
+                 "ON CONFLICT(username) DO UPDATE SET ruolo = excluded.ruolo", (nome, nuovo_ruolo, autore, ora))
+    conn.execute("INSERT INTO utente_modifica (username, azione, ruolo, autore, quando) VALUES (?, 'imposta', ?, ?, ?)",
+                 (nome, nuovo_ruolo, autore, ora))
+    return nome
+
+
+def togli(conn, nome: str, autore: str | None) -> bool:
+    nome = normalizza(nome)
+    if nome in iniziali():
+        raise UtenteProtetto(f"{nome} è un amministratore iniziale: si cambia solo dalla configurazione")
+    tolti = conn.execute("DELETE FROM utente WHERE username = ?", (nome,)).rowcount
+    if tolti:
+        conn.execute("INSERT INTO utente_modifica (username, azione, autore, quando) VALUES (?, 'togli', ?, ?)",
+                     (nome, autore, _adesso()))
+    return bool(tolti)
+
+
+def corrente() -> str | None:
+    return session.get("user")
+
+
+def ruolo_corrente() -> str | None:
+    return ruolo(corrente())
+
+
+def protezioni(base, uscita=None):
+    """Da un decoratore di autenticazione ricava (protezione, solo_admin), con il ruolo letto a ogni richiesta."""
+    def protezione(fn):
+        @wraps(fn)
+        def _controllo(*args, **kwargs):
+            if not ruolo_corrente():
+                if uscita:
+                    uscita()
+                session.clear()
+                return jsonify({"error": "Utente non autorizzato"}), 403
+            return fn(*args, **kwargs)
+        return base(_controllo)
+
+    def solo_admin(fn):
+        @wraps(fn)
+        def _controllo(*args, **kwargs):
+            if ruolo_corrente() != AMMINISTRATORE:
+                return jsonify({"error": "Operazione riservata agli amministratori"}), 403
+            return fn(*args, **kwargs)
+        return _controllo
+
+    return protezione, solo_admin

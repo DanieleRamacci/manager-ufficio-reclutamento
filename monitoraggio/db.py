@@ -3,7 +3,7 @@ import sqlite3
 
 from . import config
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -205,6 +205,67 @@ CREATE TABLE IF NOT EXISTS referenti_aggiornamento (
 """
 
 
+SCHEMA_4 = """
+CREATE TABLE IF NOT EXISTS utente (
+    username TEXT PRIMARY KEY,
+    ruolo TEXT NOT NULL CHECK (ruolo IN ('amministratore', 'lettura')),
+    aggiunto_da TEXT,
+    aggiunto_il TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS utente_modifica (
+    id INTEGER PRIMARY KEY,
+    username TEXT NOT NULL,
+    azione TEXT NOT NULL,
+    ruolo TEXT,
+    autore TEXT,
+    quando TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS monitoraggio_mese (
+    mese TEXT PRIMARY KEY,
+    mese_dati TEXT NOT NULL,
+    link_scorrimenti TEXT,
+    link_graduatorie TEXT,
+    oggetto TEXT,
+    testo TEXT,
+    creato_da TEXT,
+    creato_il TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS impostazione (
+    chiave TEXT PRIMARY KEY,
+    valore TEXT,
+    modificata_da TEXT,
+    modificata_il TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sollecito (
+    mese TEXT NOT NULL REFERENCES monitoraggio_mese(mese),
+    numero_bando TEXT NOT NULL,
+    stato TEXT NOT NULL CHECK (stato IN ('inviata', 'inviata_a_mano')),
+    autore TEXT,
+    quando TEXT NOT NULL,
+    destinatari TEXT,
+    oggetto TEXT,
+    PRIMARY KEY (mese, numero_bando)
+);
+
+CREATE TABLE IF NOT EXISTS invio_email (
+    id INTEGER PRIMARY KEY,
+    tipo TEXT NOT NULL CHECK (tipo IN ('compilazione', 'sollecito')),
+    mese TEXT,
+    numero_bando TEXT,
+    utente TEXT,
+    quando TEXT NOT NULL,
+    destinatari TEXT,
+    oggetto TEXT,
+    esito TEXT NOT NULL CHECK (esito IN ('inviata', 'prova', 'errore')),
+    errore TEXT
+);
+"""
+
+
 def connetti() -> sqlite3.Connection:
     path = config.db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -222,6 +283,7 @@ def inizializza(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
     conn.executescript(SCHEMA_2)
     conn.executescript(SCHEMA_3)
+    conn.executescript(SCHEMA_4)
     riga = conn.execute("SELECT versione FROM schema_version").fetchone()
     if riga is None:
         conn.execute("INSERT INTO schema_version (versione) VALUES (?)", (SCHEMA_VERSION,))

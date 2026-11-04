@@ -1,0 +1,13 @@
+# Tasks: Monitoraggio mensile con autorizzazioni e invio email
+
+- [X] T001 [US1] Schema 7 in monitoraggio/db.py
+- [X] T002 [US1] Ruoli, protezioni e registro delle modifiche in monitoraggio/utenti.py; login con ticket e SSO che usano la tabella
+- [X] T003 [US1] Operazioni riservate agli amministratori in monitoraggio/web.py; comandi nascosti in lettura in monitoraggio/static/menu.js
+- [X] T004 [US1] Pagina utenti in monitoraggio/static/utenti.html e API in monitoraggio/mensile_web.py
+- [X] T005 [US2] Monitoraggi per mese in monitoraggio/mensile.py; pagina in monitoraggio/static/monitoraggi.html
+- [X] T006 [US3] Excel dai modelli in monitoraggio/excel_mese.py, colonna TIPOLOGIA con nota, giallo per il protocollo mancante
+- [X] T007 [US4] Modello dell'email, segnaposto, link e destinatari
+- [X] T008 [US5] Anteprima, invio e spunta per bando in monitoraggio/static/riepilogo.html
+- [X] T009 [US4,US5] Invio SMTP, modalità di prova e registro in monitoraggio/posta.py
+- [X] T010 Test in tests/test_mensile.py
+- [ ] T011 Verifica manuale nell'app in esecuzione e invio reale dal server di produzione

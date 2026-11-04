@@ -22,6 +22,7 @@
     .mm-voci span.mm-no small { margin-left: 6px; }
     .mm-stato { margin-left: auto; font-size: 12px; opacity: .9; white-space: nowrap; }
     .mm-stato a { text-decoration: underline; }
+    .sola-lettura .solo-admin { display: none !important; }
     .mm-utente { margin-left: 12px; font-size: 12px; white-space: nowrap; }
     a.mm-utente, .mm-utente a { text-decoration: underline; }
     @media (prefers-color-scheme: dark) {
@@ -113,6 +114,7 @@
       const r = await fetch("/api/menu", { cache: "no-store" });
       if (!r.ok) return;
       const info = await r.json();
+      if (info.ruolo === "lettura") document.documentElement.classList.add("sola-lettura");
       disegna(info.gruppi, info);
       aggiornaStato();
       aggiornaSol();

@@ -29,10 +29,12 @@ MAX_FILE_PDF = 25 * 1024 * 1024
 # "pagina" = file HTML nella cartella del progetto; "route" = pagina servita da questo modulo.
 MENU = [
     {"gruppo": "Monitoraggio", "voci": [
+        {"titolo": "Monitoraggi mensili", "url": "/monitoraggio/mensili", "route": True},
         {"titolo": "Riepilogo atti", "url": "/monitoraggio", "route": True},
         {"titolo": "File segreteria", "url": "/monitoraggio/segreteria", "route": True},
         {"titolo": "File segreteria: vista del file", "url": "/monitoraggio/segreteria/file", "route": True},
         {"titolo": "Report del mese", "url": "/report-mese.html", "pagina": "report-mese.html"},
+        {"titolo": "Utenti", "url": "/monitoraggio/utenti", "route": True, "solo_admin": True},
     ]},
     {"gruppo": "Controlli URP", "voci": [
         {"titolo": "Controllo bandi", "url": "/index.html", "pagina": "index.html"},
@@ -64,7 +66,8 @@ def menu(pagine_disponibili: set[str] | None = None) -> list[dict]:
             pagina = voce.get("pagina")
             disponibile = voce.get("route", False) or (
                 (config.ROOT / pagina).exists() and (pagine_disponibili is None or pagina in pagine_disponibili))
-            voci.append({"titolo": voce["titolo"], "url": voce["url"], "disponibile": bool(disponibile)})
+            voci.append({"titolo": voce["titolo"], "url": voce["url"], "disponibile": bool(disponibile),
+                         "solo_admin": voce.get("solo_admin", False)})
         gruppi.append({"gruppo": gruppo["gruppo"], "voci": voci})
     return gruppi
 
@@ -225,11 +228,13 @@ def riepilogo_mensile(conn) -> dict:
 def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
                    pagine_disponibili: set[str] | None = None, token_utente=lambda: None,
                    login_url: str | None = None, logout_url: str | None = None,
-                   login_sol: bool = False, sessione_sol=None) -> Blueprint:
+                   login_sol: bool = False, sessione_sol=None, solo_admin=lambda f: f,
+                   ruolo_corrente=lambda: "amministratore") -> Blueprint:
     """`token_utente()`: token SSO valido dell'utente collegato (rinnovato se serve) o None.
     `login_sol`: abilita il collegamento a Selezioni Online con finestra di login (solo prova locale);
     altrimenti le chiamate a SOL usano il ticket ottenuto dal token SSO dell'utente.
-    `sessione_sol`: ticket incollato dall'utente (monitoraggio/accesso.py), al posto di quanto sopra."""
+    `sessione_sol`: ticket dell'utente (monitoraggio/accesso.py), al posto di quanto sopra.
+    `solo_admin` e `ruolo_corrente`: ruoli degli utenti (monitoraggio/utenti.py); nel server locale non si usano."""
     bp = Blueprint("monitoraggio", __name__)
 
     def _intestazioni_sol() -> dict:
@@ -262,6 +267,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
 
     @bp.post("/api/punteggi/verifica")
     @protezione
+    @solo_admin
     def api_punteggi_verifica():
         periodo = _periodo()
         if not periodo:
@@ -358,6 +364,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
 
     @bp.post("/api/referenti/aggiorna")
     @protezione
+    @solo_admin
     def api_referenti_aggiorna():
         token = token_utente()
         if not token and not referenti.senza_token_ammesso():
@@ -416,11 +423,15 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
     @bp.get("/api/menu")
     @protezione
     def api_menu():
-        return jsonify({"gruppi": menu(pagine_disponibili), "utente": utente_corrente(),
+        ruolo = ruolo_corrente()
+        gruppi = [{**g, "voci": [v for v in g["voci"] if not v["solo_admin"] or ruolo == "amministratore"]}
+                  for g in menu(pagine_disponibili)]
+        return jsonify({"gruppi": gruppi, "utente": utente_corrente(), "ruolo": ruolo,
                         "login": login_url, "logout": logout_url})
 
     @bp.post("/api/raccolta/avvia")
     @protezione
+    @solo_admin
     def api_avvia():
         corpo = request.get_json(silent=True) or {}
         fonti = [f for f in (corpo.get("fonti") or ["urp", "sol"]) if f in ("urp", "sol")]
@@ -509,6 +520,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
 
     @bp.post("/api/segreteria/carica")
     @protezione
+    @solo_admin
     def api_segreteria_carica():
         file = request.files.get("file")
         if not file or not file.filename:
@@ -629,7 +641,7 @@ PAGINE_LOCALI = {"index.html", "access.html", "mobilita-urp.html", "report-mese.
                  "search.html", "stato-avanzamento.html", "verifica-access.html"}
 
 
-def crea_blueprint_pagine_esistenti(protezione=lambda f: f) -> Blueprint:
+def crea_blueprint_pagine_esistenti(protezione=lambda f: f, solo_admin=lambda f: f) -> Blueprint:
     """Solo per il server locale: le pagine di oggi (index.html, mobilita-urp.html, report-mese.html)
     con i JSON e le API /api/status e /api/run ricostruiti dal database. In avvia_tool.py le stesse
     risposte arrivano dalle sue route (T035, T036)."""
@@ -669,6 +681,7 @@ def crea_blueprint_pagine_esistenti(protezione=lambda f: f) -> Blueprint:
 
     @bp.post("/api/run")
     @protezione
+    @solo_admin
     def run_compat():
         corpo = request.get_json(silent=True) or {}
         fonti = [f for f, chiavi in (("urp", ("urp", "mob")), ("sol", ("sol",))) if any(corpo.get(k, True) for k in chiavi)]

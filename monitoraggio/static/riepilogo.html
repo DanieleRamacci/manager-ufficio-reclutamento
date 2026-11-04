@@ -85,14 +85,14 @@
     <div class="muted" id="prossima"></div>
   </div>
   <div class="filtri" style="margin:0">
-    <select id="fonte-raccolta">
+    <select id="fonte-raccolta" class="solo-admin">
       <option value="urp,sol">URP e Selezioni Online</option>
       <option value="urp">Solo URP</option>
       <option value="sol">Solo Selezioni Online</option>
     </select>
-    <label class="muted"><input type="checkbox" id="completa"> completa</label>
-    <button class="primario" id="aggiorna">Aggiorna dati</button>
-    <button id="aggiorna-rdp" title="Legge gli RdP da Selezioni Online con il tuo accesso SSO">Aggiorna referenti</button>
+    <label class="muted solo-admin"><input type="checkbox" id="completa"> completa</label>
+    <button class="primario solo-admin" id="aggiorna">Aggiorna dati</button>
+    <button class="solo-admin" id="aggiorna-rdp" title="Legge gli RdP da Selezioni Online con il tuo accesso">Aggiorna referenti</button>
     <span class="muted" id="stato-rdp"></span>
   </div>
 </header>
@@ -103,7 +103,8 @@
     <div class="grid2" id="stato"></div>
   </section>
 
-  <nav class="schede-atti" role="tablist" aria-label="Viste degli atti">
+  <div class="muted" id="barra-monitoraggio" hidden style="margin-bottom:8px"></div>
+    <nav class="schede-atti" role="tablist" aria-label="Viste degli atti">
     <button type="button" role="tab" id="tab-stato-atti" aria-selected="true" aria-controls="panel-stato-atti">Stato complessivo</button>
     <button type="button" role="tab" id="tab-graduatorie-mese" aria-selected="false" aria-controls="panel-graduatorie-mese">Graduatorie del mese <span id="conteggio-graduatorie-mese"></span></button>
     <button type="button" role="tab" id="tab-scorrimenti-mese" aria-selected="false" aria-controls="panel-scorrimenti-mese">Scorrimenti del mese <span id="conteggio-scorrimenti-mese"></span></button>
@@ -140,7 +141,7 @@
     <h2>Graduatorie del mese e difformità dei punteggi <span class="muted" id="conteggio-graduatorie-label"></span></h2>
     <div class="muted" style="margin-bottom:8px">Le difformità delle verifiche punteggi sono unite alla graduatoria corrispondente. Apri la sottotabella da ogni graduatoria per vedere il dettaglio dei candidati e dei punteggi.</div>
     <div class="filtri">
-      <button class="primario" type="button" id="punteggi-verifica">Verifica punteggi SOL</button>
+      <button class="primario solo-admin" type="button" id="punteggi-verifica">Verifica punteggi SOL</button>
       <button type="button" id="punteggi-excel" title="Scarica il riepilogo dei punteggi del mese selezionato">Scarica Excel punteggi</button>
       <span class="muted" id="conteggio-punteggi"></span>
       <span class="muted" id="punteggi-stato" aria-live="polite"></span>
@@ -159,6 +160,7 @@
     <div class="testa"><b id="titolo-sollecito">Testo del sollecito</b><button type="button" id="chiudi-sollecito">Chiudi</button></div>
     <textarea id="testo-sollecito" readonly aria-label="Testo da copiare manualmente"></textarea>
     <div class="azioni muted" id="avviso-copia-manuale">La copia automatica non è disponibile: seleziona e copia il testo.</div>
+    <div class="azioni" id="azioni-invio" hidden><button class="primario" type="button" id="conferma-invio">Invia</button> <span class="muted" id="esito-invio" aria-live="polite"></span></div>
   </dialog>
 
   <section>
@@ -351,7 +353,7 @@ function renderTabellaAtti(id, righe, conSollecito) {
         ${linkPunteggi(a.url_punteggi)}</td>
       <td>${esc(a.protocollo || "")}</td>${cella(a.fonti.sol, "sol")}${cella(a.fonti.urp, "urp")}${cella(a.fonti.segreteria, "segreteria")}
       <td>${(a.rdp || []).map(r => `<div title="${esc(r.email || "")}">${esc(nomeRdp(r))}</div>`).join("")}${a.rdp_origine === "tutti i codici" && (a.rdp || []).length ? `<div class="muted">(tutti i codici)</div>` : ""}</td>
-      <td class="difformita">${a.note.map(n => `<span class="chip err">${esc(n)}</span>`).join("")}${conSollecito ? `<div class="azioni-sollecito">${attiMese.some(x => x.numero_bando === a.numero_bando && (x.rdp || []).some(r => r.email)) ? `<button type="button" class="btn-copia-email">Copia destinatari RdP</button>` : `<span class="chip warn">email RdP non disponibile</span>`}<button type="button" class="btn-copia-sollecito">Copia messaggio completo</button></div><span class="muted stato-copia" aria-live="polite"></span>` : ""}</td></tr>`).join("");
+      <td class="difformita">${a.note.map(n => `<span class="chip err">${esc(n)}</span>`).join("")}${conSollecito ? `<div class="azioni-sollecito">${attiMese.some(x => x.numero_bando === a.numero_bando && (x.rdp || []).some(r => r.email)) ? `<button type="button" class="btn-copia-email">Copia destinatari RdP</button>` : `<span class="chip warn">email RdP non disponibile</span>`}<button type="button" class="btn-copia-sollecito">Copia messaggio completo</button>${controlliInvio(a)}</div><span class="muted stato-copia" aria-live="polite"></span>` : ""}</td></tr>`).join("");
   $(id).innerHTML = `<thead><tr><th>Data</th><th>N. bando</th><th>Codice</th><th>Tipologia</th><th>Atto</th><th>Protocollo</th>
       <th>Selezioni Online</th><th>URP</th><th>File segreteria</th><th>RdP</th><th>Note</th></tr></thead><tbody>` +
     (righeHtml || `<tr><td colspan="11" class="muted">${conSollecito ? "Nessuna difformità rilevata per questo mese." : "Nessun atto nel periodo selezionato."}</td></tr>`) + "</tbody>" +
@@ -406,6 +408,81 @@ function renderTabellaAtti(id, righe, conSollecito) {
     const gruppo = attiMese.filter(a => a.numero_bando === riga.numero_bando);
     preparaCopia(b, () => window.Solleciti.copiaMessaggio(riga, gruppo, $("mese-solleciti").value));
   });
+  document.querySelectorAll(`#${id} button.btn-invia-sollecito`).forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    const riga = righe[Number(b.closest("tr").dataset.riga)];
+    apriInvio(riga, attiMese.filter(a => a.numero_bando === riga.numero_bando));
+  });
+  document.querySelectorAll(`#${id} input.spunta-sollecito`).forEach(c => {
+    c.onclick = e => e.stopPropagation();
+    c.onchange = () => spuntaSollecito(righe[Number(c.closest("tr").dataset.riga)], c.checked).catch(e => alert(e.message));
+  });
+}
+
+// Monitoraggio del mese: invio e spunta per bando, solo se la pagina è aperta da un monitoraggio
+const parametri = new URLSearchParams(location.search);
+const monitoraggio = parametri.get("monitoraggio");
+let datiInvii = { solleciti: {}, posta: {} };
+let invioAperto = null;
+
+function controlliInvio(a) {
+  if (!monitoraggio) return "";
+  const stato = datiInvii.solleciti[a.numero_bando];
+  const etichettaStato = stato
+    ? `${stato.stato === "inviata" ? "Inviata" : "Inviata a mano"} il ${oraIt(stato.quando)}${stato.autore ? ` da ${esc(stato.autore)}` : ""}`
+    : "Non ancora inviata";
+  const conRdp = attiMese.some(x => x.numero_bando === a.numero_bando && (x.rdp || []).some(r => r.email));
+  return `<button type="button" class="btn-invia-sollecito solo-admin"${datiInvii.posta.configurata && conRdp ? "" : " disabled"}
+      title="${datiInvii.posta.configurata ? (conRdp ? "" : "Nessuna email RdP") : "Invio email non configurato"}">Anteprima e invio</button>
+    <label class="solo-admin"><input type="checkbox" class="spunta-sollecito"${stato ? " checked" : ""}> inviata</label>
+    <span class="chip ${stato ? "ok" : "warn"}">${etichettaStato}</span>`;
+}
+
+function apriInvio(riga, gruppo) {
+  const m = window.Solleciti.crea(riga, gruppo, monitoraggio);
+  const destinatari = window.Solleciti.destinatari(gruppo);
+  const corpo = m.corpo + (m.collegamento ? `\n\nLink al bando su Selezioni Online:\n${m.collegamento}` : "");
+  invioAperto = { numero_bando: riga.numero_bando, destinatari, oggetto: m.oggetto, corpo };
+  $("titolo-sollecito").textContent = `Sollecito per il bando ${riga.numero_bando}`;
+  $("testo-sollecito").value = `A: ${destinatari.join("; ")}\nOggetto: ${m.oggetto}\n\n${corpo}`;
+  $("avviso-copia-manuale").textContent = datiInvii.posta.prova
+    ? `Modalità di prova: l'email andrà solo a ${datiInvii.posta.prova} e il bando non risulterà inviato.`
+    : "Controlla il testo: l'email parte solo premendo Invia.";
+  $("azioni-invio").hidden = false;
+  $("esito-invio").textContent = "";
+  $("dialog-sollecito").showModal();
+}
+
+async function inviaSollecito(conferma = false) {
+  const url = `/api/monitoraggi/${monitoraggio}/solleciti/invia`;
+  const opzioni = (extra) => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...invioAperto, ...extra }) });
+  const r = await fetch(url, opzioni({ conferma }));
+  const corpo = await r.json().catch(() => ({}));
+  if (r.status === 409 && corpo.gia_inviato) {
+    if (confirm("Questo sollecito risulta già inviato. Vuoi inviarlo di nuovo?")) return inviaSollecito(true);
+    return;
+  }
+  if (!r.ok) { $("esito-invio").textContent = corpo.error || `Errore ${r.status}`; return; }
+  $("esito-invio").textContent = corpo.prova ? "Inviata in prova." : "Inviata.";
+  await caricaInvii();
+  disegnaSolleciti();
+}
+
+async function spuntaSollecito(riga, inviata) {
+  const r = await fetch(`/api/monitoraggi/${monitoraggio}/solleciti/${encodeURIComponent(riga.numero_bando)}`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ inviata }) });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Errore ${r.status}`);
+  await caricaInvii();
+  disegnaSolleciti();
+}
+
+async function caricaInvii() {
+  if (!monitoraggio) return;
+  const { corpo } = await json(`/api/monitoraggi/${monitoraggio}/solleciti`);
+  datiInvii = corpo;
+  $("barra-monitoraggio").hidden = false;
+  $("barra-monitoraggio").innerHTML = `Monitoraggio di <b>${esc(corpo.etichetta)}</b>, dati di ${esc(corpo.etichetta_dati)} ·
+    <a href="/monitoraggio/mensili/${esc(monitoraggio)}">torna al monitoraggio</a>${corpo.posta.prova ? ` · <span class="chip warn">Modalità di prova: ${esc(corpo.posta.prova)}</span>` : ""}`;
 }
 
 function avvisoFreschezza() {
@@ -775,7 +852,13 @@ function selezionaSchedaAtti(id) {
 }
 [["tab-stato-atti", "stato-atti"], ["tab-graduatorie-mese", "graduatorie-mese"], ["tab-scorrimenti-mese", "scorrimenti-mese"]]
   .forEach(([tab, panel]) => $(tab).addEventListener("click", () => selezionaSchedaAtti(panel)));
-$("mese-solleciti").value = meseDi(0);
+$("mese-solleciti").value = parametri.get("mese") || meseDi(0);
+if (parametri.get("mese")) impostaMese(parametri.get("mese"));
+if (monitoraggio) {
+  selezionaSchedaAtti("graduatorie-mese");
+  $("conferma-invio").onclick = () => inviaSollecito().catch(e => { $("esito-invio").textContent = e.message; });
+  $("chiudi-sollecito").addEventListener("click", () => { $("azioni-invio").hidden = true; });
+}
 $("mese-solleciti").addEventListener("change", () => caricaSolleciti().catch(e => {
   $("freschezza-graduatorie").textContent = `Impossibile caricare le difformità: ${e.message}`;
   $("freschezza-scorrimenti").textContent = `Impossibile caricare le difformità: ${e.message}`;
@@ -794,7 +877,7 @@ $("aggiorna").onclick = async () => {
 };
 
 (async () => {
-  try { await caricaStato(); await caricaAtti(); await caricaSolleciti(); await caricaRiepilogo(); await caricaBandi(); }
+  try { await caricaInvii(); await caricaStato(); await caricaAtti(); await caricaSolleciti(); await caricaRiepilogo(); await caricaBandi(); }
   catch (e) { $("stato").innerHTML = `<div class="chip err">Errore: ${esc(e.message)}</div>`; }
 })();
 </script>

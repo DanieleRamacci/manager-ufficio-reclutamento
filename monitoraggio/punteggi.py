@@ -374,6 +374,28 @@ def _data_it(v) -> str:
     return "/".join(reversed(d.split("-"))) if d else ""
 
 
+GIALLO_EXCEL = "FFF3C4"
+
+
+def righe_excel_scheda(s) -> list[tuple[list, bool]]:
+    """Righe per candidato di una scheda, dall'ultima verifica in memoria, e se manca il protocollo."""
+    dati = _candidati.get(s["id"])
+    if not dati:
+        return []
+    extra = json.loads(s["dati_extra"]) if s["dati_extra"] else {}
+    righe = []
+    for x in sorted(dati["candidati"], key=lambda c: (c.get("graduatoria") is None, c.get("graduatoria") or 0)):
+        righe.append(([s["codice_originale"], extra.get("sede"), extra.get("struttura_destinataria"),
+                       extra.get("numero_posti"), extra.get("profilo"), x.get("username"),
+                       (x.get("cognome") or "").upper(), (x.get("nome") or "").upper(),
+                       _data_it(x.get("data_nascita")), x.get("codice_fiscale"), x.get("email"), x.get("email_pec"),
+                       x.get("totale_punteggio"), x.get("graduatoria"), x.get("esito"), x.get("note"),
+                       _data_it(x.get("data_protocollo_graduatoria")), x.get("numero_protocollo_graduatoria"),
+                       _data_it(x.get("data_protocollo_assunzione_idoneo")), x.get("numero_protocollo_assunzione_idoneo")],
+                      not str(x.get("numero_protocollo_graduatoria") or "").strip()))
+    return righe
+
+
 def excel_graduatorie(conn, dal: str, al: str) -> bytes:
     """Foglio "Graduatorie pubblicate" con le colonne dell'estrazione Punteggi di SOL."""
     import openpyxl
@@ -385,20 +407,11 @@ def excel_graduatorie(conn, dal: str, al: str) -> bytes:
     ws.append(INTESTAZIONI_EXCEL)
     for c in ws[1]:
         c.font = Font(bold=True)
-    giallo = PatternFill("solid", fgColor="FFF3C4")
+    giallo = PatternFill("solid", fgColor=GIALLO_EXCEL)
     for s in schede_periodo(conn, dal, al):
-        dati = _candidati.get(s["id"])
-        if not dati:
-            continue
-        extra = json.loads(s["dati_extra"]) if s["dati_extra"] else {}
-        for x in sorted(dati["candidati"], key=lambda c: (c.get("graduatoria") is None, c.get("graduatoria") or 0)):
-            ws.append([s["codice_originale"], extra.get("sede"), extra.get("struttura_destinataria"), extra.get("numero_posti"),
-                       extra.get("profilo"), x.get("username"), (x.get("cognome") or "").upper(), (x.get("nome") or "").upper(),
-                       _data_it(x.get("data_nascita")), x.get("codice_fiscale"), x.get("email"), x.get("email_pec"),
-                       x.get("totale_punteggio"), x.get("graduatoria"), x.get("esito"), x.get("note"),
-                       _data_it(x.get("data_protocollo_graduatoria")), x.get("numero_protocollo_graduatoria"),
-                       _data_it(x.get("data_protocollo_assunzione_idoneo")), x.get("numero_protocollo_assunzione_idoneo")])
-            if not str(x.get("numero_protocollo_graduatoria") or "").strip():
+        for valori, senza_protocollo in righe_excel_scheda(s):
+            ws.append(valori)
+            if senza_protocollo:
                 for c in ws[ws.max_row]:
                     c.fill = giallo  # protocollo della graduatoria mancante
     ws.freeze_panes = "A2"

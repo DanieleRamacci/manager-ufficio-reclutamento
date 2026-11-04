@@ -3,10 +3,9 @@
 Il server non può aprire Chrome né leggere il cookie di un altro sito: l'utente fa il login su SOL nel
 suo browser e incolla qui il valore del cookie `ticket`, lo stesso usato dalla prova locale, oppure lo
 invia il programma scaricabile da questa pagina (static/collega_sol.py). SOL dice chi è l'utente; entra
-solo chi è in UTENTI_AMMESSI. Il ticket resta in memoria, per utente, mai su disco.
+solo chi è autorizzato (monitoraggio/utenti.py). Il ticket resta in memoria, per utente, mai su disco.
 """
 import io
-import os
 import re
 import secrets
 import stat
@@ -18,7 +17,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, redirect, render_template_string, request, send_file, session
 
-from . import sol_sessione
+from . import sol_sessione, utenti
 
 DURATA_ACCESSO = timedelta(hours=12)
 DURATA_LINK = timedelta(minutes=2)
@@ -35,11 +34,6 @@ bp = Blueprint("accesso", __name__)
 
 def _adesso() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def utenti_ammessi() -> set[str]:
-    """Nomi utente di SOL (nome.cognome); un'email vale per la parte prima della @."""
-    return {u.strip().lower().split("@")[0] for u in os.environ.get("UTENTI_AMMESSI", "").split(",") if u.strip()}
 
 
 def pulisci_ticket(testo: str) -> str | None:
@@ -112,8 +106,8 @@ def _riconosci(testo: str) -> tuple[dict | None, str | None, int]:
     if not chi:
         return None, ("Selezioni Online non riconosce questo ticket: potrebbe essere scaduto. "
                       "Rifai il login su Selezioni Online e copia di nuovo il cookie."), 401
-    if chi["username"] not in utenti_ammessi():
-        return None, f"L'utente {chi['username']} non è autorizzato: va aggiunto a UTENTI_AMMESSI.", 403
+    if not utenti.ruolo(chi["username"]):
+        return None, f"L'utente {chi['username']} non è autorizzato: chiedi a un amministratore di aggiungerlo.", 403
     with _lock:
         _ticket[chi["username"]] = (ticket, _adesso() + sol_sessione.DURATA_TICKET)
     return chi, None, 200

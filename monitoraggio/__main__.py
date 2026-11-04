@@ -103,6 +103,7 @@ def _login_sso(app):
 def cmd_web(args) -> int:
     from flask import Flask, redirect
 
+    from .mensile_web import crea_blueprint_mensile
     from .web import PAGINE_LOCALI, crea_blueprint, crea_blueprint_pagine_esistenti
 
     app = Flask(__name__)
@@ -117,6 +118,7 @@ def cmd_web(args) -> int:
                                           token_utente=token_utente, login_url=login_url, logout_url=logout_url,
                                           login_sol=True))
     app.register_blueprint(crea_blueprint_pagine_esistenti())
+    app.register_blueprint(crea_blueprint_mensile(utente_corrente=utente))
     app.add_url_rule("/", "root", lambda: redirect("/monitoraggio"))  # "root": usato da auth.py dopo il login
     conn = db.connetti()
     db.inizializza(conn)

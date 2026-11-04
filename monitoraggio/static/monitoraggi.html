@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Monitoraggi mensili</title>
+  <link rel="stylesheet" href="/monitoraggio/mensile.css">
+  <script src="/monitoraggio/menu.js" defer></script>
+</head>
+<body>
+  <main id="contenuto"><p class="muted">Caricamento…</p></main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const esc = (t) => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const ora = (iso) => iso ? new Date(iso).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" }) : "";
+    const MESI = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
+    const meseScelto = location.pathname.split("/")[3];
+    async function chiama(url, opzioni) {
+      const r = await fetch(url, { cache: "no-store", ...opzioni });
+      const corpo = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(corpo.error || `Errore ${r.status}`);
+      return corpo;
+    }
+    const jsonPost = (metodo, dati) => ({ method: metodo, headers: { "Content-Type": "application/json" }, body: JSON.stringify(dati) });
+
+    async function elenco() {
+      const { monitoraggi } = await chiama("/api/monitoraggi");
+      const oggi = new Date();
+      $("contenuto").innerHTML = `
+        <h1>Monitoraggi mensili</h1>
+        <section class="solo-admin">
+          <h2>+ Crea monitoraggio</h2>
+          <form id="crea" class="riga">
+            <label>Mese <select id="mese">${MESI.map((m, i) => `<option value="${i + 1}"${i === oggi.getMonth() ? " selected" : ""}>${m}</option>`).join("")}</select></label>
+            <span class="muted" style="padding-bottom:9px">${oggi.getFullYear()}</span>
+            <button class="primario" type="submit">+ Crea monitoraggio</button>
+          </form>
+          <p class="muted small">I due Excel, vuoti e già rinominati, sono subito scaricabili. I dati di riferimento sono quelli del mese precedente: si possono cambiare dopo.</p>
+          <div class="errore" id="errore" role="alert" hidden></div>
+        </section>
+        <section><h2>Monitoraggi creati</h2><div class="scroll"><table>
+          <thead><tr><th>Mese</th><th>Dati di</th><th>Solleciti segnati</th><th>Creato</th></tr></thead><tbody>
+          ${monitoraggi.map(m => `<tr><td><a href="/monitoraggio/mensili/${esc(m.mese)}">${esc(m.etichetta)}</a></td><td>${esc(m.etichetta_dati)}</td><td>${m.solleciti_inviati}</td><td>${esc(m.creato_da)} ${ora(m.creato_il)}</td></tr>`).join("")
+            || `<tr><td colspan="4" class="muted">Nessun monitoraggio creato.</td></tr>`}
+          </tbody></table></div></section>`;
+      $("crea").onsubmit = async (e) => {
+        e.preventDefault();
+        try {
+          const r = await chiama("/api/monitoraggi", jsonPost("POST", { numero_mese: Number($("mese").value) }));
+          location.href = `/monitoraggio/mensili/${r.mese}`;
+        } catch (err) { $("errore").hidden = false; $("errore").textContent = err.message; }
+      };
+    }
+
+    function disegna(m) {
+      const e = m.email, p = m.posta;
+      const opzioniMesi = [];
+      const [anno, numero] = m.mese.split("-").map(Number);
+      for (let i = 0; i < 13; i++) {
+        const d = new Date(anno, numero - 1 - i, 1);
+        const valore = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        opzioniMesi.push(`<option value="${valore}"${valore === m.mese_dati ? " selected" : ""}>${MESI[d.getMonth()]} ${String(d.getFullYear()).slice(2)}</option>`);
+      }
+      $("contenuto").innerHTML = `
+        <p class="small"><a href="/monitoraggio/mensili">← Monitoraggi mensili</a></p>
+        <h1>Monitoraggio di ${esc(m.etichetta)}</h1>
+        <p class="muted">Dati di ${esc(m.etichetta_dati)} · creato da ${esc(m.creato_da)} il ${ora(m.creato_il)}</p>
+        ${p.prova ? `<div class="avviso">Modalità di prova: le email vanno solo a ${esc(p.prova)}.</div>` : ""}
+        <section>
+          <h2>Vista e difformità</h2>
+          <div class="azioni">
+            <a class="pulsante primario" href="${esc(m.link_vista)}">Difformità del mese e solleciti</a>
+            <a class="pulsante" href="/monitoraggio?mese=${esc(m.mese_dati)}">Tutti gli atti</a>
+          </div>
+          <p class="muted small">Nelle difformità trovi anteprima, invio e spunta per ogni bando. Solleciti segnati: ${m.solleciti.length}.</p>
+          <label class="solo-admin">Mese dei dati <select id="mese-dati">${opzioniMesi.join("")}</select></label>
+        </section>
+        <section class="solo-admin">
+          <h2>File Excel</h2>
+          <div class="azioni">
+            <a class="pulsante primario" href="/api/monitoraggi/${m.mese}/excel/scorrimenti">${esc(m.file_scorrimenti)}</a>
+            <a class="pulsante primario" href="/api/monitoraggi/${m.mese}/excel/graduatorie">${esc(m.file_graduatorie)}</a>
+          </div>
+          <p class="muted small">Sono vuoti e già rinominati: caricali sulla cartella condivisa.</p>
+          <details>
+            <summary>Graduatorie con i dati raccolti</summary>
+            <p class="small"><a href="/api/monitoraggi/${m.mese}/excel/graduatorie-con-dati">Scarica il file compilato con i dati di ${esc(m.etichetta_dati)}</a></p>
+            ${m.graduatorie_senza_elenco ? `<div class="avviso">${m.graduatorie_senza_elenco} graduatorie senza elenco dei candidati: lancia prima la verifica dei punteggi.</div>` : ""}
+            <p class="muted small">Contiene dati personali dei candidati, se la verifica è stata eseguita.</p>
+          </details>
+        </section>
+        <section class="solo-admin">
+          <h2>Email di richiesta di compilazione</h2>
+          <div class="riga">
+            <label class="campo-largo">Link del file scorrimenti <input id="link-scorrimenti" type="url" value="${esc(m.link_scorrimenti)}" placeholder="https://"></label>
+            <label class="campo-largo">Link del file graduatorie <input id="link-graduatorie" type="url" value="${esc(m.link_graduatorie)}" placeholder="https://"></label>
+          </div>
+          <div class="azioni"><button type="button" id="salva-link">Salva i link</button></div>
+          <h3>Destinatari</h3>
+          <textarea id="destinatari" style="min-height:70px" placeholder="un indirizzo per riga">${esc(e.destinatari.join("\n"))}</textarea>
+          <div class="azioni"><button type="button" id="salva-destinatari">Salva i destinatari</button><span class="muted small">Valgono per tutti i mesi.</span></div>
+          <h3>Anteprima</h3>
+          <p class="small"><b>Oggetto:</b> ${esc(e.oggetto)}</p>
+          <textarea id="anteprima" readonly>${esc(e.corpo)}</textarea>
+          ${e.mancanti.length ? `<div class="avviso">Per inviare manca: ${esc(e.mancanti.join(", "))}.</div>` : ""}
+          ${p.configurata ? "" : `<div class="avviso">Invio email non configurato: puoi copiare il testo.</div>`}
+          <div class="azioni">
+            <button class="primario" type="button" id="invia"${p.configurata && !e.mancanti.length ? "" : " disabled"}>Invia ai ${e.destinatari.length} destinatari</button>
+            <button type="button" id="copia">Copia il testo</button>
+            <span class="muted small" id="esito" aria-live="polite"></span>
+          </div>
+          <details style="margin-top:14px">
+            <summary>Modifica il testo</summary>
+            <p class="muted small">Segnaposto: {mese} {mese_dati} {cartella} {file_scorrimenti} {link_scorrimenti} {file_graduatorie} {link_graduatorie}</p>
+            <label class="campo-largo">Oggetto <input id="modello-oggetto" value="${esc(e.modello_oggetto)}"></label>
+            <textarea id="modello-testo" style="margin-top:10px">${esc(e.modello_testo)}</textarea>
+            <div class="azioni">
+              <button type="button" id="salva-mese">Salva solo per ${esc(m.etichetta)}</button>
+              <button type="button" id="salva-generale">Salva per i mesi successivi</button>
+              ${e.personalizzato ? `<button type="button" id="ripristina">Torna al testo generale</button>` : ""}
+            </div>
+          </details>
+          <div class="errore" id="errore" role="alert" hidden></div>
+        </section>
+        <section class="solo-admin">
+          <h2>Registro degli invii</h2>
+          <div class="scroll"><table><thead><tr><th>Quando</th><th>Tipo</th><th>Bando</th><th>A</th><th>Esito</th><th>Da</th></tr></thead><tbody>
+          ${m.invii.map(i => `<tr><td>${ora(i.quando)}</td><td>${i.tipo === "sollecito" ? "Sollecito" : "Compilazione"}</td><td>${esc(i.numero_bando)}</td><td>${esc(i.destinatari)}</td><td>${esc(i.esito)}${i.errore ? `: ${esc(i.errore)}` : ""}</td><td>${esc(i.utente)}</td></tr>`).join("")
+            || `<tr><td colspan="6" class="muted">Nessun invio.</td></tr>`}
+          </tbody></table></div>
+        </section>`;
+      const errore = (t) => { $("errore").hidden = !t; $("errore").textContent = t || ""; };
+      const azione = (id, fn) => { const b = $(id); if (b) b.onclick = async () => { try { errore(); await fn(); } catch (err) { errore(err.message); } }; };
+      const aggiorna = async (dati) => disegna(await chiama(`/api/monitoraggi/${m.mese}`, jsonPost("PUT", dati)));
+      $("mese-dati").onchange = () => aggiorna({ mese_dati: $("mese-dati").value }).catch(err => errore(err.message));
+      azione("salva-link", () => aggiorna({ link_scorrimenti: $("link-scorrimenti").value, link_graduatorie: $("link-graduatorie").value }));
+      azione("salva-destinatari", async () => { await chiama("/api/impostazioni/email", jsonPost("PUT", { destinatari: $("destinatari").value })); await dettaglio(); });
+      azione("salva-mese", () => aggiorna({ oggetto: $("modello-oggetto").value, testo: $("modello-testo").value }));
+      azione("salva-generale", async () => {
+        await chiama("/api/impostazioni/email", jsonPost("PUT", { oggetto: $("modello-oggetto").value, testo: $("modello-testo").value }));
+        await aggiorna({ oggetto: "", testo: "" });
+      });
+      azione("ripristina", () => aggiorna({ oggetto: "", testo: "" }));
+      azione("copia", async () => {
+        const testo = `Oggetto: ${e.oggetto}\n\n${e.corpo}`;
+        try { await navigator.clipboard.writeText(testo); $("esito").textContent = "Copiato."; }
+        catch { $("anteprima").select(); $("esito").textContent = "Copia automatica non disponibile: seleziona e copia."; }
+      });
+      azione("invia", async () => {
+        const avviso = p.prova ? `In prova, solo a ${p.prova}` : `A: ${e.destinatari.join(", ")}`;
+        if (!confirm(`Inviare l'email?\n\n${avviso}`)) return;
+        const r = await chiama(`/api/monitoraggi/${m.mese}/email-compilazione/invia`, { method: "POST" });
+        await dettaglio();
+        $("esito").textContent = r.prova ? "Inviata in prova." : "Inviata.";
+      });
+    }
+    const dettaglio = async () => disegna(await chiama(`/api/monitoraggi/${meseScelto}`));
+    (meseScelto ? dettaglio() : elenco()).catch(err => { $("contenuto").innerHTML = `<div class="errore" role="alert">${esc(err.message)}</div>`; });
+  </script>
+</body>
+</html>

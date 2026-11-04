@@ -4,7 +4,7 @@ import time
 from flask import Flask, session
 from flask_session import Session
 
-from monitoraggio import accesso, sol_sessione, web
+from monitoraggio import accesso, sol_sessione, utenti, web
 from monitoraggio.fonti import sol_rdp
 
 TICKET = "TICKET_abcdef0123456789"
@@ -49,7 +49,7 @@ def test_pulisci_ticket():
 
 def test_ammessi_per_nome_utente(monkeypatch):
     monkeypatch.setenv("UTENTI_AMMESSI", "mario.rossi, Anna.Bianchi@cnr.it")
-    assert accesso.utenti_ammessi() == {"mario.rossi", "anna.bianchi"}
+    assert utenti.iniziali() == {"mario.rossi", "anna.bianchi"}
 
 
 def _app(tmp_path, monkeypatch, nome="mario.rossi"):
