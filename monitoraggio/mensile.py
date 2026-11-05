@@ -3,7 +3,7 @@ import json
 import re
 from datetime import date, datetime, timezone
 
-from . import excel_mese, posta
+from . import config, excel_mese, posta
 
 SEGNAPOSTI = ("mese", "mese_dati", "cartella", "file_scorrimenti", "link_scorrimenti", "file_graduatorie", "link_graduatorie")
 _CODICE_FISCALE = re.compile(r"\b[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]\b", re.I)
@@ -85,7 +85,7 @@ def mese_successivo(mese: str) -> str:
     return f"{anno + 1}-01" if numero == 12 else f"{anno}-{numero + 1:02d}"
 
 
-TIPOLOGIE_MONITORABILI = {"TI": ("tempo_indeterminato", "reclutamento_speciale", "categorie_protette"), "MOB": ("mobilita", "comando")}
+TIPOLOGIE_MONITORABILI = config.TIPOLOGIE_MONITORATE
 
 
 def tipologie_di(monitoraggio: dict) -> list[str]:
@@ -123,9 +123,9 @@ def _genera_versione(conn, mese: str, autore: str | None, motivo: str | None, az
 
     monitoraggio = leggi(conn, mese)
     dal, al = periodo_dati(monitoraggio)
-    righe = atti.elenco_atti(conn, dal, al)
+    righe = [r for r in atti.elenco_atti(conn, dal, al) if config.nel_monitoraggio(r.get("tipologia"))]
     inviati = solleciti(conn, mese)
-    conteggi = punteggi.elenco_periodo(conn, dal, al)
+    conteggi = [p for p in punteggi.elenco_periodo(conn, dal, al) if config.nel_monitoraggio(p.get("tipologia"))]
     conn.execute("BEGIN IMMEDIATE")
     try:
         versione = conn.execute("SELECT COALESCE(MAX(versione), 0) + 1 FROM monitoraggio_versione WHERE mese = ?",

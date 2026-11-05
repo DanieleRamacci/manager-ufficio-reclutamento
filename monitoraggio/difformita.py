@@ -39,10 +39,11 @@ def righe_correnti(conn, dal: str, al: str, tutti: bool = False) -> list[dict]:
     """Come righeGraduatoriaUnificate() in riepilogo.html: atti del periodo con i problemi dei punteggi.
     `tutti`: anche bandi e rettifiche, che il registro non segue."""
     righe = [r for r in atti.elenco_atti(conn, dal, al) if tutti or r["atto"] in ATTI_SEGUITI]
+    righe = [r for r in righe if config.nel_monitoraggio(r.get("tipologia"))]
     if atti.fonti_in_attesa(conn):
         return righe
     for p in punteggi.elenco_periodo(conn, dal, al):
-        if not dal <= (p.get("data") or "") <= al:
+        if not dal <= (p.get("data") or "") <= al or not config.nel_monitoraggio(p.get("tipologia")):
             continue
         note = [n for n in (p.get("difformita") or []) if not re.search(r"scorrimento|assunzione idoneo", n, re.I)]
         stessa = lambda a: a["bando_id"] == p["bando_id"] if a.get("bando_id") and p.get("bando_id") else a.get("numero_bando") == p.get("numero_bando")  # noqa: E731
@@ -62,7 +63,7 @@ def righe_correnti(conn, dal: str, al: str, tutti: bool = False) -> list[dict]:
         elif note:
             contesto = next((a for a in righe if stessa(a)), {})
             righe.append({"bando_id": p.get("bando_id"), "numero_bando": p.get("numero_bando"), "codice": p.get("codice"),
-                          "tipologia": contesto.get("tipologia"), "titolo_bando": contesto.get("titolo_bando"), "atto": "graduatoria",
+                          "tipologia": p.get("tipologia") or contesto.get("tipologia"), "titolo_bando": contesto.get("titolo_bando"), "atto": "graduatoria",
                           "data": p.get("data"), "protocollo": p.get("protocollo"), "note": list(dict.fromkeys(note)), "difforme": True,
                           "fonti": {"sol": {"stato": atti.PRESENTE if p.get("allegato_sol") else atti.MANCANTE, "protocollo": p.get("protocollo")}}})
     return righe

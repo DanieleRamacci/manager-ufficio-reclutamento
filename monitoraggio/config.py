@@ -39,10 +39,18 @@ SOL_TIPI = {
     "F:jconon_call_mobility:folder": "mobilita",
     "F:jconon_call_comandi_distacchi:folder": "comando",
 }
+# Tipologie del monitoraggio mensile. Le categorie protette si raccolgono per le pagine URP e lo stato
+# complessivo, ma non entrano nel monitoraggio.
+TIPOLOGIE_MONITORATE = {"TI": ("tempo_indeterminato", "reclutamento_speciale"), "MOB": ("mobilita", "comando")}
 # finestra dei bandi "attivi" per la raccolta incrementale degli allegati (research R8)
 SOL_MESI_ATTIVI = 36
 
 GIORNI_SETTIMANA = ["lun", "mar", "mer", "gio", "ven", "sab", "dom"]
+
+
+def nel_monitoraggio(tipologia: str | None) -> bool:
+    """Una riga senza tipologia nota resta: il filtro non deve nascondere una difformità."""
+    return not tipologia or any(tipologia in tipi for tipi in TIPOLOGIE_MONITORATE.values())
 
 
 def _env(nome: str, predefinito: str) -> str:

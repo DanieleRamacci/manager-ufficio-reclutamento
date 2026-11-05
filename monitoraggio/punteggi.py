@@ -342,7 +342,7 @@ def elenco_periodo(conn, dal: str, al: str) -> list[dict]:
         noti = scorrimenti_noti(conn, s)
         sol_scorr = v.get("scorrimenti_sol")
         righe.append({
-            "bando_id": s["bando_id"], "scheda_id": s["id"], "numero_bando": s["numero_bando"],
+            "bando_id": s["bando_id"], "scheda_id": s["id"], "numero_bando": s["numero_bando"], "tipologia": s["tipologia"],
             "codice_sotto": s["codice_sotto"], "codice": s["codice_originale"], "url": s["url"],
             "url_punteggi": url_punteggi(s["id_esterno"]),
             "protocollo": rif["protocollo"], "data": rif["data"], "documento": rif["titolo"], "allegato_sol": rif["allegato_sol"],

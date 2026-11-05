@@ -137,7 +137,7 @@
     <label class="muted">Mese <input type="month" id="mese-solleciti"></label>
     <label class="muted">Tipologia <select id="tipologia-solleciti">
       <option value="">Tutte</option>
-      <option value="indeterminato" title="Su Selezioni Online: concorsi pubblici, con reclutamento speciale e categorie protette">Tempo indeterminato (concorsi pubblici)</option>
+      <option value="indeterminato" title="Su Selezioni Online: concorsi pubblici e reclutamento speciale. Le categorie protette non fanno parte del monitoraggio">Tempo indeterminato (concorsi pubblici)</option>
       <option value="mobilita">Mobilità e comandi</option>
     </select></label>
   </nav>
@@ -586,7 +586,7 @@ function righeGraduatoriaUnificate() {
     const fonteNessunDato = { stato: "non_caricato" };
     sintetiche.push({
       bando_id: p.bando_id, numero_bando: p.numero_bando, codice: p.codice,
-      codice_sotto: p.codice_sotto, tipologia: contesto?.tipologia, titolo: p.documento || "Graduatoria",
+      codice_sotto: p.codice_sotto, tipologia: p.tipologia || contesto?.tipologia, titolo: p.documento || "Graduatoria",
       titolo_bando: contesto?.titolo_bando, atto: "graduatoria", data: p.data, protocollo: p.protocollo,
       fonti: { sol: { stato: p.allegato_sol ? "presente" : "mancante", protocollo: p.protocollo, url: p.url },
         urp: { ...fonteNessunDato }, segreteria: { ...fonteNessunDato } },
@@ -601,10 +601,10 @@ function righeGraduatoriaUnificate() {
 }
 
 // Tipologie monitorate. Una riga senza tipologia nota compare sempre: il filtro non deve nascondere una difformità.
-const GRUPPI_TIPOLOGIA = { indeterminato: ["tempo_indeterminato", "reclutamento_speciale", "categorie_protette"],
+const GRUPPI_TIPOLOGIA = { indeterminato: ["tempo_indeterminato", "reclutamento_speciale"],
                            mobilita: ["mobilita", "comando"] };
 function disegnaSolleciti() {
-  attiMese = righeGraduatoriaUnificate();
+  attiMese = righeGraduatoriaUnificate().filter(a => a.tipologia !== "categorie_protette");
   const gruppo = GRUPPI_TIPOLOGIA[$("tipologia-solleciti").value];
   const visibili = gruppo ? attiMese.filter(a => !a.tipologia || gruppo.includes(a.tipologia)) : attiMese;
   const graduatorie = visibili.filter(a => a.atto === "graduatoria");

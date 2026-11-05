@@ -1289,3 +1289,43 @@ def test_esegui_referenti_senza_collegamento_lo_dice_subito(ambiente):
     r = ambiente().post("/api/impostazioni/attivita/referenti/esegui")
     assert r.status_code == 401 and "Collega-SOL" in r.get_json()["error"]
 
+
+def _mese_con_categorie_protette(ambiente, db):
+    from monitoraggio import collegamento
+    admin, mese = _mese_con_dati(ambiente, db)
+    salva(db, "sol", [scheda("sol", "s2", "301.67 OTP IN PI", "301.67", tipologia="categorie_protette", data="2026-04-02")])
+    salva(db, "urp", [scheda("urp", "/node/2", "301.67 OTP IN PI", "301.67", tipologia="categorie_protette", sezione="categorie-riservatarie",
+                             data="2026-04-02", documenti=[doc("g3", "graduatoria", "465420", "2026-04-20")])])
+    collegamento.collega(db)
+    return admin, mese
+
+
+def test_categorie_protette_fuori_dal_monitoraggio(ambiente, db):
+    from monitoraggio import difformita
+    admin, mese = _mese_con_categorie_protette(ambiente, db)
+    assert any(a["numero_bando"] == "301.67" for a in admin.get("/api/atti?dal=2026-04-01&al=2026-04-30").get_json()["atti"])  # lo stato complessivo resta
+    codici = {r["numero_bando"] for r in admin.get(f"/api/monitoraggi/{mese}/atti").get_json()["righe"]}
+    assert "301.67" not in codici and "367.479" in codici
+    anteprima = admin.get("/api/monitoraggi/anteprima?mese=2026-04").get_json()["per_tipologia"]["TI"]
+    assert anteprima["atti"] == len(codici)
+    difformita.sincronizza(db, mese)
+    assert db.execute("SELECT COUNT(*) FROM difformita WHERE numero_bando = '301.67'").fetchone()[0] == 0
+    assert admin.get(f"/api/monitoraggi/{mese}/comunicazioni/301.67 OTP IN PI/messaggio").status_code == 404
+    wb = openpyxl.load_workbook(io.BytesIO(excel_mese.excel_graduatorie(db, "2026-04-01", "2026-04-30")))
+    assert not any("301.67" in str(c) for ws in wb for riga in ws.iter_rows(values_only=True) for c in riga if c)
+    assert admin.post(f"/api/monitoraggi/{mese}/chiudi").status_code == 200
+    assert db.execute("SELECT COUNT(*) FROM monitoraggio_riga WHERE numero_bando = '301.67'").fetchone()[0] == 0
+
+
+def test_aggiornamento_toglie_le_categorie_protette_dal_registro(ambiente, db):
+    from monitoraggio import db as dbm
+    admin, mese = _mese_con_categorie_protette(ambiente, db)
+    for numero, tipologia in (("301.67", "categorie_protette"), ("301.66", None), ("367.479", "tempo_indeterminato")):
+        cur = db.execute("INSERT INTO difformita (mese, numero_bando, codice, tipologia, atto, rilievi_iniziali, rilievi_attuali, stato, prima_rilevata_il, "
+                         "ultimo_controllo_il) VALUES (?, ?, ?, ?, 'graduatoria', '[]', '[]', 'aperta', 'x', 'x')", (mese, numero, numero, tipologia))
+        db.execute("INSERT INTO difformita_evento (difformita_id, tipo, quando, origine) VALUES (?, 'rilevata', 'x', 'x')", (cur.lastrowid,))
+    db.execute("UPDATE schema_version SET versione = 14")
+    dbm.inizializza(db)
+    assert {r[0] for r in db.execute("SELECT numero_bando FROM difformita")} == {"301.66", "367.479"}
+    assert db.execute("SELECT COUNT(*) FROM difformita_evento").fetchone()[0] == 2
+

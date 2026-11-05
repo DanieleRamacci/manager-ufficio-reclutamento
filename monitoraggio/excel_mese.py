@@ -9,7 +9,7 @@ from openpyxl.comments import Comment
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from . import punteggi
+from . import config, punteggi
 from .normalizza import data_iso
 
 MODELLI = Path(__file__).resolve().parent / "modelli"
@@ -102,8 +102,12 @@ def _compila(ws, intestazioni: list[str], righe: list[tuple[list, bool]]) -> Non
 
 
 def _bandi(conn, dal: str, al: str) -> list:
-    return conn.execute("SELECT * FROM scheda WHERE fonte = 'sol' AND presente = 1 AND data_pubblicazione BETWEEN ? AND ? "
-                        "ORDER BY data_pubblicazione, codice_originale", (dal, al)).fetchall()
+    return [s for s in conn.execute("SELECT * FROM scheda WHERE fonte = 'sol' AND presente = 1 AND data_pubblicazione BETWEEN ? AND ? "
+                                    "ORDER BY data_pubblicazione, codice_originale", (dal, al)) if config.nel_monitoraggio(s["tipologia"])]
+
+
+def _graduatorie(conn, dal: str, al: str) -> list:
+    return [s for s in punteggi.schede_periodo(conn, dal, al) if config.nel_monitoraggio(s["tipologia"])]
 
 
 def _riga_bando(s) -> tuple[list, bool]:
@@ -125,14 +129,14 @@ def _righe_graduatoria(s) -> list[tuple[list, bool]]:
 
 
 def graduatorie_senza_elenco(conn, dal: str, al: str) -> int:
-    return sum(1 for s in punteggi.schede_periodo(conn, dal, al) if not punteggi.righe_excel_scheda(s))
+    return sum(1 for s in _graduatorie(conn, dal, al) if not punteggi.righe_excel_scheda(s))
 
 
 def excel_graduatorie(conn, dal: str, al: str) -> bytes:
     """Il modello compilato con i bandi e le graduatorie del periodo."""
     wb = openpyxl.load_workbook(MODELLI / MODELLO_GRADUATORIE)
     bandi = _bandi(conn, dal, al)
-    graduatorie = punteggi.schede_periodo(conn, dal, al)
+    graduatorie = _graduatorie(conn, dal, al)
     mobilita = lambda s: s["tipologia"] in TIPOLOGIE_MOBILITA  # noqa: E731
     _compila(wb["Bandi pubblicati"], INTESTAZIONI_BANDI, [_riga_bando(s) for s in bandi if not mobilita(s)])
     _compila(wb["Mobilità pubblicate"], INTESTAZIONI_BANDI, [_riga_bando(s) for s in bandi if mobilita(s)])

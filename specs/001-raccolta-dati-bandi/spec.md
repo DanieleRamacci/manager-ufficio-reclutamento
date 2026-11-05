@@ -357,7 +357,8 @@ stesso, che ogni voce porti alla pagina giusta e che la voce corrente sia eviden
 ## Assumptions
 
 - L'ambito è limitato a tempo indeterminato (compresi reclutamento speciale e categorie
-  protette/riservatarie) e mobilità/comandi (decisione dell'utente del 2026-10-29).
+  protette/riservatarie) e mobilità/comandi (decisione dell'utente del 2026-10-29). Il monitoraggio
+  mensile esclude le categorie protette, che restano raccolte (decisione dell'utente del 2026-11-05).
 - Gli elenchi URP contengono meno bandi di SOL (201 contro 792 per il tempo indeterminato):
   URP mostra un periodo più breve, quindi molti bandi SOL vecchi non hanno una scheda URP
   e non sono anomalie (vedi FR-013a). Il controllo esistente di criteri, tracce e accessibilità dei PDF continua a
