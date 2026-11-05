@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from . import collegamento, config, db, difformita, impostazioni, notifiche, posta, referenti
-from .raccolta import RaccoltaInCorso, raccogli
+from .raccolta import RaccoltaInCorso, avanzamento, raccogli
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +27,29 @@ def _conn():
     return conn
 
 
+def sblocca_interrotte() -> None:
+    """All'avvio del server: nulla è più in esecuzione, altrimenti restano "in corso" e bloccate per ore."""
+    ora = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    motivo = "Interrotta da un riavvio del server: va rilanciata"
+    conn = _conn()
+    try:
+        conn.execute("UPDATE raccolta SET esito = 'fallita', fine = ?, messaggio = ? WHERE esito = 'in_corso'", (ora, motivo))
+        conn.execute("UPDATE esecuzione SET esito = 'errore', dettaglio = ? WHERE esito = 'in_corso'", (motivo,))
+        referenti.sblocca_interrotti(conn)
+    finally:
+        conn.close()
+
+
+def _avanzamento_attivita(conn, chiave: str) -> str | None:
+    if chiave == "sol":
+        a = avanzamento("sol")
+        return f"Allegati letti: {a[0]} di {a[1]} bandi" if a else "Lettura dell'elenco o salvataggio dei dati"
+    if chiave == "referenti":
+        s = referenti.stato(conn)
+        return f"Letti {s['letti']} di {s['totale']} bandi, {s['referenti']} referenti salvati" if s and s["totale"] is not None else None
+    return None
+
+
 def _orario_predefinito(chiave: str) -> str:
     h, m = impostazioni.orario_raccolta()
     t = datetime(2000, 1, 1, h, m) + timedelta(minutes=ATTIVITA[chiave]["scarto"])
@@ -41,10 +64,13 @@ def elenco() -> list[dict]:
         for chiave, a in ATTIVITA.items():
             s = salvate.get(chiave)
             ultima = conn.execute("SELECT * FROM esecuzione WHERE attivita = ? ORDER BY id DESC LIMIT 1", (chiave,)).fetchone()
+            ultima = dict(ultima) if ultima else None
+            if ultima and chiave in _in_corso and ultima["esito"] == "in_corso":
+                ultima["dettaglio"] = _avanzamento_attivita(conn, chiave)
             risultato.append({"chiave": chiave, "nome": a["nome"], "descrizione": a["descrizione"],
                               "orario": s["orario"] if s and s["orario"] else _orario_predefinito(chiave),
                               "attiva": bool(s["attiva"]) if s and s["attiva"] is not None else a["attiva"],
-                              "in_corso": chiave in _in_corso, "ultima": dict(ultima) if ultima else None})
+                              "in_corso": chiave in _in_corso, "ultima": ultima})
         return risultato
     finally:
         conn.close()
@@ -127,11 +153,14 @@ def _esegui_referenti(token) -> tuple[str, str]:
     conn = _conn()
     try:
         r = referenti.aggiorna(conn, token, "attività")
+    except referenti.AggiornamentoInCorso:
+        return "avviso", "Già in corso"
     finally:
         conn.close()
     if r.get("esito") == "fallito":
         return "errore", r.get("messaggio") or "Aggiornamento non riuscito"
-    return "ok", f"{r.get('referenti', 0)} referenti su {r.get('bandi', 0)} bandi"
+    testo = f"{r.get('referenti', 0)} referenti su {r.get('bandi', 0)} bandi"
+    return ("avviso", f"{testo}. {r['messaggio']}") if r.get("messaggio") else ("ok", testo)
 
 
 def _esegui_riepilogo() -> tuple[str, str]:

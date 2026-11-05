@@ -620,7 +620,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
         try:
             righe = atti.elenco_atti(conn, request.args.get("dal") or None, request.args.get("al") or None)
             return jsonify({"dal": request.args.get("dal") or config.monitoraggio_dal().isoformat(),
-                            "totale": len(righe), "atti": righe})
+                            "totale": len(righe), "atti": righe, "fonti_in_attesa": atti.fonti_in_attesa(conn)})
         finally:
             conn.close()
 

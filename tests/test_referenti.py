@@ -145,3 +145,42 @@ def test_senza_token_rifiutato_dalla_fonte(db, client_finto, monkeypatch):
     client = client_finto(json_per_chiave=lambda url, params: FonteErrore("HTTP 401 da selezionionline"))
     r = referenti.aggiorna(db, None, "u", client=client)
     assert r["esito"] == "fallito" and "serve l'accesso SSO" in r["messaggio"]
+
+
+def test_salva_bando_per_bando_e_riparte_dai_non_letti(db, client_finto):
+    _schede_sol(db)
+    risposte = {"n": 0}
+
+    def una_e_poi_401(url, params):
+        risposte["n"] += 1
+        return FonteErrore("HTTP 401 da selezionionline") if risposte["n"] > 1 else per_codice({params["callCode"]: [ANNA]})(url, params)
+    r = referenti.aggiorna(db, "T", "u", client=client_finto(json_per_chiave=una_e_poi_401))
+    assert r["esito"] == "fallito" and r["bandi"] == 1 and r["letti"] == 1 and r["totale"] == 2
+    letta = db.execute("SELECT scheda_id FROM referente").fetchall()
+    assert len(letta) == 1
+    assert referenti.schede_da_aggiornare(db)[-1]["id"] == letta[0]["scheda_id"]  # quella già letta va per ultima
+
+
+def test_avanzamento_registrato(db, client_finto):
+    _schede_sol(db)
+    r = referenti.aggiorna(db, "T", "u", client=client_finto(json_per_chiave=lambda url, params: per_codice({params["callCode"]: [ANNA]})(url, params)))
+    assert r["esito"] == "completato" and r["letti"] == r["totale"] == r["bandi"]
+
+
+def test_nessuna_scheda_non_e_un_successo(db, client_finto):
+    r = referenti.aggiorna(db, "T", "u", client=client_finto())
+    assert r["esito"] == "completato" and "aspetta la fine della raccolta" in r["messaggio"]
+
+
+def test_riavvio_sblocca_raccolte_e_referenti(db):
+    from monitoraggio import attivita, raccolta
+    raccolta.avvia(db, "sol", "manuale", "t")
+    referenti._avvia(db, "u")
+    db.execute("INSERT INTO esecuzione (attivita, data, esito) VALUES ('sol', 'x', 'in_corso')")
+    attivita.sblocca_interrotte()
+    r = db.execute("SELECT esito, messaggio FROM raccolta").fetchone()
+    assert r["esito"] == "fallita" and "riavvio" in r["messaggio"]
+    assert referenti.stato(db)["esito"] == "fallito"
+    assert db.execute("SELECT esito FROM esecuzione").fetchone()[0] == "errore"
+    assert raccolta.avvia(db, "sol", "manuale", "t") and referenti._avvia(db, "u")  # si possono rilanciare subito
+

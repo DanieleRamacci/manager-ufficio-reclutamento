@@ -116,6 +116,7 @@ def test_protocollo_diverso_tra_file_e_sol(db):
 
 
 def test_fuori_ambito_escluso_e_tipologia_da_completare(db):
+    salva(db, "sol", [])
     _carica_segreteria(db, [_riga_bando("390.475", "308883", "07/07/2026", tipo="Selezione Direttore d'Istituto")],
                        [], [_riga_scorr("367.601 FA ISTC", 300000, datetime(2026, 7, 2), None)])
     righe = _per_chiave(db)

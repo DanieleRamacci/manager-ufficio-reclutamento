@@ -46,12 +46,17 @@ window.App = (() => {
   }
 
   // Cella fonte: presente, mancante, protocollo diverso, fuori periodo, non caricato.
+  function avvisoAttesa(attesa) {
+    if (!attesa?.length) return "";
+    return `<div class="avviso" role="status"><b>Difformità sospese.</b> Le fonti non si possono ancora confrontare, quindi nessuna difformità viene segnata e non si possono inviare messaggi né chiudere il mese.
+      Aggiornamento da concludere: ${attesa.map(f => `${esc(f.nome)} (${esc(f.motivo)})`).join(", ")}. <a class="solo-admin" href="/monitoraggio/impostazioni#aggiornamenti">Vai agli aggiornamenti</a></div>`;
+  }
   const DOVE_FONTE = { sol: "Apri il bando su Selezioni Online", urp: "Apri il bando su URP", segreteria: "Apri nel file della segreteria" };
   function cellaFonte(riga, chiave) {
     const c = riga.fonti?.[chiave] || {};
     const diverso = c.stato === "presente" && riga.protocollo_diverso && c.protocollo && riga.protocollo && String(c.protocollo) !== String(riga.protocollo);
     const [classe, testo] = diverso ? ["f-diverso", "protocollo diverso"] : c.stato === "presente" ? ["f-presente", "presente"]
-      : c.stato === "mancante" ? ["f-mancante", "mancante"] : c.stato === "non_applicabile" ? ["f-na", "fuori periodo"] : ["f-nonprev", "non caricato"];
+      : c.stato === "mancante" ? ["f-mancante", "mancante"] : c.stato === "non_applicabile" ? ["f-na", "fuori periodo"] : c.stato === "in_attesa" ? ["f-nonprev", "in attesa"] : ["f-nonprev", "non caricato"];
     const contenuto = `${testo}${c.stato === "presente" ? `<small>${esc(c.protocollo || "")}</small>` : ""}`;
     return `<td class="cella-fonte ${classe}">${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener" title="${DOVE_FONTE[chiave]}">${contenuto}<span class="freccia"> ↗</span></a>` : contenuto}</td>`;
   }
@@ -123,5 +128,5 @@ window.App = (() => {
       </tbody></table></div>`;
   }
 
-  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, json, toast, apriFinestra, chiudiFinestra, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati };
+  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, json, toast, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati };
 })();

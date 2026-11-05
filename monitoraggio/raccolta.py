@@ -15,6 +15,7 @@ from .fonti.http import Client, FonteErrore
 log = logging.getLogger(__name__)
 
 LOCK_SCADENZA_ORE = 6
+_avanzamento: dict[str, tuple[int, int]] = {}  # allegati letti e da leggere, per l'attività in corso
 
 CAMPI_SCHEDA = [
     "sezione", "tipologia", "codice_originale", "codice_norm", "numero_bando", "codice_sotto",
@@ -43,6 +44,10 @@ def adesso() -> str:
 
 
 # --------------------------------------------------------------------------- registro
+
+def avanzamento(fonte: str) -> tuple[int, int] | None:
+    return _avanzamento.get(fonte)
+
 
 def avvia(conn: sqlite3.Connection, fonte: str, modalita: str, avviata_da: str | None) -> int:
     """Registra una raccolta in corso; rifiuta se ce n'è già una per la stessa fonte (FR-017)."""
@@ -256,6 +261,8 @@ def _leggi_sol(conn, client, completa: bool) -> tuple[list[dict], list[str], lis
         schede.extend(sol.scheda_da_item(item, tipo) for item in items)
     da_aggiornare = _bandi_sol_da_aggiornare(conn, schede, completa)
     log.info("SOL: %d bandi, allegati da leggere per %d", len(schede), len(da_aggiornare))
+    letti = 0
+    _avanzamento["sol"] = (0, len(da_aggiornare))
     for scheda in schede:
         if scheda["id_esterno"] not in da_aggiornare:
             continue
@@ -263,6 +270,9 @@ def _leggi_sol(conn, client, completa: bool) -> tuple[list[dict], list[str], lis
             scheda["documenti"] = sol.allegati_bando(client, scheda["id_esterno"], scheda["url"])
         except Exception as e:
             errori.append((scheda["url"], str(e)))
+        letti += 1
+        _avanzamento["sol"] = (letti, len(da_aggiornare))
+    _avanzamento.pop("sol", None)
     noti: dict[str, set[str]] = {}
     for r in conn.execute("SELECT s.id_esterno AS scheda, d.id_esterno AS documento FROM documento d "
                           "JOIN scheda s ON s.id = d.scheda_id WHERE s.fonte = 'sol'"):

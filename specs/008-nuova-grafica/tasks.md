@@ -12,3 +12,8 @@
 - [X] T010 Numero di gestione interno, stabile per codice, negli ID delle comunicazioni
 - [X] T011 File segreteria come nelle specifiche 3.6: riquadri, problemi per riga, storico (la vista Excel, opzionale, non serve: tolta su richiesta)
 - [ ] T012 Verifica con dati reali su Coolify
+
+## Dopo il primo rilascio
+
+- [X] T013 Difformità sospese finché le raccolte di SOL e URP non sono concluse: niente segnalazioni, invii, chiusure o verifiche
+- [X] T014 Referenti salvati bando per bando con avanzamento; raccolte e referenti interrotti sbloccati all'avvio del server

@@ -1,7 +1,7 @@
 """Atti del monitoraggio, messaggi ai referenti e allineamento delle fonti (specifiche grafiche, sezioni 3.2-3.5)."""
 import re
 
-from . import compat, difformita, excel_mese, mensile, posta, punteggi
+from . import atti, compat, difformita, excel_mese, mensile, posta, punteggi
 
 MESI_LUNGHI = excel_mese.MESI
 
@@ -28,6 +28,7 @@ def righe_mese(conn, monitoraggio: dict, tipologie: list[str] | None = None) -> 
     dal, al = mensile.periodo_dati(monitoraggio)
     scelte = tipologie or mensile.tipologie_di(monitoraggio)
     inviate = mensile.solleciti(conn, monitoraggio["mese"])
+    in_attesa = bool(atti.fonti_in_attesa(conn))
     righe = []
     for r in difformita.righe_correnti(conn, dal, al, tutti=True):
         gruppo = gruppo_tipologia(r.get("tipologia"))
@@ -37,7 +38,7 @@ def righe_mese(conn, monitoraggio: dict, tipologie: list[str] | None = None) -> 
         c = inviate.get(chiave(r)) or inviate.get(r.get("numero_bando") or "")
         righe.append({**r, "chiave": chiave(r), "n_gestione": mensile.numero_gestione(conn, chiave(r)) if chiave(r) else None,
                       "gruppo_tipologia": gruppo, "rilievi": testi, "con_difformita": bool(testi),
-                      "comunicazione": {"stato": "in_regola"} if not testi else (
+                      "comunicazione": {"stato": "in_attesa"} if in_attesa else {"stato": "in_regola"} if not testi else (
                           {k: c.get(k) for k in ("stato", "quando", "id", "canale")} if c else {"stato": "da_inviare"})})
     righe.sort(key=lambda r: (not r["con_difformita"], tuple(-ord(x) for x in (r.get("data") or ""))))
     return righe
@@ -74,7 +75,7 @@ def anteprima(conn, mese_dati: str) -> dict:
     finto = {"mese": mensile.mese_successivo(mese_dati), "mese_dati": mese_dati, "tipologie": None}
     per_tipologia = {g: conteggi(righe_mese(conn, finto, [g])) for g in mensile.TIPOLOGIE_MONITORABILI}
     return {"id": mensile.id_monitoraggio(finto), "titolo": titolo_mese(mese_dati), "per_tipologia": per_tipologia,
-            "allineamento": allineamento(conn, mese_dati),
+            "allineamento": allineamento(conn, mese_dati), "fonti_in_attesa": atti.fonti_in_attesa(conn),
             "esistente": next((r["mese"] for r in conn.execute("SELECT mese FROM monitoraggio_mese WHERE mese_dati = ?", (mese_dati,))), None)}
 
 
@@ -121,6 +122,8 @@ def contiene_dati_candidati(*testi: str) -> bool:
 
 def da_comunicare(conn) -> int:
     """Per il badge del menu: codici con difformità aperte e nessun invio, nei monitoraggi in corso."""
+    if atti.fonti_in_attesa(conn):
+        return 0
     totale = 0
     for m in conn.execute("SELECT mese FROM monitoraggio_mese WHERE stato = 'aperto'").fetchall():
         inviate = mensile.solleciti(conn, m["mese"])

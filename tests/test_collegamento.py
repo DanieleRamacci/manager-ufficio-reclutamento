@@ -23,6 +23,9 @@ def doc(id_esterno, categoria, protocollo, data="2026-05-01", sottotipo=None):
 
 def salva(db, fonte, schede):
     raccolta.scrivi(db, fonte, schede, [s["id_esterno"] for s in schede], ORA)
+    for f in ("sol", "urp"):  # di norma i test confrontano fonti già aggiornate
+        if not db.execute("SELECT 1 FROM raccolta WHERE fonte = ?", (f,)).fetchone():
+            db.execute("INSERT INTO raccolta (fonte, modalita, avviata_da, inizio, fine, esito) VALUES (?, 'manuale', 'test', ?, ?, 'completata')", (f, ORA, ORA))
 
 
 def stato(db, codice_originale):

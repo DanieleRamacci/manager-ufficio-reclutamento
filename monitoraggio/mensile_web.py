@@ -4,7 +4,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, redirect, request, send_file, send_from_directory
 
-from . import attivita, comunicazioni, db, difformita, excel_mese, impostazioni, mensile, posta, sol_sessione, utenti
+from . import atti, attivita, comunicazioni, db, difformita, excel_mese, impostazioni, mensile, posta, referenti, sol_sessione, utenti
 
 STATIC = Path(__file__).resolve().parent / "static"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -31,7 +31,12 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
                 "solleciti": list(mensile.solleciti(conn, m["mese"]).values()), "invii": mensile.invii(conn, m["mese"]),
                 "fotografia": mensile.fotografia(conn, m["mese"], versione), "id": mensile.id_monitoraggio(m),
                 "titolo": comunicazioni.titolo_mese(m["mese_dati"]), "tipologie": mensile.tipologie_di(m),
-                "allineamento": comunicazioni.allineamento(conn, m["mese_dati"])}
+                "allineamento": comunicazioni.allineamento(conn, m["mese_dati"]), "fonti_in_attesa": atti.fonti_in_attesa(conn)}
+
+    def _fonti_non_pronte(conn):
+        """Risposta 409 se SOL o URP non hanno concluso l'aggiornamento: niente invii, chiusure o verifiche."""
+        attesa = atti.fonti_in_attesa(conn)
+        return (jsonify({"error": atti.testo_attesa(attesa), "fonti_in_attesa": attesa}), 409) if attesa else None
 
     def _trova(conn, mese: str):
         return mensile.leggi(conn, mese) if mensile.mese_valido(mese) else None
@@ -160,7 +165,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
                 voci.append({**m, "id": mensile.id_monitoraggio(m), "titolo": comunicazioni.titolo_mese(m["mese_dati"]),
                              "tipologie": mensile.tipologie_di(m), "conteggi": comunicazioni.conteggi(comunicazioni.righe_mese(conn, completo)),
                              "fonti_allineate": sum(f["allineata"] for f in comunicazioni.allineamento(conn, m["mese_dati"]))})
-            return jsonify({"monitoraggi": voci})
+            return jsonify({"monitoraggi": voci, "fonti_in_attesa": atti.fonti_in_attesa(conn)})
         finally:
             conn.close()
 
@@ -248,6 +253,9 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         try:
             if not _trova(conn, mese):
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
+            bloccata = _fonti_non_pronte(conn)
+            if bloccata:
+                return bloccata
             return jsonify(_dati_mese(conn, mensile.chiudi(conn, mese, utente_corrente())))
         except mensile.MeseChiuso as e:
             return jsonify({"error": str(e)}), 409
@@ -262,6 +270,9 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         try:
             if not _trova(conn, mese):
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
+            bloccata = _fonti_non_pronte(conn)
+            if bloccata:
+                return bloccata
             motivo = (request.get_json(silent=True) or {}).get("motivo")
             return jsonify(_dati_mese(conn, mensile.nuova_versione(conn, mese, utente_corrente(), motivo)))
         except mensile.MeseAperto as e:
@@ -291,7 +302,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             if not m:
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
             righe = comunicazioni.righe_mese(conn, m)
-            return jsonify({"righe": righe, "conteggi": comunicazioni.conteggi(righe)})
+            return jsonify({"righe": righe, "conteggi": comunicazioni.conteggi(righe), "fonti_in_attesa": atti.fonti_in_attesa(conn)})
         finally:
             conn.close()
 
@@ -355,6 +366,9 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             return jsonify({"error": "Indica se è una prova o un invio ufficiale"}), 400
         conn = _conn()
         try:
+            bloccata = _fonti_non_pronte(conn)
+            if bloccata:
+                return bloccata
             m = _trova(conn, mese)
             if not m:
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
@@ -395,6 +409,9 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
     def api_messaggi_invia_tutti(mese: str):
         conn = _conn()
         try:
+            bloccata = _fonti_non_pronte(conn)
+            if bloccata:
+                return bloccata
             m = _trova(conn, mese)
             if not m:
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
@@ -456,6 +473,9 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         if chiave not in attivita.ATTIVITA:
             return jsonify({"error": "Attività sconosciuta"}), 404
         token = intestazioni_sol() or None if chiave == "referenti" else None
+        if chiave == "referenti" and not token and not referenti.senza_token_ammesso():
+            return jsonify({"error": "Per leggere i referenti collega prima Selezioni Online con Collega-SOL: "
+                                     "dopo un riavvio del server il collegamento va rifatto"}), 401
         if not attivita.esegui(chiave, utente_corrente() or "manuale", token, "manuale" if chiave in ("sol", "urp") else None):
             return jsonify({"error": "Attività già in corso"}), 409
         return jsonify({"ok": True}), 202
@@ -484,6 +504,9 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         try:
             if not _trova(conn, mese):
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
+            bloccata = _fonti_non_pronte(conn)
+            if bloccata:
+                return bloccata
         finally:
             conn.close()
         if not difformita.avvia_verifica(mese, ids, intestazioni_sol() or None, utente_corrente()):
@@ -588,6 +611,9 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         destinatari = mensile.dividi_indirizzi(corpo.get("destinatari") or [])
         conn = _conn()
         try:
+            bloccata = _fonti_non_pronte(conn)
+            if bloccata:
+                return bloccata
             if not _trova(conn, mese):
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
             mensile.verifica_aperto(conn, mese)

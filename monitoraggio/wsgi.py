@@ -7,7 +7,7 @@ from flask import Flask, redirect, session
 from flask_session import Session
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from . import accesso, collegamento, config, db, scheduler, sol_sessione, utenti
+from . import accesso, attivita, collegamento, config, db, scheduler, sol_sessione, utenti
 from .mensile_web import crea_blueprint_mensile
 from .web import PAGINE_LOCALI, crea_blueprint, crea_blueprint_pagine_esistenti
 
@@ -87,6 +87,7 @@ def crea_app() -> Flask:
         collegamento.collega(conn)
     finally:
         conn.close()
+    attivita.sblocca_interrotte()
     scheduler.avvia()
     return app
 

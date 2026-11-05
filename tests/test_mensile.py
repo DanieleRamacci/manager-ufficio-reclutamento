@@ -860,9 +860,10 @@ def test_con_una_raccolta_fallita_nessuna_correzione(ambiente, db):
     _correggi(db)
     rid = raccolta.avvia(db, "urp", "manuale", "test")
     raccolta.chiudi(db, rid, "fallita", messaggio="URP non raggiunto")
-    assert difformita.sincronizza(db, mese)["fonti_affidabili"] is False
+    assert difformita.sincronizza(db, mese) == {}  # il registro resta fermo finché la raccolta non riesce
     d = admin.get(f"/api/monitoraggi/{mese}/difformita").get_json()
     assert d["voci"][0]["badge"] == "da_correggere" and d["fonti_affidabili"] is False
+    assert [f["fonte"] for f in d["fonti_in_attesa"]] == ["urp"]
 
 
 def test_mese_chiuso_badge_aggiornato_e_versione_ferma(ambiente, db):
@@ -1024,13 +1025,18 @@ def test_anteprima_e_allineamento(ambiente, db):
     salva(db, "urp", [scheda("urp", "/node/1", "367.479 CTER", "367.479", documenti=[doc("g2", "graduatoria", "1002", "2026-10-12")])])
     from monitoraggio import collegamento
     collegamento.collega(db)
+    db.execute("DELETE FROM raccolta WHERE fonte = 'urp'")
     rid = raccolta.avvia(db, "sol", "manuale", "t")
     raccolta.chiudi(db, rid, "completata", {})
     d = ambiente().get("/api/monitoraggi/anteprima?mese=2020-01").get_json()
     assert d["id"] == "MON-01.2020" and d["esistente"] is None
     voce = {f["fonte"]: f for f in d["allineamento"]}
     assert voce["sol"]["allineata"] is True and voce["urp"]["allineata"] is False and voce["segreteria"]["allineata"] is False
+    assert [f["fonte"] for f in d["fonti_in_attesa"]] == ["urp"]
     assert ambiente().get("/api/monitoraggi/anteprima?mese=xx").status_code == 400
+    assert ambiente().get("/api/monitoraggi/anteprima?mese=2026-10").get_json()["per_tipologia"]["TI"]["da_inviare"] == 0
+    rid = raccolta.avvia(db, "urp", "manuale", "t")
+    raccolta.chiudi(db, rid, "completata", {})
     d = ambiente().get("/api/monitoraggi/anteprima?mese=2026-10").get_json()
     assert d["per_tipologia"]["TI"]["atti"] == 1 and d["per_tipologia"]["TI"]["da_inviare"] == 1 and d["per_tipologia"]["MOB"]["atti"] == 0
 
@@ -1235,3 +1241,51 @@ def test_numero_di_gestione_stabile_e_nell_id(ambiente, db, monkeypatch):
     voce = admin.get(f"/api/comunicazioni?mese={mese}").get_json()["comunicazioni"][0]
     assert voce["n_gestione"] == uno
     assert admin.post(url + "/invia", json={"modo": "prova"}).get_json()["id"] == f"MON-04.2026/367.479/{uno}-2"
+
+
+@pytest.mark.parametrize("prepara, motivo", [
+    (lambda db: db.execute("DELETE FROM raccolta WHERE fonte = 'urp'"), "non ancora eseguita"),
+    (lambda db: _raccolta_urp(db, None), "in corso"),
+    (lambda db: _raccolta_urp(db, "fallita"), "non conclusa, da rilanciare"),
+])
+def test_difformita_sospese_finche_sol_e_urp_non_concludono(ambiente, db, monkeypatch, prepara, motivo):
+    from monitoraggio import difformita
+    inviati = []
+    _configura_posta(monkeypatch, inviati, MAIL_PROVA="prova@cnr.it")
+    admin, mese, url = _mese_con_rdp(ambiente, db)
+    prepara(db)
+    d = admin.get(f"/api/monitoraggi/{mese}/atti").get_json()
+    riga = d["righe"][0]
+    assert d["fonti_in_attesa"] == [{"fonte": "urp", "nome": "URP", "motivo": motivo}]
+    assert d["conteggi"]["difformita"] == 0 and riga["con_difformita"] is False and riga["rilievi"] == []
+    assert riga["comunicazione"]["stato"] == "in_attesa" and riga["fonti"]["urp"]["stato"] == "in_attesa"
+    assert riga["fonti"]["sol"]["stato"] == "presente" and riga["fonti"]["sol"]["url"]
+    assert admin.get(f"/api/monitoraggi/{mese}/difformita").get_json()["totale"] == 0
+    assert db.execute("SELECT COUNT(*) FROM difformita").fetchone()[0] == 0
+    assert admin.get(f"/api/atti?dal={mese[:4]}-04-01&al={mese[:4]}-04-30").get_json()["atti"][0]["difforme"] is False
+    for richiesta in (url + "/invia", f"/api/monitoraggi/{mese}/comunicazioni-invia-tutti", f"/api/monitoraggi/{mese}/chiudi",
+                      f"/api/monitoraggi/{mese}/difformita/verifica"):
+        r = admin.post(richiesta, json={"modo": "prova"})
+        assert r.status_code == 409 and "Difformità sospese" in r.get_json()["error"], richiesta
+    assert inviati == [] and mensile.leggi(db, mese)["stato"] == "aperto"
+
+    _raccolta_urp(db, "completata_con_errori")
+    difformita.sincronizza_tutti()
+    d = admin.get(f"/api/monitoraggi/{mese}/atti").get_json()
+    assert d["fonti_in_attesa"] == [] and d["righe"][0]["con_difformita"] is True
+    assert db.execute("SELECT COUNT(*) FROM difformita").fetchone()[0] == 1
+    assert admin.post(url + "/invia", json={"modo": "prova"}).status_code == 200
+
+
+def _raccolta_urp(db, esito):
+    from monitoraggio import raccolta
+    db.execute("UPDATE raccolta SET esito = 'completata' WHERE fonte = 'urp' AND esito = 'in_corso'")
+    rid = raccolta.avvia(db, "urp", "manuale", "test")
+    if esito:
+        raccolta.chiudi(db, rid, esito, {})
+
+
+def test_esegui_referenti_senza_collegamento_lo_dice_subito(ambiente):
+    r = ambiente().post("/api/impostazioni/attivita/referenti/esegui")
+    assert r.status_code == 401 and "Collega-SOL" in r.get_json()["error"]
+

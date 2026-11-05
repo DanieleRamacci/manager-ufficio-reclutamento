@@ -11,6 +11,7 @@ from .normalizza import codice_sotto
 
 FONTI = ("sol", "urp", "segreteria")
 PRESENTE, MANCANTE, NON_APPLICABILE, NON_CARICATO = "presente", "mancante", "non_applicabile", "non_caricato"
+IN_ATTESA = "in_attesa"
 
 
 def _voce(categoria, data, protocollo, url=None, sottotipo=None, sottotipo_origine=None, titolo=None, extra=None) -> dict:
@@ -47,6 +48,25 @@ def _periodo_segreteria(atti_seg: list[dict]) -> dict[str, str]:
         if a["data"] and a["in_ambito"]:
             periodo[a["categoria"]] = min(periodo.get(a["categoria"], a["data"]), a["data"])
     return periodo
+
+
+def fonti_in_attesa(conn) -> list[dict]:
+    """SOL e URP la cui ultima raccolta non è conclusa: finché ce n'è una, le fonti non si possono confrontare."""
+    attesa = []
+    for fonte, nome in (("sol", "Selezioni Online"), ("urp", "URP")):
+        ultima = conn.execute("SELECT esito FROM raccolta WHERE fonte = ? ORDER BY id DESC LIMIT 1", (fonte,)).fetchone()
+        if not ultima:
+            attesa.append({"fonte": fonte, "nome": nome, "motivo": "non ancora eseguita"})
+        elif ultima["esito"] == "in_corso":
+            attesa.append({"fonte": fonte, "nome": nome, "motivo": "in corso"})
+        elif ultima["esito"] not in ("completata", "completata_con_errori"):
+            attesa.append({"fonte": fonte, "nome": nome, "motivo": "non conclusa, da rilanciare"})
+    return attesa
+
+
+def testo_attesa(attesa: list[dict]) -> str:
+    voci = ", ".join(f"{f['nome']} ({f['motivo']})" for f in attesa)
+    return f"Difformità sospese: le fonti non si possono ancora confrontare. Aggiornamento da concludere: {voci}."
 
 
 def url_file_segreteria(atto: int | None = None, foglio: str | None = None) -> str:
@@ -287,5 +307,12 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
         r["incompleto"] = any(c["stato"] == MANCANTE for c in r["fonti"].values())
         r["difforme"] = r["incompleto"] or bool(r["note"])
         r["protocollo_diverso"] = any(n.startswith("protocollo diverso") for n in r["note"])
+    attesa = {f["fonte"] for f in fonti_in_attesa(conn)}
+    if attesa:  # con una fonte incompleta un atto "mancante" non vuol dire niente
+        for r in righe:
+            for chiave, cella_fonte in r["fonti"].items():
+                if chiave in attesa or cella_fonte["stato"] == MANCANTE:
+                    cella_fonte["stato"] = IN_ATTESA
+            r.update(note=[], incompleto=False, difforme=False, protocollo_diverso=False)
     righe.sort(key=lambda r: (r["data"] or "", r["codice"] or ""), reverse=True)
     return righe

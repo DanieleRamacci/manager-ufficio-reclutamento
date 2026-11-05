@@ -11,7 +11,7 @@
 <body>
   <main id="contenuto"><p class="muted">Caricamento…</p></main>
   <script>
-    const { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, json: corpoJson, toast, apriFinestra, chiudiFinestra, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati } = App;
+    const { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, json: corpoJson, toast, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati } = App;
     const meseScelto = location.pathname.split("/")[3];
     const titoloMese = (mese) => { const [a, n] = mese.split("-"); return `${MESI[Number(n) - 1]} ${a}`; };
     const chipGruppo = (g) => `<span class="chip t-${g}">${esc(TIPOLOGIE[g] || g)}</span>`;
@@ -24,11 +24,13 @@
     }
 
     // ------------------------------------------------------------------- elenco
-    let elencoDati = [], creazione = null;
+    let elencoAttesa = [], elencoDati = [], creazione = null;
     const FILTRI_ELENCO = { anno: "", stato: "", tipologia: "", daInviare: false };
 
     async function elenco() {
-      elencoDati = (await chiama("/api/monitoraggi")).monitoraggi;
+      const elencoRisposta = await chiama("/api/monitoraggi");
+      elencoDati = elencoRisposta.monitoraggi;
+      elencoAttesa = elencoRisposta.fonti_in_attesa;
       disegnaElenco();
     }
     function disegnaElenco() {
@@ -39,6 +41,7 @@
       $("contenuto").innerHTML = `
         <div class="tra"><div><h1>Monitoraggi mensili</h1><div class="muted small">Un monitoraggio raccoglie gli atti di un mese, le difformità tra le fonti e le comunicazioni ai referenti.</div></div>
           <button class="primario solo-admin" type="button" id="nuovo">+ Nuovo monitoraggio</button></div>
+        ${avvisoAttesa(elencoAttesa)}
         <div id="pannello-creazione"></div>
         <section>
           <div class="riga" style="margin-bottom:12px">
@@ -75,6 +78,7 @@
       const somma = (k) => c.tipologie.reduce((t, g) => t + (d.per_tipologia[g]?.[k] || 0), 0);
       const blocca = Boolean(d.esistente) || !c.tipologie.length;
       $("pannello-creazione").innerHTML = `<section class="creazione">
+        ${d.fonti_in_attesa.length ? `<p class="small etichetta">Finché gli aggiornamenti non sono conclusi, i conteggi delle difformità restano a zero.</p>` : ""}
         <div class="tra"><h2 style="margin:0">Nuovo monitoraggio <span class="mono small muted">${esc(d.id)}</span></h2><button type="button" class="piccolo" id="annulla">Chiudi</button></div>
         <div class="griglia2" style="margin-top:12px">
           <div><h3 style="margin-top:0">1. Mese di riferimento</h3><input type="month" id="c-mese" value="${esc(c.mese)}">
@@ -118,17 +122,18 @@
         ["preparazione", "File ed email", null, 0], ["versioni", chiuso ? "Dati salvati" : "Versioni", m.fotografia.versioni.length, 0]];
       $("contenuto").innerHTML = `
         <div class="small"><a href="/monitoraggio/mensili">← Monitoraggi</a> <span class="muted">/ <span class="mono">${esc(m.id)}</span></span></div>
+        ${avvisoAttesa(m.fonti_in_attesa)}
         <section>
           <div class="tra"><div><h1 style="display:inline">Monitoraggio ${esc(m.titolo)}</h1> <span class="pillola ${chiuso ? "p-na" : "p-blu"}">${chiuso ? "chiuso" : "in corso"}</span>
             <span class="muted small"> creato il ${ora(m.creato_il)}${m.creato_da ? ` da ${esc(m.creato_da)}` : ""}${chiuso ? ` · chiuso il ${ora(m.chiuso_il)}` : ""}</span></div>
             <div class="riga solo-admin"><button type="button" id="riverifica">Riverifica fonti</button>
-              ${chiuso ? `<button type="button" id="riapri">Riapri monitoraggio</button><button class="primario" type="button" id="nuova-versione">Genera nuova versione</button>` : `<button class="primario" type="button" id="chiudi">Chiudi monitoraggio</button>`}</div></div>
+              ${chiuso ? `<button type="button" id="riapri">Riapri monitoraggio</button><button class="primario" type="button" id="nuova-versione"${m.fonti_in_attesa.length ? " disabled" : ""}>Genera nuova versione</button>` : `<button class="primario" type="button" id="chiudi"${m.fonti_in_attesa.length ? " disabled" : ""}>Chiudi monitoraggio</button>`}</div></div>
           <div class="riga" style="margin:10px 0;align-items:center">${Object.keys(TIPOLOGIE).map(g => chiuso
             ? (m.tipologie.includes(g) ? chipGruppo(g) : "")
             : `<button type="button" class="selezione solo-admin${m.tipologie.includes(g) ? " attiva" : ""}" data-includi="${g}">${m.tipologie.includes(g) ? "✓" : "+"} ${TIPOLOGIE[g]}</button>`).join("")}</div>
           <details style="margin-bottom:12px"><summary class="small">Allineamento delle fonti${m.verifica_fonti_il ? ` · ultima verifica ${ora(m.verifica_fonti_il)}` : ""}: ${m.allineamento.filter(f => f.allineata).length}/3 allineate</summary>${righeAllineamento(m.allineamento)}</details>
-          <div class="kpi"><div><b>${c.atti}</b><span>Atti nel mese</span></div><div><b class="${c.difformita ? "rosso" : ""}">${c.difformita}</b><span>Atti con difformità · ${c.bandi} bandi coinvolti</span></div>
-            <div><b class="${c.da_inviare ? "rosso" : ""}">${c.da_inviare}</b><span>Comunicazioni da inviare</span></div><div><b class="verde">${c.inviate}/${c.bandi}</b><span>Comunicazioni inviate${c.da_confermare ? ` · ${c.da_confermare} da confermare` : ""}</span></div></div>
+          <div class="kpi"><div><b>${c.atti}</b><span>Atti nel mese</span></div><div><b class="${c.difformita ? "rosso" : ""}">${m.fonti_in_attesa.length ? "–" : c.difformita}</b><span>Atti con difformità · ${c.bandi} bandi coinvolti</span></div>
+            <div><b class="${c.da_inviare ? "rosso" : ""}">${m.fonti_in_attesa.length ? "–" : c.da_inviare}</b><span>Comunicazioni da inviare</span></div><div><b class="verde">${c.inviate}/${c.bandi}</b><span>Comunicazioni inviate${c.da_confermare ? ` · ${c.da_confermare} da confermare` : ""}</span></div></div>
         </section>
         <div class="tra">
           <div class="schede" role="tablist">${SCHEDE.map(([k, t, n, d]) => `<button type="button" role="tab" data-scheda="${k}" aria-selected="${stato.scheda === k}">${t}${n !== null ? ` (${n})` : ""}${d ? ` <span class="numero-ko">${d}</span>` : ""}</button>`).join("")}</div>
@@ -177,6 +182,7 @@
     }
     function cellaComunicazione(r) {
       const c = r.comunicazione, chiuso = stato.m.stato === "chiuso";
+      if (c.stato === "in_attesa") return `<td><span class="pillola p-na">in attesa delle fonti</span></td>`;
       if (c.stato === "in_regola") return `<td><span class="pillola p-na">in regola</span></td>`;
       const P = { da_inviare: ["p-ko", "da inviare"], da_confermare: ["p-warn", "copiata · da confermare"], inviata: ["p-ok", `inviata ${dataIt(c.quando).slice(0, 5)}`], inviata_a_mano: ["p-ok", `inviata ${dataIt(c.quando).slice(0, 5)}`] }[c.stato];
       const inviata = ["inviata", "inviata_a_mano"].includes(c.stato);
@@ -197,11 +203,11 @@
         ${daInviare.length && m.stato !== "chiuso" ? `<div class="banda solo-admin"><span><b>${daInviare.length}</b> bandi con difformità ancora da comunicare</span>
           <button class="primario" type="button" id="invia-tutti">Invia tutti dalla casella dell'ufficio…</button></div>` : ""}
         <section style="padding:0"><div class="scroll"><table style="min-width:1250px"><thead><tr><th>Data</th><th>Bando</th><th>Tipologia</th><th>N. gest.</th><th>Atto</th><th>Prot.</th><th>SOL</th><th>URP</th><th>Segreteria</th><th>Difformità rilevate</th><th>RdP</th><th>Comunicazione</th></tr></thead><tbody id="righe-atti">
-        ${righe.map(r => `<tr class="${r.con_difformita ? "difforme" : "in-regola"}"><td style="white-space:nowrap">${esc(dataIt(r.data))}</td>
+        ${righe.map(r => `<tr class="${r.con_difformita ? "difforme" : r.comunicazione.stato === "in_attesa" ? "" : "in-regola"}"><td style="white-space:nowrap">${esc(dataIt(r.data))}</td>
           <td style="min-width:170px"><b>${esc(r.codice || r.numero_bando)}</b><div class="muted2 small" style="max-width:240px">${esc(r.titolo_bando)}</div></td><td>${chipTipologia(r.tipologia)}</td><td class="mono small">${esc(r.n_gestione)}</td>
           <td>${esc(ATTI[r.atto] || r.atto)}${r.sottotipo && r.sottotipo !== "non_specificato" ? ` <span class="chip t-altro">${esc(r.sottotipo)}</span>` : ""}${r.persone ? `<div class="muted2 small">${r.persone} persone nel file segreteria</div>` : ""}${celleCandidati(r)}</td>
           <td class="mono small">${esc(r.protocollo)}</td>${cellaFonte(r, "sol")}${cellaFonte(r, "urp")}${cellaFonte(r, "segreteria")}
-          <td style="min-width:240px">${r.rilievi.length ? `<ul class="rilievi">${r.rilievi.map(t => `<li class="${t.startsWith("protocollo diverso") ? "diverso" : ""}">${esc(t)}</li>`).join("")}</ul>` : `<span style="color:var(--ok)" class="small">Nessuna difformità</span>`}</td>
+          <td style="min-width:240px">${r.rilievi.length ? `<ul class="rilievi">${r.rilievi.map(t => `<li class="${t.startsWith("protocollo diverso") ? "diverso" : ""}">${esc(t)}</li>`).join("")}</ul>` : (r.comunicazione.stato === "in_attesa" ? `<span class="muted2">Non ancora confrontabile</span>` : `<span style="color:var(--ok)" class="small">Nessuna difformità</span>`)}</td>
           ${cellaRdp(r)}${cellaComunicazione(r)}</tr>`).join("") || `<tr><td colspan="12" class="muted">Nessun atto con questi filtri.</td></tr>`}
         </tbody></table></div></section>`;
       const aggiorna = () => { f.tipologia = $("f-tip").value; f.comunicazione = $("f-com").value; f.solo = $("f-solo").checked; f.q = $("f-q").value; const pos = $("f-q").selectionStart; schedaAtti(); $("f-q").focus(); $("f-q").setSelectionRange(pos, pos); };
@@ -308,11 +314,11 @@
       const visibili = d.voci.filter(x => (!f.stato || x.badge === f.stato) && (!f.tipologia || !x.tipologia || (f.tipologia === "indeterminato") === INDETERMINATO.includes(x.tipologia)));
       box.innerHTML = `<h2>Difformità e correzioni</h2>
         <p class="muted small">Restano qui anche dopo la correzione. Ultimo controllo: ${d.ultimo_controllo ? ora(d.ultimo_controllo) : "mai"}. Si aggiornano da sole dopo ogni aggiornamento dei dati, e subito con Verifica.</p>
-        ${d.fonti_affidabili ? "" : `<div class="avviso">L'ultima raccolta di una fonte non è riuscita o non è stata fatta: finché non riesce, nessuna difformità viene segnata come corretta.</div>`}
+        ${d.fonti_in_attesa.length || d.fonti_affidabili ? "" : `<div class="avviso">L'ultima raccolta di una fonte non è riuscita o non è stata fatta: finché non riesce, nessuna difformità viene segnata come corretta.</div>`}
         <div class="conteggi"><span class="badge da_correggere">Da correggere: ${d.conteggi.da_correggere}</span><span class="badge parziale">Parziali: ${d.conteggi.parziale}</span><span class="badge corretta">Corrette: ${d.conteggi.corretta}</span>${d.conteggi.da_controllare ? `<span class="badge da_controllare">Da controllare: ${d.conteggi.da_controllare}</span>` : ""}</div>
         <div class="riga" style="margin-bottom:10px"><label>Stato <select id="r-stato"><option value="">Tutti</option>${Object.entries(BADGE).map(([k, t]) => `<option value="${k}"${f.stato === k ? " selected" : ""}>${t}</option>`).join("")}</select></label>
           <label>Tipologia <select id="r-tip"><option value="">Tutte</option><option value="indeterminato"${f.tipologia === "indeterminato" ? " selected" : ""}>Tempo indeterminato (concorsi pubblici)</option><option value="mobilita"${f.tipologia === "mobilita" ? " selected" : ""}>Mobilità e comandi</option></select></label>
-          <button class="primario solo-admin" type="button" id="verifica-tutte"${inCorso ? " disabled" : ""}>Verifica tutte</button></div>
+          <button class="primario solo-admin" type="button" id="verifica-tutte"${inCorso || d.fonti_in_attesa.length ? " disabled" : ""}>Verifica tutte</button></div>
         ${inCorso ? `<div class="avviso" role="status">Verifica in corso${qui ? `: ${v.fatti} di ${v.totale} bandi` : " su un altro monitoraggio"}…</div>` : qui ? esitoVerifica(v) : ""}
         <div class="errore" id="errore-registro" role="alert" hidden></div>
         <div class="scroll"><table style="min-width:760px"><thead><tr><th>Stato</th><th>Atto</th><th>Rilievi</th><th>Sollecito</th><th></th></tr></thead><tbody>
@@ -321,7 +327,7 @@
           <td><ul class="rilievi">${x.rilievi.map(r => `<li${r.risolto ? ' class="risolto"' : ""}>${esc(r.testo)}${r.nuovo ? " (nuovo)" : ""}</li>`).join("")}</ul>
             <details><summary>Storico</summary>${x.storico.map(e => `<div class="small">${ora(e.quando)}: ${esc(EVENTI[e.tipo] || e.tipo)} (${esc(e.origine)}${e.utente ? `, ${esc(e.utente)}` : ""})</div>`).join("")}</details></td>
           <td class="small">${x.sollecito ? `${x.sollecito.stato === "da_confermare" ? "Da confermare" : x.sollecito.stato === "inviata" ? "Inviata" : "Inviata a mano"}<div class="muted">${ora(x.sollecito.quando)}</div>` : `<span class="muted">Non inviata</span>`}</td>
-          <td>${x.badge === "corretta" ? "" : `<button type="button" class="piccolo solo-admin" data-verifica="${x.id}"${inCorso ? " disabled" : ""}>Verifica</button>`}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">${d.totale ? "Nessuna difformità con questi filtri." : "Nessuna difformità rilevata."}</td></tr>`}
+          <td>${x.badge === "corretta" ? "" : `<button type="button" class="piccolo solo-admin" data-verifica="${x.id}"${inCorso || d.fonti_in_attesa.length ? " disabled" : ""}>Verifica</button>`}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">${d.totale ? "Nessuna difformità con questi filtri." : "Nessuna difformità rilevata."}</td></tr>`}
         </tbody></table></div>`;
       $("r-stato").onchange = () => { f.stato = $("r-stato").value; caricaRegistro(); };
       $("r-tip").onchange = () => { f.tipologia = $("r-tip").value; caricaRegistro(); };

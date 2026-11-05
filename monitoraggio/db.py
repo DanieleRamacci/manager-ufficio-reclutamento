@@ -4,7 +4,7 @@ import sqlite3
 
 from . import config
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -201,7 +201,9 @@ CREATE TABLE IF NOT EXISTS referenti_aggiornamento (
     esito TEXT NOT NULL CHECK (esito IN ('in_corso', 'completato', 'fallito')),
     bandi INTEGER NOT NULL DEFAULT 0,
     referenti INTEGER NOT NULL DEFAULT 0,
-    messaggio TEXT
+    messaggio TEXT,
+    letti INTEGER,
+    totale INTEGER
 );
 """
 
@@ -482,6 +484,10 @@ def inizializza(conn: sqlite3.Connection) -> None:
                           ("tipologie", "TEXT"), ("verifica_fonti_il", "TEXT")):  # versione 12
         if colonna not in colonne_mese:
             conn.execute(f"ALTER TABLE monitoraggio_mese ADD COLUMN {colonna} {tipo}")
+    colonne_referenti = {r[1] for r in conn.execute("PRAGMA table_info(referenti_aggiornamento)")}
+    for colonna in ("letti", "totale"):  # versione 14
+        if colonna not in colonne_referenti:
+            conn.execute(f"ALTER TABLE referenti_aggiornamento ADD COLUMN {colonna} INTEGER")
     _migra_versioni(conn)
     _migra_comunicazioni(conn)
     riga = conn.execute("SELECT versione FROM schema_version").fetchone()

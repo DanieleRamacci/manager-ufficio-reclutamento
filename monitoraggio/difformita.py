@@ -39,6 +39,8 @@ def righe_correnti(conn, dal: str, al: str, tutti: bool = False) -> list[dict]:
     """Come righeGraduatoriaUnificate() in riepilogo.html: atti del periodo con i problemi dei punteggi.
     `tutti`: anche bandi e rettifiche, che il registro non segue."""
     righe = [r for r in atti.elenco_atti(conn, dal, al) if tutti or r["atto"] in ATTI_SEGUITI]
+    if atti.fonti_in_attesa(conn):
+        return righe
     for p in punteggi.elenco_periodo(conn, dal, al):
         if not dal <= (p.get("data") or "") <= al:
             continue
@@ -97,7 +99,7 @@ def _corrisponde(e: dict, riga: dict, protocolli: set[str]) -> bool:
 def sincronizza(conn, mese: str, origine: str = "aggiornamento", utente: str | None = None) -> dict:
     """Allinea il registro ai dati attuali. Le versioni salvate alla chiusura non vengono toccate."""
     m = mensile.leggi(conn, mese)
-    if not m:
+    if not m or atti.fonti_in_attesa(conn):  # il registro resta com'è: riparte quando le raccolte finiscono
         return {}
     dal, al = mensile.periodo_dati(m)
     correnti = righe_correnti(conn, dal, al)
@@ -208,7 +210,7 @@ def elenco(conn, mese: str) -> dict:
     conteggi = {b: sum(v["badge"] == b for v in voci) for b in ("da_correggere", "parziale", "corretta", "da_controllare")}
     fonti = {f: compat.ultima_riuscita(conn, f) for f in ("urp", "sol")}
     return {"voci": voci, "totale": len(voci), "conteggi": conteggi, "ultimo_controllo": m.get("difformita_aggiornate_il") if m else None,
-            "fonti": fonti, "fonti_affidabili": _fonti_affidabili(conn), "verifica": stato_verifica()}
+            "fonti": fonti, "fonti_affidabili": _fonti_affidabili(conn), "fonti_in_attesa": atti.fonti_in_attesa(conn), "verifica": stato_verifica()}
 
 
 def stato_verifica() -> dict:

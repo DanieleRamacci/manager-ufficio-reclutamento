@@ -52,7 +52,7 @@
   td.f { text-align: center; white-space: nowrap; font-size: 12px; font-weight: 600; min-width: 92px; }
   td.f.presente { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
   td.f.mancante { background: color-mix(in srgb, var(--err) 18%, transparent); color: var(--err); }
-  td.f.non_applicabile, td.f.non_caricato { color: var(--muted); font-weight: 400; }
+  td.f.non_applicabile, td.f.non_caricato, td.f.in_attesa { color: var(--muted); font-weight: 400; }
   td.f a { color: inherit; }
   td.f.apribile { cursor: pointer; }
   td.f.diverso { background: color-mix(in srgb, var(--err) 18%, transparent); color: var(--err); }
@@ -128,6 +128,7 @@
     <div class="grid2" id="stato" style="margin-top:10px"></div></details>
   </section>
 
+  <div class="avviso" id="avviso-attesa" role="status" hidden style="margin-bottom:8px"></div>
   <div class="muted" id="barra-monitoraggio" hidden style="margin-bottom:8px"></div>
     <nav class="schede-atti" role="tablist" aria-label="Viste degli atti">
     <button type="button" role="tab" id="tab-stato-atti" aria-selected="true" aria-controls="panel-stato-atti">Stato complessivo</button>
@@ -330,14 +331,17 @@ function disegnaBandi() {
 }
 
 const ATTI = { bando: "Bando pubblicato", graduatoria: "Graduatoria", scorrimento: "Scorrimento", rettifica: "Rettifica graduatoria" };
-const CELLE = { presente: "presente", mancante: "mancante", non_applicabile: "fuori periodo", non_caricato: "non caricato" };
-let atti = [];
+const CELLE = { presente: "presente", mancante: "mancante", non_applicabile: "fuori periodo", non_caricato: "non caricato", in_attesa: "in attesa" };
+let atti = [], fontiInAttesa = [];
 
 async function caricaAtti() {
   const p = new URLSearchParams();
   if ($("atti-dal").value) p.set("dal", $("atti-dal").value);
   if ($("atti-al").value) p.set("al", $("atti-al").value);
   const { corpo } = await json("/api/atti?" + p);
+  fontiInAttesa = corpo.fonti_in_attesa || [];
+  $("avviso-attesa").hidden = !fontiInAttesa.length;
+  $("avviso-attesa").innerHTML = fontiInAttesa.length ? `<b>Difformità sospese.</b> Le fonti non si possono ancora confrontare. Aggiornamento da concludere: ${fontiInAttesa.map(f => `${esc(f.nome)} (${esc(f.motivo)})`).join(", ")}.` : "";
   if (!$("atti-dal").value) $("atti-dal").value = corpo.dal;
   atti = corpo.atti;
   // elenco degli RdP per il filtro, dai referenti presenti nelle righe
@@ -362,7 +366,7 @@ function disegnaAtti() {
     && (!manca || a.fonti[manca].stato === "mancante") && (!inc || a.difforme) && (!pd || a.protocollo_diverso)
     && (!rdp || (a.rdp || []).some(r => (r.email || nomeRdp(r)) === rdp))
     && (!q || `${a.numero_bando} ${a.codice} ${a.protocollo} ${a.titolo}`.toLowerCase().includes(q)));
-  $("conteggio-atti").textContent = `(${righe.length} di ${atti.length} · ${atti.filter(a => a.difforme).length} con difformità)`;
+  $("conteggio-atti").textContent = `(${righe.length} di ${atti.length} · ${fontiInAttesa.length ? "difformità sospese" : `${atti.filter(a => a.difforme).length} con difformità`})`;
   renderTabellaAtti("atti", righe, false);
 }
 
@@ -371,7 +375,7 @@ function renderTabellaAtti(id, righe, conSollecito) {
     segreteria: "Apri il file della segreteria" };
   const diverso = (c, a) => c.stato === "presente" && a.protocollo_diverso && c.protocollo && a.protocollo && String(c.protocollo) !== String(a.protocollo);
   const cella = (c, fonte, a) => `<td class="f ${diverso(c, a) ? "diverso" : c.stato}${c.url ? " apribile" : ""}"${c.url ? ` data-url="${esc(c.url)}" title="${DOVE[fonte]}"` : ""}>${diverso(c, a) ? "protocollo diverso" : CELLE[c.stato]}${c.protocollo && c.stato === "presente" ? `<div class="muted" style="font-weight:400">${esc(c.protocollo)}</div>` : ""}</td>`;
-  const righeHtml = righe.slice(0, 1000).map((a, i) => `<tr class="cliccabile ${a.difforme ? "difforme" : "in-regola"}" data-id="${a.bando_id}" data-riga="${i}"><td>${dataIt(a.data)}</td><td><b>${esc(a.numero_bando || "")}</b></td>
+  const righeHtml = righe.slice(0, 1000).map((a, i) => `<tr class="cliccabile ${a.difforme ? "difforme" : fontiInAttesa.length ? "" : "in-regola"}" data-id="${a.bando_id}" data-riga="${i}"><td>${dataIt(a.data)}</td><td><b>${esc(a.numero_bando || "")}</b></td>
       <td>${esc(a.codice || "")}</td><td>${TIPOLOGIE[a.tipologia] || esc(a.tipologia)}</td>
       <td>${ATTI[a.atto] || a.atto}${a.sottotipo && a.sottotipo !== "non_specificato"
         ? (a.sottotipo_origine === "segreteria"
@@ -592,6 +596,7 @@ function righeGraduatoriaUnificate() {
     });
   });
 
+  if (fontiInAttesa.length) return [];
   return [...righe, ...sintetiche].filter(a => a.difforme && ["graduatoria", "scorrimento"].includes(a.atto));
 }
 
@@ -620,6 +625,7 @@ async function caricaSolleciti(aggiornaPunteggi = true) {
   const [anno, numero] = mese.split("-").map(Number);
   const ultimo = new Date(anno, numero, 0).getDate();
   const { corpo } = await json(`/api/atti?dal=${mese}-01&al=${mese}-${String(ultimo).padStart(2, "0")}`);
+  fontiInAttesa = corpo.fonti_in_attesa || [];
   righeAttiMese = corpo.atti.filter(a => ["graduatoria", "scorrimento"].includes(a.atto));
   if (aggiornaPunteggi) await caricaPunteggi();
   else disegnaSolleciti();
