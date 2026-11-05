@@ -2,6 +2,8 @@
 import re
 import time
 
+import pytest
+
 from flask import Flask, session
 from flask_session import Session
 
@@ -273,3 +275,70 @@ def test_senza_posta_il_pulsante_lo_dice(db, tmp_path, monkeypatch):
     monkeypatch.delenv("MAIL_SENDER", raising=False)
     c = _app(tmp_path, monkeypatch).test_client()
     assert c.post("/login/visualizzatore", data={"username": "x.y"}).status_code == 503
+
+
+def test_il_link_a_una_pagina_porta_lì_dopo_il_link_via_email(db, tmp_path, monkeypatch):
+    inviate = _link_email(monkeypatch)
+    utenti.imposta(db, "anna.bianchi", "lettura", "x")
+    c = _app(tmp_path, monkeypatch).test_client()
+    arrivo = c.get("/monitoraggio/segreteria?atto=7&foglio=bandi")
+    assert arrivo.status_code == 302 and arrivo.headers["Location"] == "/login?next=/monitoraggio/segreteria%3Fatto%3D7%26foglio%3Dbandi"
+    pagina = c.get(arrivo.headers["Location"]).get_data(as_text=True)
+    assert "<details class=\"visualizzatore\" open>" in pagina and "Per aprire questa pagina devi prima accedere" in pagina
+    assert 'value="/monitoraggio/segreteria?atto=7&amp;foglio=bandi"' in pagina
+    chiesto = c.post("/login/visualizzatore", data={"username": "anna.bianchi", "next": "/monitoraggio/segreteria?atto=7&foglio=bandi"})
+    assert "riceverà a breve" in chiesto.get_data(as_text=True)
+    testo = inviate[0][1]
+    assert "segreteria" not in testo  # la pagina resta sul server, nell'email c'è solo il codice
+    codice = _percorso(testo).split("=")[1]
+    fine = c.post("/login/visualizzatore/entra", data={"codice": codice})
+    assert fine.headers["Location"] == "/monitoraggio/segreteria?atto=7&foglio=bandi"
+    assert c.get(fine.headers["Location"]).status_code == 200
+
+
+def test_chi_non_e_autorizzato_non_riceve_nulla_anche_con_il_link_a_una_pagina(db, tmp_path, monkeypatch):
+    inviate = _link_email(monkeypatch)
+    c = _app(tmp_path, monkeypatch).test_client()
+    r = c.post("/login/visualizzatore", data={"username": "estraneo.vero", "next": "/monitoraggio/mensili/2026-11"})
+    assert "Se l&#39;utente è autorizzato" in r.get_data(as_text=True) and inviate == []
+    assert c.get("/monitoraggio/segreteria").status_code == 302  # nessuna sessione aperta
+
+
+@pytest.mark.parametrize("valore", ["https://altro.it", "//altro.it", "/\\altro.it", "/\t/altro.it", "/\n/altro.it", "altro", "/login", "/logout", "/login/visualizzatore?codice=x", None, ""])
+def test_dopo_l_accesso_mai_fuori_dal_sito(valore):
+    assert accesso._next_sicuro(valore) == "/monitoraggio"
+
+
+def test_pagine_valide_dopo_l_accesso():
+    for valore in ("/monitoraggio/mensili/2026-11", "/monitoraggio?mese=2026-10", "/monitoraggio/comunicazioni/367.479 CTER"):
+        assert accesso._next_sicuro(valore) == valore
+
+
+def test_collega_sol_torna_alla_pagina_richiesta(db, tmp_path, monkeypatch):
+    c = _app(tmp_path, monkeypatch).test_client()
+    c.get("/login?next=/monitoraggio/segreteria")
+    risposta = c.post("/api/sol/ticket", data={"ticket": TICKET}).get_json()
+    assert c.get(risposta["link"].replace("http://localhost", "")).headers["Location"] == "/monitoraggio/segreteria"
+
+
+def test_tutte_le_pagine_portano_all_accesso_conservando_la_pagina(db, tmp_path, monkeypatch):
+    from monitoraggio.mensile_web import crea_blueprint_mensile
+    monkeypatch.setenv("UTENTI_AMMESSI", "mario.rossi")
+    protezione, solo_admin = utenti.protezioni(accesso.login_required)
+    app = Flask(__name__)
+    app.config.update(SECRET_KEY="x", SESSION_TYPE="filesystem", SESSION_FILE_DIR=str(tmp_path / "s"))
+    Session(app)
+    app.register_blueprint(accesso.bp)
+    app.register_blueprint(web.crea_blueprint(protezione=protezione, solo_admin=solo_admin))
+    app.register_blueprint(web.crea_blueprint_pagine_esistenti(protezione=protezione, solo_admin=solo_admin))
+    app.register_blueprint(crea_blueprint_mensile(protezione=protezione, solo_admin=solo_admin))
+    pubbliche = ("/login", "/logout", "/static", "/monitoraggio/app.css", "/api/")
+    pagine = [r.rule for r in app.url_map.iter_rules() if "GET" in r.methods and not r.arguments and not r.rule.startswith(pubbliche)]
+    assert len(pagine) >= 8 and "/monitoraggio/impostazioni" in pagine and "/monitoraggio/comunicazioni" in pagine
+    c = app.test_client()
+    for pagina in pagine:
+        r = c.get(pagina)
+        assert r.status_code == 302 and r.headers["Location"] == f"/login?next={pagina}", pagina
+    r = c.get("/monitoraggio/mensili/2026-11")
+    assert r.headers["Location"] == "/login?next=/monitoraggio/mensili/2026-11"
+    assert c.get("/report-mese.html").headers["Location"] == "/login?next=/report-mese.html"

@@ -1366,3 +1366,11 @@ def test_carica_i_candidati_di_tutti_gli_atti_del_mese(ambiente, db, monkeypatch
     assert c.post(url).status_code == 200 and len(letti) == numero_letti  # rilegge solo quelli che mancano
     assert not db.execute("SELECT 1 FROM sqlite_master WHERE sql LIKE '%cognome%' AND name LIKE 'candidat%'").fetchone()
 
+
+def test_pagina_riservata_aperta_da_chi_e_in_sola_lettura(ambiente, db):
+    utenti.imposta(db, "anna.bianchi", "lettura", "capo.ufficio")
+    lettore = ambiente("anna.bianchi")
+    r = lettore.get("/monitoraggio/impostazioni")
+    assert r.status_code == 403 and "riservata agli amministratori" in r.get_data(as_text=True) and 'href="/monitoraggio"' in r.get_data(as_text=True)
+    assert lettore.get("/api/impostazioni/attivita").get_json()["error"] == "Operazione riservata agli amministratori"
+

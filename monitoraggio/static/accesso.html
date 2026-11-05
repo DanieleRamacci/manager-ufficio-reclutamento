@@ -32,6 +32,9 @@
     <h1>Accesso al monitoraggio</h1>
     {% if errore %}<div class="errore" role="alert">{{ errore }}</div>{% endif %}
     {% if messaggio %}<div class="ok" role="status">{{ messaggio }}</div>{% endif %}
+    {% if pagina_richiesta and not codice_link and not messaggio %}
+    <div class="ok" role="status">Per aprire questa pagina devi prima accedere. Se sei autorizzato, chiedi il link via email: dopo l'accesso torni qui.</div>
+    {% endif %}
     {% if codice_link %}
     <p>Stai per entrare in sola lettura.</p>
     <form method="post" action="/login/visualizzatore/entra">
@@ -39,9 +42,10 @@
       <button type="submit">Entra</button>
     </form>
     {% else %}
-    <details class="visualizzatore">
+    <details class="visualizzatore"{% if pagina_richiesta %} open{% endif %}>
       <summary class="pulsante">Accedi come visualizzatore autorizzato</summary>
       <form method="post" action="/login/visualizzatore">
+        <input type="hidden" name="next" value="{{ next }}">
         <label for="username">Nome utente (nome.cognome)</label>
         <input id="username" name="username" type="text" autocomplete="username" required>
         <button type="submit">Mandami il link via email</button>

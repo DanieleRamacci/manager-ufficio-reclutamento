@@ -18,6 +18,7 @@ import zipfile
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
+from urllib.parse import quote
 
 from flask import Blueprint, jsonify, redirect, render_template_string, request, send_file, session
 
@@ -38,6 +39,7 @@ _ticket: dict[str, tuple[str, datetime]] = {}
 _link: dict[str, tuple[dict, datetime]] = {}  # codice monouso -> utente, per entrare dal programma
 _link_email: dict[str, tuple[str, datetime]] = {}  # codice monouso -> utente, per i visualizzatori
 _ultima_email: dict[str, datetime] = {}
+PAGINA_INIZIALE = "/monitoraggio"
 
 bp = Blueprint("accesso", __name__)
 
@@ -60,13 +62,17 @@ def login_required(fn):
     def _wrapped(*args, **kwargs):
         fino = session.get("accesso_fino")
         if not session.get("user") or not fino or datetime.fromisoformat(fino) <= _adesso():
-            return redirect(f"/login?next={request.path}")
+            pagina = request.full_path.rstrip("?") if request.method == "GET" else request.path
+            return redirect(f"/login?next={quote(pagina, safe='/')}")
         return fn(*args, **kwargs)
     return _wrapped
 
 
 def _next_sicuro(valore: str | None) -> str:
-    return valore if valore and valore.startswith("/") and not valore.startswith(("//", "/\\")) else "/monitoraggio"
+    """Solo una pagina di questo sito, e mai quelle di accesso: dopo il login non avrebbero senso."""
+    if not valore or not re.fullmatch(r"/(?!/)[^\x00-\x1f\x7f\\]*", valore) or valore.startswith(("/login", "/logout")):
+        return PAGINA_INIZIALE
+    return valore
 
 
 def intestazioni() -> dict | None:
@@ -101,11 +107,14 @@ def dimentica() -> None:
 def _mostra(errore: str | None = None, codice: int = 200, messaggio: str | None = None, codice_link: str | None = None):
     return render_template_string(_PAGINA.read_text(encoding="utf-8"), errore=errore, messaggio=messaggio,
                                   codice_link=codice_link, sol_login=f"{sol_sessione.base_url()}/sso/login",
-                                  next=_next_sicuro(request.values.get("next"))), codice
+                                  next=_next_sicuro(request.values.get("next")),
+                                  pagina_richiesta=_next_sicuro(request.values.get("next")) != PAGINA_INIZIALE), codice
 
 
 @bp.get("/login")
 def login():
+    if _next_sicuro(request.args.get("next")) != PAGINA_INIZIALE:
+        session["dopo_accesso"] = _next_sicuro(request.args.get("next"))  # per chi entra con il programma Collega-SOL
     return _mostra()
 
 
@@ -166,8 +175,9 @@ def completa():
         voce = _link.pop(request.args.get("codice", ""), None)
     if not voce or voce[1] <= _adesso():
         return _mostra("Il link è scaduto o è già stato usato: avvia di nuovo il programma.", 401)
+    destinazione = _next_sicuro(session.get("dopo_accesso"))
     _apri_sessione(voce[0])
-    return redirect("/monitoraggio")
+    return redirect(destinazione)
 
 
 @bp.post("/login/visualizzatore")
@@ -188,7 +198,7 @@ def chiedi_link():
         for vecchio in [k for k, v in _link_email.items() if v[1] <= ora]:
             del _link_email[vecchio]
         codice = secrets.token_urlsafe(32)
-        _link_email[codice] = (nome, ora + DURATA_LINK_EMAIL)
+        _link_email[codice] = (nome, ora + DURATA_LINK_EMAIL, _next_sicuro(request.form.get("next")))
     try:
         posta.invia([utenti.email_di(nome)], "Accesso al monitoraggio bandi",
                     "Buongiorno,\n\nper entrare nel monitoraggio in sola lettura apri questo link entro 15 minuti:\n"
@@ -218,7 +228,7 @@ def entra_con_link():
     if not voce or voce[1] <= _adesso() or not utenti.ruolo(voce[0]):
         return _mostra("Il link è scaduto o è già stato usato: chiedine uno nuovo.", 401)
     _apri_sessione({"username": voce[0], "email": None}, solo_lettura=True)
-    return redirect("/monitoraggio")
+    return redirect(voce[2])
 
 
 @bp.get("/login/programma")

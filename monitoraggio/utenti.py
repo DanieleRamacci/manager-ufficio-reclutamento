@@ -7,7 +7,7 @@ import os
 from datetime import datetime, timezone
 from functools import wraps
 
-from flask import jsonify, session
+from flask import jsonify, request, session
 
 from . import db
 
@@ -150,6 +150,9 @@ def protezioni(base, uscita=None):
         @wraps(fn)
         def _controllo(*args, **kwargs):
             if ruolo_corrente() != AMMINISTRATORE:
+                if request.method == "GET" and not request.path.startswith("/api/"):  # link aperto nel browser
+                    return ('<!doctype html><html lang="it"><meta charset="utf-8"><title>Pagina riservata</title>'
+                            '<p>Questa pagina è riservata agli amministratori. <a href="/monitoraggio">Vai al monitoraggio</a></p></html>'), 403
                 return jsonify({"error": "Operazione riservata agli amministratori"}), 403
             return fn(*args, **kwargs)
         return _controllo
