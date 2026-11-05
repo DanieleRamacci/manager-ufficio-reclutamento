@@ -1,9 +1,10 @@
 """Database SQLite del monitoraggio (data-model.md)."""
+import json
 import sqlite3
 
 from . import config
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -235,7 +236,48 @@ CREATE TABLE IF NOT EXISTS monitoraggio_mese (
     stato TEXT NOT NULL DEFAULT 'aperto' CHECK (stato IN ('aperto', 'chiuso')),
     chiuso_da TEXT,
     chiuso_il TEXT,
-    difformita_aggiornate_il TEXT
+    difformita_aggiornate_il TEXT,
+    tipologie TEXT,
+    verifica_fonti_il TEXT
+);
+
+-- Registro di ogni messaggio ai referenti: inviato, copiato, segnato a mano o di prova.
+CREATE TABLE IF NOT EXISTS comunicazione (
+    id TEXT PRIMARY KEY,
+    mese TEXT NOT NULL REFERENCES monitoraggio_mese(mese),
+    chiave TEXT NOT NULL,
+    numero_bando TEXT,
+    codice TEXT,
+    destinatari TEXT,
+    oggetto TEXT,
+    corpo TEXT,
+    n_difformita INTEGER,
+    canale TEXT NOT NULL CHECK (canale IN ('Casella ufficio', 'Copia manuale', 'Client email', 'Segnata a mano', 'Email di prova')),
+    stato TEXT NOT NULL CHECK (stato IN ('inviata', 'da confermare', 'prova', 'annullata')),
+    data TEXT NOT NULL,
+    utente TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_comunicazione_mese ON comunicazione (mese, chiave, data);
+
+CREATE TABLE IF NOT EXISTS attivita (
+    chiave TEXT PRIMARY KEY,
+    orario TEXT,
+    attiva INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS esecuzione (
+    id INTEGER PRIMARY KEY,
+    attivita TEXT NOT NULL,
+    data TEXT NOT NULL,
+    esito TEXT NOT NULL CHECK (esito IN ('ok', 'avviso', 'errore', 'in_corso')),
+    durata_s INTEGER,
+    dettaglio TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_esecuzione ON esecuzione (attivita, id);
+
+CREATE TABLE IF NOT EXISTS utente_accesso (
+    username TEXT PRIMARY KEY,
+    quando TEXT NOT NULL
 );
 
 -- Fotografia del mese alla chiusura: non cambia più se cambiano le fonti. Niente dati dei candidati.
@@ -410,6 +452,17 @@ def _migra_versioni(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_punteggi_versione ON monitoraggio_punteggi (mese, versione)")
 
 
+def _migra_comunicazioni(conn: sqlite3.Connection) -> None:
+    """Versione 12: i solleciti già segnati entrano nel registro delle comunicazioni."""
+    for r in conn.execute("SELECT s.* FROM sollecito s WHERE NOT EXISTS (SELECT 1 FROM comunicazione c WHERE c.mese = s.mese "
+                          "AND c.chiave = s.numero_bando)").fetchall():
+        conn.execute("INSERT OR IGNORE INTO comunicazione (id, mese, chiave, numero_bando, codice, destinatari, oggetto, canale, stato, data, utente) "
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'inviata', ?, ?)",
+                     (f"MIGRATA/{r['mese']}/{r['numero_bando']}", r["mese"], r["numero_bando"], r["numero_bando"].split(" ")[0], r["numero_bando"],
+                      json.dumps([x for x in (r["destinatari"] or "").split(", ") if x]), r["oggetto"],
+                      "Casella ufficio" if r["stato"] == "inviata" else "Segnata a mano", r["quando"], r["autore"]))
+
+
 def inizializza(conn: sqlite3.Connection) -> None:
     """Crea le tabelle mancanti e aggiorna la versione dello schema (le CREATE sono idempotenti)."""
     conn.executescript(SCHEMA)
@@ -418,10 +471,12 @@ def inizializza(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_4)
     colonne_mese = {r[1] for r in conn.execute("PRAGMA table_info(monitoraggio_mese)")}
     for colonna, tipo in (("stato", "TEXT NOT NULL DEFAULT 'aperto'"), ("chiuso_da", "TEXT"), ("chiuso_il", "TEXT"),  # versione 9
-                          ("difformita_aggiornate_il", "TEXT")):  # versione 11
+                          ("difformita_aggiornate_il", "TEXT"),  # versione 11
+                          ("tipologie", "TEXT"), ("verifica_fonti_il", "TEXT")):  # versione 12
         if colonna not in colonne_mese:
             conn.execute(f"ALTER TABLE monitoraggio_mese ADD COLUMN {colonna} {tipo}")
     _migra_versioni(conn)
+    _migra_comunicazioni(conn)
     riga = conn.execute("SELECT versione FROM schema_version").fetchone()
     if riga is None:
         conn.execute("INSERT INTO schema_version (versione) VALUES (?)", (SCHEMA_VERSION,))

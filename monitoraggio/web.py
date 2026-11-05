@@ -14,7 +14,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, send_from_directory
 from werkzeug.utils import secure_filename
 
-from . import accessibilita, atti, collegamento, compat, config, db, difformita, impostazioni, notifiche, punteggi, referenti, segreteria, sol_sessione
+from . import accessibilita, atti, collegamento, comunicazioni, compat, config, db, difformita, impostazioni, notifiche, punteggi, referenti, segreteria, sol_sessione
 
 # esito dell'ultima verifica dei punteggi (solo conteggi, in memoria)
 ULTIMA_VERIFICA: dict = {}
@@ -33,6 +33,7 @@ MENU = [
         {"titolo": "Riepilogo atti", "url": "/monitoraggio", "route": True},
         {"titolo": "File segreteria", "url": "/monitoraggio/segreteria", "route": True},
         {"titolo": "File segreteria: vista del file", "url": "/monitoraggio/segreteria/file", "route": True},
+        {"titolo": "Comunicazioni", "url": "/monitoraggio/comunicazioni", "route": True},
         {"titolo": "Report del mese", "url": "/report-mese.html", "pagina": "report-mese.html"},
         {"titolo": "Impostazioni", "url": "/monitoraggio/impostazioni", "route": True, "solo_admin": True},
     ]},
@@ -430,8 +431,14 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
         ruolo = ruolo_corrente()
         gruppi = [{**g, "voci": [v for v in g["voci"] if not v["solo_admin"] or ruolo == "amministratore"]}
                   for g in menu(pagine_disponibili)]
+        conn = _conn()
+        try:
+            da_comunicare = comunicazioni.da_comunicare(conn)
+            fonti = {f["fonte"]: f["aggiornata_il"] for f in comunicazioni.allineamento(conn, config.monitoraggio_dal().isoformat()[:7])}
+        finally:
+            conn.close()
         return jsonify({"gruppi": gruppi, "utente": utente_corrente(), "ruolo": ruolo, "avviso_dati": avviso_dati(),
-                        "login": login_url, "logout": logout_url})
+                        "da_comunicare": da_comunicare, "fonti": fonti, "login": login_url, "logout": logout_url})
 
     @bp.post("/api/raccolta/avvia")
     @protezione

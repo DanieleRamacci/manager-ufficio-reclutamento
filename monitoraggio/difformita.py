@@ -25,7 +25,7 @@ def _adesso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _rilievi(riga: dict) -> list[str]:
+def rilievi(riga: dict) -> list[str]:
     """Come rilievi() in solleciti.js."""
     atto = "la graduatoria" if riga["atto"] == "graduatoria" else "il provvedimento di assunzione idoneo (scorrimento/utilizzo della graduatoria)"
     testi = list(riga.get("note") or [])
@@ -35,9 +35,10 @@ def _rilievi(riga: dict) -> list[str]:
     return list(dict.fromkeys(t for t in testi if t))
 
 
-def righe_correnti(conn, dal: str, al: str) -> list[dict]:
-    """Come righeGraduatoriaUnificate() in riepilogo.html: atti del periodo con i problemi dei punteggi."""
-    righe = [r for r in atti.elenco_atti(conn, dal, al) if r["atto"] in ATTI_SEGUITI]
+def righe_correnti(conn, dal: str, al: str, tutti: bool = False) -> list[dict]:
+    """Come righeGraduatoriaUnificate() in riepilogo.html: atti del periodo con i problemi dei punteggi.
+    `tutti`: anche bandi e rettifiche, che il registro non segue."""
+    righe = [r for r in atti.elenco_atti(conn, dal, al) if tutti or r["atto"] in ATTI_SEGUITI]
     for p in punteggi.elenco_periodo(conn, dal, al):
         if not dal <= (p.get("data") or "") <= al:
             continue
@@ -111,11 +112,11 @@ def sincronizza(conn, mese: str, origine: str = "aggiornamento", utente: str | N
             protocolli = _protocolli(riga)
             e = next((x for x in registro if x["id"] not in usate and x["codice"] == riga.get("codice") and _corrisponde(x, riga, protocolli)), None) \
                 or next((x for x in registro if x["id"] not in usate and _corrisponde(x, riga, protocolli)), None)
-            rilievi = _rilievi(riga)
+            testi = rilievi(riga)
             if e:
                 usate.add(e["id"])
-            if riga.get("difforme") and rilievi:
-                testo = json.dumps(rilievi, ensure_ascii=False)
+            if riga.get("difforme") and testi:
+                testo = json.dumps(testi, ensure_ascii=False)
                 if not e:
                     cur = conn.execute(
                         "INSERT INTO difformita (mese, numero_bando, codice, titolo_bando, tipologia, atto, data, protocollo, protocolli, "
@@ -177,9 +178,9 @@ def reimposta(conn, mese: str) -> None:
 
 def _voce(conn, e: dict, solleciti: dict) -> dict:
     iniziali, attuali = json.loads(e["rilievi_iniziali"]), json.loads(e["rilievi_attuali"])
-    rilievi = [{"testo": t, "risolto": t not in attuali and e["stato"] != DA_CONTROLLARE} for t in iniziali] + \
-              [{"testo": t, "risolto": False, "nuovo": True} for t in attuali if t not in iniziali]
-    risolti = sum(r["risolto"] for r in rilievi)
+    voci_rilievo = [{"testo": t, "risolto": t not in attuali and e["stato"] != DA_CONTROLLARE} for t in iniziali] + \
+                   [{"testo": t, "risolto": False, "nuovo": True} for t in attuali if t not in iniziali]
+    risolti = sum(r["risolto"] for r in voci_rilievo)
     if e["stato"] == CORRETTA:
         badge = "corretta"
     elif e["stato"] == DA_CONTROLLARE:
@@ -189,7 +190,7 @@ def _voce(conn, e: dict, solleciti: dict) -> dict:
     sollecito = solleciti.get(e["codice"] or "") or solleciti.get(e["numero_bando"] or "")
     return {**{k: e[k] for k in ("id", "numero_bando", "codice", "titolo_bando", "tipologia", "atto", "data", "protocollo",
                                  "stato", "prima_rilevata_il", "corretta_il", "ultimo_controllo_il")},
-            "badge": badge, "rilievi": rilievi,
+            "badge": badge, "rilievi": voci_rilievo,
             "sollecito": {k: sollecito[k] for k in ("stato", "autore", "quando")} if sollecito else None,
             "storico": [dict(x) for x in conn.execute(
                 "SELECT quando, tipo, origine, utente FROM difformita_evento WHERE difformita_id = ? ORDER BY id DESC", (e["id"],))]}

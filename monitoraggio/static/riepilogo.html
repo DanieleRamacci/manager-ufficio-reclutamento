@@ -6,15 +6,11 @@
 <title>Monitoraggio bandi</title>
 <style>
   :root {
-    --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #5d6677; --line: #dfe3ea;
-    --accent: #1f5fbf; --ok: #1d7a46; --warn: #a25b00; --err: #b3261e; --chip: #eef2f8;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #14171c; --card: #1c2027; --text: #e6e9ef; --muted: #9aa3b2; --line: #2e343e;
-            --accent: #7aa7ff; --ok: #5fcf8f; --warn: #f0b35a; --err: #ff8a80; --chip: #262c36; }
+    --bg: #f3f4f6; --card: #fff; --text: #1b2230; --muted: #5b6472; --line: #e3e6eb;
+    --accent: #1f5fbf; --ok: #1e7b45; --warn: #9a6200; --err: #b42318; --chip: #eef0f3;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  body { margin: 0; font: 14px/1.45 "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif; font-variant-numeric: tabular-nums; background: var(--bg); color: var(--text); }
   header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
            padding: 14px 20px; background: var(--card); border-bottom: 1px solid var(--line); }
   h1 { font-size: 18px; margin: 0; }
@@ -74,8 +70,37 @@
   tr.riga-candidati:hover { background: transparent !important; cursor: default; }
   .candidati table th, .candidati table td { white-space: nowrap; font-size: 12px; }
   td.f.apribile:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+  /* Specifiche grafiche, sezioni 1 e 2 */
+  body { background: var(--bg); }
+  main { max-width: 1680px; margin: 0 auto; padding: 16px 24px 40px; gap: 14px; }
+  @media (max-width: 700px) { main { padding: 12px 16px 32px; } }
+  header { padding: 12px 24px; }
+  section { border-radius: 10px; padding: 14px 18px; }
+  h1 { font-size: 22px; font-weight: 600; } h2 { font-size: 16px; font-weight: 600; }
+  input, select, button { min-height: 34px; border-radius: 7px; border-color: #c9ced6; }
+  input[type=checkbox] { min-height: 0; }
+  button:not(.primario):hover { background: #fafbfc; }
+  button.primario:hover { background: #174c9c; }
+  th { font-size: 12px; font-weight: 600; color: var(--muted); background: #fafbfc; }
+  td { font-size: 13px; border-bottom-color: #eef0f3; }
+  .schede-atti { border-radius: 10px; padding: 10px 14px; }
+  .schede-atti [role="tab"][aria-selected="true"] { background: #1f3a5f; border-color: #1f3a5f; color: #fff; }
+  td.f { font-size: 12px; }
+  td.f.presente { background: #e9f5ee; color: #1e7b45; }
+  td.f.mancante { background: #fbe7e5; color: #b42318; }
+  td.f.diverso { background: #fdf3dc; color: #9a6200; }
+  td.f.non_applicabile { color: #6b7280; } td.f.non_caricato { color: #9aa1ab; }
+  tr.difforme > td:first-child { box-shadow: inset 3px 0 0 #d6453a; } tr.in-regola > td:first-child { box-shadow: inset 3px 0 0 #2f9a5c; }
+  td.difformita .chip.err { background: #f1f3f8; color: #b42318; border-radius: 6px; white-space: normal; }
+  td.difformita .chip.protdiv { background: #f1f3f8; color: #9a6200; border-radius: 6px; white-space: normal; }
+  .rdp { font-size: 12.5px; min-width: 130px; max-width: 200px; } .rdp .nome { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rdp div.email { font-size: 11.5px; margin-bottom: 5px; } button.link { border: 0; background: none; color: var(--accent); padding: 0; min-height: 0; font-size: 11.5px; }
+  .legenda { display: inline-flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); font-weight: 400; }
+  .legenda i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
 </style>
 <script src="/monitoraggio/menu.js" defer></script>
+<script src="/monitoraggio/app.js"></script>
 <script src="/monitoraggio/solleciti.js" defer></script>
 </head>
 <body>
@@ -99,8 +124,8 @@
 
 <main>
   <section>
-    <h2>Stato delle fonti</h2>
-    <div class="grid2" id="stato"></div>
+    <details><summary style="cursor:pointer;font-weight:600">Stato delle fonti</summary>
+    <div class="grid2" id="stato" style="margin-top:10px"></div></details>
   </section>
 
   <div class="muted" id="barra-monitoraggio" hidden style="margin-bottom:8px"></div>
@@ -117,8 +142,8 @@
   </nav>
 
   <section id="panel-stato-atti" role="tabpanel" aria-labelledby="tab-stato-atti">
-    <h2>Stato complessivo degli atti <span class="muted" id="conteggio-atti"></span></h2>
-    <div class="muted" style="margin-bottom:8px">Ogni atto compare una sola volta. Verde: presente sulla fonte · rosso: mancante · grigio: non applicabile o fonte non ancora caricata.</div>
+    <div class="filtri" style="justify-content:space-between"><h2 style="margin:0">Stato complessivo degli atti <span class="muted" id="conteggio-atti"></span></h2>
+      <span class="legenda"><span><i style="background:#1e7b45"></i>presente</span><span><i style="background:#b42318"></i>mancante</span><span><i style="background:#9a6200"></i>protocollo diverso</span><span><i style="background:#9aa1ab"></i>non applicabile</span></span></div>
     <div class="filtri">
       <label class="muted">Mese <input type="month" id="atti-mese"></label>
       <button type="button" id="atti-tutto" title="Dal 1° gennaio 2026 a oggi">Tutto il periodo</button>
@@ -138,6 +163,7 @@
       <label class="muted"><input type="checkbox" id="atti-protdiv"> protocollo diverso</label>
       <select id="atti-rdp"><option value="">Tutti gli RdP</option></select>
       <input type="search" id="atti-q" placeholder="Bando, codice, protocollo" size="22">
+      <a href="#" id="atti-azzera" class="muted" style="font-size:12.5px">Azzera filtri</a>
     </div>
     <div class="scroll"><table id="atti"></table></div>
   </section>
@@ -343,8 +369,9 @@ function disegnaAtti() {
 function renderTabellaAtti(id, righe, conSollecito) {
   const DOVE = { sol: "Apri il bando su Selezioni Online (tutti gli allegati)", urp: "Apri il bando su URP (tutti gli allegati)",
     segreteria: "Apri il file della segreteria" };
-  const cella = (c, fonte) => `<td class="f ${c.stato}${c.url ? " apribile" : ""}"${c.url ? ` data-url="${esc(c.url)}" title="${DOVE[fonte]}"` : ""}>${CELLE[c.stato]}${c.protocollo && c.stato === "presente" ? `<div class="muted" style="font-weight:400">${esc(c.protocollo)}</div>` : ""}</td>`;
-  const righeHtml = righe.slice(0, 1000).map((a, i) => `<tr class="cliccabile" data-id="${a.bando_id}" data-riga="${i}"><td>${dataIt(a.data)}</td><td><b>${esc(a.numero_bando || "")}</b></td>
+  const diverso = (c, a) => c.stato === "presente" && a.protocollo_diverso && c.protocollo && a.protocollo && String(c.protocollo) !== String(a.protocollo);
+  const cella = (c, fonte, a) => `<td class="f ${diverso(c, a) ? "diverso" : c.stato}${c.url ? " apribile" : ""}"${c.url ? ` data-url="${esc(c.url)}" title="${DOVE[fonte]}"` : ""}>${diverso(c, a) ? "protocollo diverso" : CELLE[c.stato]}${c.protocollo && c.stato === "presente" ? `<div class="muted" style="font-weight:400">${esc(c.protocollo)}</div>` : ""}</td>`;
+  const righeHtml = righe.slice(0, 1000).map((a, i) => `<tr class="cliccabile ${a.difforme ? "difforme" : "in-regola"}" data-id="${a.bando_id}" data-riga="${i}"><td>${dataIt(a.data)}</td><td><b>${esc(a.numero_bando || "")}</b></td>
       <td>${esc(a.codice || "")}</td><td>${TIPOLOGIE[a.tipologia] || esc(a.tipologia)}</td>
       <td>${ATTI[a.atto] || a.atto}${a.sottotipo && a.sottotipo !== "non_specificato"
         ? (a.sottotipo_origine === "segreteria"
@@ -357,13 +384,14 @@ function renderTabellaAtti(id, righe, conSollecito) {
             ? `<button type="button" class="btn-candidati btn-candidati-atto" data-scheda="${a.punteggi.scheda_id}">👥 ${a.punteggi.con_punteggi} candidati ▾</button>`
             : (verificaInCorso ? `<span class="spinner" title="Scaricamento dei candidati da Selezioni Online"></span>` : "")) : ""}
         ${linkPunteggi(a.url_punteggi)}</td>
-      <td>${esc(a.protocollo || "")}</td>${cella(a.fonti.sol, "sol")}${cella(a.fonti.urp, "urp")}${cella(a.fonti.segreteria, "segreteria")}
-      <td>${(a.rdp || []).map(r => `<div title="${esc(r.email || "")}">${esc(nomeRdp(r))}</div>`).join("")}${a.rdp_origine === "tutti i codici" && (a.rdp || []).length ? `<div class="muted">(tutti i codici)</div>` : ""}</td>
-      <td class="difformita">${a.note.map(n => `<span class="chip err">${esc(n)}</span>`).join("")}${conSollecito ? `<div class="azioni-sollecito">${righeDelCodice(a).some(x => (x.rdp || []).some(r => r.email)) ? `<button type="button" class="btn-copia-email">Copia destinatari RdP</button>` : `<span class="chip warn">email RdP non disponibile</span>`}<button type="button" class="btn-copia-sollecito">Copia messaggio completo</button>${controlliInvio(a)}</div><span class="muted stato-copia" aria-live="polite"></span>` : ""}</td></tr>`).join("");
+      <td>${esc(a.protocollo || "")}</td>${cella(a.fonti.sol, "sol", a)}${cella(a.fonti.urp, "urp", a)}${cella(a.fonti.segreteria, "segreteria", a)}
+      ${App.cellaRdp(a)}
+      <td class="difformita">${a.note.map(n => `<span class="chip ${/^protocollo/.test(n) ? "protdiv" : "err"}">${esc(n)}</span>`).join("")}${conSollecito ? `<div class="azioni-sollecito">${righeDelCodice(a).some(x => (x.rdp || []).some(r => r.email)) ? `<button type="button" class="btn-copia-email">Copia destinatari RdP</button>` : `<span class="chip warn">email RdP non disponibile</span>`}<button type="button" class="btn-copia-sollecito">Copia messaggio completo</button>${controlliInvio(a)}</div><span class="muted stato-copia" aria-live="polite"></span>` : ""}</td></tr>`).join("");
   $(id).innerHTML = `<thead><tr><th>Data</th><th>N. bando</th><th>Codice</th><th>Tipologia</th><th>Atto</th><th>Protocollo</th>
       <th>Selezioni Online</th><th>URP</th><th>File segreteria</th><th>RdP</th><th>Note</th></tr></thead><tbody>` +
     (righeHtml || `<tr><td colspan="11" class="muted">${conSollecito ? "Nessuna difformità rilevata per questo mese." : "Nessun atto nel periodo selezionato."}</td></tr>`) + "</tbody>" +
     (righe.length > 1000 ? `<tfoot><tr><td colspan="11" class="muted">Mostrati i primi 1000: usa i filtri.</td></tr></tfoot>` : "");
+  App.collegaRdp($(id));
   document.querySelectorAll(`#${id} button.btn-candidati-atto`).forEach(b => b.onclick = (e) => {
     e.stopPropagation();
     const a = righe[Number(b.closest("tr").dataset.riga)];
@@ -854,6 +882,12 @@ function impostaMese(mese) {
   caricaAtti();
 }
 $("atti-mese").addEventListener("change", () => impostaMese($("atti-mese").value));
+$("atti-azzera").onclick = (e) => {
+  e.preventDefault();
+  ["atti-mese", "atti-dal", "atti-al", "atti-tipo", "atti-tipologia", "atti-manca", "atti-rdp", "atti-q"].forEach(id => { $(id).value = ""; });
+  $("atti-incompleti").checked = false; $("atti-protdiv").checked = false;
+  caricaAtti();
+};
 $("atti-tutto").onclick = () => { $("atti-mese").value = ""; $("atti-dal").value = ""; $("atti-al").value = ""; caricaAtti(); };
 function selezionaSchedaAtti(id) {
   const schede = ["stato-atti", "graduatorie-mese", "scorrimenti-mese"];

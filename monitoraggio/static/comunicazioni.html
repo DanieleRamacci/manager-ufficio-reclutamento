@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Comunicazioni</title>
+  <link rel="stylesheet" href="/monitoraggio/app.css">
+  <script src="/monitoraggio/menu.js" defer></script>
+  <script src="/monitoraggio/app.js"></script>
+</head>
+<body>
+<main>
+  <div class="tra">
+    <div><h1>Comunicazioni</h1>
+      <div class="muted small">Ogni messaggio inviato, copiato o segnato come inviato viene registrato con il suo ID, per esempio <span class="mono">MON-10.2026/367.544/03</span>: monitoraggio, bando e codice.</div></div>
+    <div class="riga" id="stato-email"></div>
+  </div>
+  <section>
+    <div class="riga" style="margin-bottom:12px">
+      <label>Monitoraggio <select id="f-mese"><option value="">Tutti</option></select></label>
+      <label>Stato <select id="f-stato"><option value="">Tutti</option><option value="inviata">Inviate</option><option value="da confermare">Da confermare</option><option value="prova">Prove</option><option value="annullata">Annullate</option></select></label>
+      <label>Canale <select id="f-canale"><option value="">Tutti</option><option>Casella ufficio</option><option>Copia manuale</option><option>Client email</option><option>Segnata a mano</option><option>Email di prova</option></select></label>
+      <label>Cerca <input type="search" id="f-q" placeholder="ID, bando, referente" size="24"></label>
+    </div>
+    <div class="scroll"><table id="tabella"></table></div>
+    <div class="errore" id="errore" role="alert" hidden></div>
+  </section>
+</main>
+<script>
+  const { $, esc, ora, chiama, apriFinestra, chiudiFinestra } = App;
+  const PILLOLE = { inviata: ["p-ok", "inviata"], "da confermare": ["p-warn", "da confermare"], prova: ["p-test", "prova"], annullata: ["p-na", "annullata"] };
+  let dati = [];
+  const brevi = (lista) => { const p = lista[0] ? lista[0].split("@")[0].split(".") : []; const nome = p.length > 1 ? `${p[0][0].toUpperCase()}. ${p.slice(1).join(" ").replace(/^./, x => x.toUpperCase())}` : (lista[0] || "–"); return lista.length > 1 ? `${nome} +${lista.length - 1}` : nome; };
+  function disegna() {
+    const f = { stato: $("f-stato").value, canale: $("f-canale").value, q: $("f-q").value.toLowerCase() };
+    const righe = dati.filter(c => (!f.stato || c.stato === f.stato) && (!f.canale || c.canale === f.canale)
+      && (!f.q || `${c.id} ${c.chiave} ${c.destinatari.join(" ")}`.toLowerCase().includes(f.q)));
+    $("tabella").innerHTML = `<thead><tr><th>ID comunicazione</th><th>Data</th><th>Monitoraggio</th><th>N. bando</th><th>Codice</th><th>Destinatari</th><th>Oggetto</th><th>Difformità</th><th>Canale</th><th>Stato</th><th></th></tr></thead><tbody>` +
+      (righe.map((c, i) => `<tr class="cliccabile" data-i="${dati.indexOf(c)}"><td class="mono small">${esc(c.id)}</td><td>${ora(c.data)}</td><td class="mono small">${esc(c.monitoraggio)}</td><td>${esc(c.numero_bando)}</td><td>${esc(c.chiave)}</td>
+        <td title="${esc(c.destinatari.join(", "))}">${esc(brevi(c.destinatari))}</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.oggetto)}">${esc(c.oggetto)}</td>
+        <td>${c.n_difformita ?? ""}</td><td>${esc(c.canale)}</td><td><span class="pillola ${PILLOLE[c.stato][0]}">${PILLOLE[c.stato][1]}</span></td><td><button type="button" class="piccolo">Apri</button></td></tr>`).join("")
+        || `<tr><td colspan="11" class="muted">Nessuna comunicazione.</td></tr>`) + `</tbody>`;
+    document.querySelectorAll("tr[data-i]").forEach(tr => tr.onclick = () => apri(dati[Number(tr.dataset.i)]));
+  }
+  function apri(c) {
+    const o = apriFinestra(`<header><div><b>Comunicazione</b> <span class="mono small">${esc(c.id)}</span></div><span class="pillola ${PILLOLE[c.stato][0]}">${PILLOLE[c.stato][1]}</span></header>
+      <div class="corpo"><div class="small"><b>A:</b> ${esc(c.destinatari.join(", ")) || "–"}<br><b>Oggetto:</b> ${esc(c.oggetto)}<br><b>Canale:</b> ${esc(c.canale)} · ${ora(c.data)}${c.utente ? ` · ${esc(c.utente)}` : ""}</div>
+      <div class="anteprima-testo">${esc(c.corpo) || "Testo non disponibile."}</div></div>
+      <footer><span></span><button type="button" id="chiudi">Chiudi</button></footer>`);
+    o.querySelector("#chiudi").onclick = chiudiFinestra;
+  }
+  async function carica() {
+    try {
+      const d = await chiama(`/api/comunicazioni?mese=${encodeURIComponent($("f-mese").value)}`);
+      dati = d.comunicazioni;
+      if ($("f-mese").options.length === 1) d.monitoraggi.forEach(m => $("f-mese").add(new Option(m.id, m.mese)));
+      $("stato-email").innerHTML = `<span class="pillola ${d.posta.ufficiali_attive ? "p-ok" : "p-na"}">Email ufficiali ${d.posta.ufficiali_attive ? "attive" : "disattivate"}</span>
+        <span class="pillola ${d.posta.prova_attiva ? "p-test" : "p-na"}">Prova ${d.posta.prova_attiva ? "attiva" : "disattivata"}</span>
+        <a class="pulsante solo-admin" href="/monitoraggio/impostazioni#email">Impostazioni email</a>`;
+      disegna();
+    } catch (e) { $("errore").hidden = false; $("errore").textContent = e.message; }
+  }
+  $("f-mese").onchange = carica;
+  ["f-stato", "f-canale", "f-q"].forEach(id => $(id).addEventListener("input", disegna));
+  carica();
+</script>
+</body>
+</html>

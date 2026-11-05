@@ -4,294 +4,406 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Monitoraggi mensili</title>
-  <link rel="stylesheet" href="/monitoraggio/mensile.css">
+  <link rel="stylesheet" href="/monitoraggio/app.css">
   <script src="/monitoraggio/menu.js" defer></script>
+  <script src="/monitoraggio/app.js"></script>
 </head>
 <body>
   <main id="contenuto"><p class="muted">Caricamento…</p></main>
   <script>
-    const $ = (id) => document.getElementById(id);
-    const esc = (t) => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-    const ora = (iso) => iso ? new Date(iso).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" }) : "";
-    const MESI = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
+    const { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, json: corpoJson, toast, apriFinestra, chiudiFinestra, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati } = App;
     const meseScelto = location.pathname.split("/")[3];
-    async function chiama(url, opzioni) {
-      const r = await fetch(url, { cache: "no-store", ...opzioni });
-      const corpo = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(corpo.error || `Errore ${r.status}`);
-      return corpo;
+    const titoloMese = (mese) => { const [a, n] = mese.split("-"); return `${MESI[Number(n) - 1]} ${a}`; };
+    const chipGruppo = (g) => `<span class="chip t-${g}">${esc(TIPOLOGIE[g] || g)}</span>`;
+    const errorePagina = (err) => { $("contenuto").innerHTML = `<div class="errore" role="alert">${esc(err.message)}</div>`; };
+
+    function righeAllineamento(fonti) {
+      return fonti.map(f => `<div class="tra small" style="padding:5px 0;border-bottom:1px solid var(--border-soft)"><span>${esc(f.nome)}</span>
+        <span><span class="pillola ${f.allineata ? "p-ok" : "p-warn"}">${f.allineata ? "allineata" : "dati parziali"}</span>
+        <span class="muted"> ${f.fino_al ? `dati fino al ${dataIt(f.fino_al)}` : "nessun dato"}${f.aggiornata_il ? ` · agg. ${ora(f.aggiornata_il)}` : ""}</span></span></div>`).join("");
     }
-    const jsonPost = (metodo, dati) => ({ method: metodo, headers: { "Content-Type": "application/json" }, body: JSON.stringify(dati) });
+
+    // ------------------------------------------------------------------- elenco
+    let elencoDati = [], creazione = null;
+    const FILTRI_ELENCO = { anno: "", stato: "", tipologia: "", daInviare: false };
 
     async function elenco() {
-      const { monitoraggi } = await chiama("/api/monitoraggi");
-      const oggi = new Date();
+      elencoDati = (await chiama("/api/monitoraggi")).monitoraggi;
+      disegnaElenco();
+    }
+    function disegnaElenco() {
+      const anni = [...new Set(elencoDati.map(m => m.mese_dati.slice(0, 4)))];
+      const f = FILTRI_ELENCO;
+      const visibili = elencoDati.filter(m => (!f.anno || m.mese_dati.startsWith(f.anno)) && (!f.stato || m.stato === f.stato)
+        && (!f.tipologia || m.tipologie.includes(f.tipologia)) && (!f.daInviare || m.conteggi.da_inviare));
       $("contenuto").innerHTML = `
-        <h1>Monitoraggi mensili</h1>
-        <section class="solo-admin">
-          <h2>+ Crea monitoraggio</h2>
-          <form id="crea" class="riga">
-            <label>Mese <select id="mese">${MESI.map((m, i) => `<option value="${i + 1}"${i === oggi.getMonth() ? " selected" : ""}>${m}</option>`).join("")}</select></label>
-            <span class="muted" style="padding-bottom:9px">${oggi.getFullYear()}</span>
-            <button class="primario" type="submit">+ Crea monitoraggio</button>
-          </form>
-          <p class="muted small">I due Excel, vuoti e già rinominati, sono subito scaricabili. I dati di riferimento sono quelli del mese precedente: si possono cambiare dopo.</p>
-          <div class="errore" id="errore" role="alert" hidden></div>
-        </section>
-        <section><h2>Monitoraggi creati</h2><div class="scroll"><table>
-          <thead><tr><th>Mese</th><th>Dati di</th><th>Stato</th><th>Solleciti segnati</th><th>Creato</th></tr></thead><tbody>
-          ${monitoraggi.map(m => `<tr><td><a href="/monitoraggio/mensili/${esc(m.mese)}">${esc(m.etichetta)}</a></td><td>${esc(m.etichetta_dati)}</td><td>${m.stato === "chiuso" ? `Chiuso il ${ora(m.chiuso_il)}` : "Aperto"}</td><td>${m.solleciti_inviati}</td><td>${esc(m.creato_da)} ${ora(m.creato_il)}</td></tr>`).join("")
-            || `<tr><td colspan="5" class="muted">Nessun monitoraggio creato.</td></tr>`}
-          </tbody></table></div></section>`;
-      $("crea").onsubmit = async (e) => {
-        e.preventDefault();
-        try {
-          const r = await chiama("/api/monitoraggi", jsonPost("POST", { numero_mese: Number($("mese").value) }));
-          location.href = `/monitoraggio/mensili/${r.mese}`;
-        } catch (err) { $("errore").hidden = false; $("errore").textContent = err.message; }
+        <div class="tra"><div><h1>Monitoraggi mensili</h1><div class="muted small">Un monitoraggio raccoglie gli atti di un mese, le difformità tra le fonti e le comunicazioni ai referenti.</div></div>
+          <button class="primario solo-admin" type="button" id="nuovo">+ Nuovo monitoraggio</button></div>
+        <div id="pannello-creazione"></div>
+        <section>
+          <div class="riga" style="margin-bottom:12px">
+            <label>Anno <select id="f-anno"><option value="">Tutti</option>${anni.map(a => `<option${f.anno === a ? " selected" : ""}>${a}</option>`).join("")}</select></label>
+            <label>Stato <select id="f-stato"><option value="">Tutti</option><option value="aperto"${f.stato === "aperto" ? " selected" : ""}>In corso</option><option value="chiuso"${f.stato === "chiuso" ? " selected" : ""}>Chiusi</option></select></label>
+            <label>Tipologia <select id="f-tipologia"><option value="">Tutte</option>${Object.entries(TIPOLOGIE).map(([k, t]) => `<option value="${k}"${f.tipologia === k ? " selected" : ""}>${t}</option>`).join("")}</select></label>
+            <label class="spunta"><input type="checkbox" id="f-invio"${f.daInviare ? " checked" : ""}> con comunicazioni da inviare</label>
+          </div>
+          <div class="scroll"><table style="min-width:980px"><thead><tr><th>ID</th><th>Mese di riferimento</th><th>Tipologie</th><th>Creato il</th><th>Fonti</th><th>Atti</th><th>Difformità</th><th>Comunicazioni ai referenti</th><th>Stato</th><th></th></tr></thead><tbody>
+          ${visibili.map(m => { const c = m.conteggi, tot = c.bandi, perc = tot ? Math.round(c.inviate * 100 / tot) : 0;
+            return `<tr class="cliccabile" data-mese="${esc(m.mese)}"><td class="mono small">${esc(m.id)}</td><td>${esc(m.titolo)}</td><td>${m.tipologie.map(chipGruppo).join(" ")}</td><td>${ora(m.creato_il)}</td>
+              <td class="${m.fonti_allineate === 3 ? "" : ""}"><span class="pillola ${m.fonti_allineate === 3 ? "p-ok" : "p-warn"}">${m.fonti_allineate}/3 allineate</span></td><td>${c.atti}</td><td style="color:var(--ko);font-weight:600">${c.difformita}</td>
+              <td><div class="small">${c.inviate}/${tot} bandi inviate${c.da_confermare ? ` · ${c.da_confermare} da confermare` : ""}</div><div class="barra-progresso"><i style="width:${perc}%"></i></div></td>
+              <td><span class="pillola ${m.stato === "chiuso" ? "p-na" : "p-blu"}">${m.stato === "chiuso" ? "chiuso" : "in corso"}</span></td><td><a href="/monitoraggio/mensili/${esc(m.mese)}">Apri →</a></td></tr>`; }).join("")
+            || `<tr><td colspan="10" class="muted">Nessun monitoraggio.</td></tr>`}
+          </tbody></table></div>
+        </section>`;
+      const leggi = () => { f.anno = $("f-anno").value; f.stato = $("f-stato").value; f.tipologia = $("f-tipologia").value; f.daInviare = $("f-invio").checked; disegnaElenco(); };
+      ["f-anno", "f-stato", "f-tipologia", "f-invio"].forEach(id => $(id).onchange = leggi);
+      document.querySelectorAll("tr[data-mese]").forEach(tr => tr.onclick = () => { location.href = `/monitoraggio/mensili/${tr.dataset.mese}`; });
+      $("nuovo").onclick = apriCreazione;
+      if (creazione) disegnaCreazione();
+    }
+    function mesePrecedente() { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
+    async function apriCreazione() {
+      creazione = { mese: mesePrecedente(), tipologie: ["TI", "MOB"], dati: null };
+      await aggiornaCreazione();
+    }
+    async function aggiornaCreazione() {
+      try { creazione.dati = await chiama(`/api/monitoraggi/anteprima?mese=${creazione.mese}`); disegnaCreazione(); } catch (err) { toast(err.message); }
+    }
+    function disegnaCreazione() {
+      const c = creazione, d = c.dati;
+      const somma = (k) => c.tipologie.reduce((t, g) => t + (d.per_tipologia[g]?.[k] || 0), 0);
+      const blocca = Boolean(d.esistente) || !c.tipologie.length;
+      $("pannello-creazione").innerHTML = `<section class="creazione">
+        <div class="tra"><h2 style="margin:0">Nuovo monitoraggio <span class="mono small muted">${esc(d.id)}</span></h2><button type="button" class="piccolo" id="annulla">Chiudi</button></div>
+        <div class="griglia2" style="margin-top:12px">
+          <div><h3 style="margin-top:0">1. Mese di riferimento</h3><input type="month" id="c-mese" value="${esc(c.mese)}">
+            <h3>2. Tipologie da includere</h3><div class="riga">${Object.entries(TIPOLOGIE).map(([g, t]) => `<button type="button" class="selezione${c.tipologie.includes(g) ? " attiva" : ""}" data-t="${g}">${c.tipologie.includes(g) ? "✓" : "+"} ${t} (${d.per_tipologia[g]?.atti || 0})</button>`).join("")}</div></div>
+          <div><h3 style="margin-top:0">3. Allineamento delle fonti</h3>${righeAllineamento(d.allineamento)}
+            <div style="margin-top:8px"><button type="button" class="piccolo" id="c-allinea">Verifica allineamento</button></div></div>
+        </div>
+        <div class="tra" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-soft)">
+          <div class="small">${somma("atti")} atti · ${somma("difformita")} con difformità · ${somma("da_inviare")} bandi da comunicare
+            ${d.esistente ? `<div class="etichetta" style="margin-top:4px">Questo mese ha già un monitoraggio. <a href="/monitoraggio/mensili/${esc(d.esistente)}">Apri</a></div>` : ""}</div>
+          <button class="primario" type="button" id="c-crea"${blocca ? " disabled" : ""}>Crea e apri monitoraggio</button></div></section>`;
+      $("annulla").onclick = () => { creazione = null; $("pannello-creazione").innerHTML = ""; };
+      $("c-mese").onchange = () => { c.mese = $("c-mese").value; aggiornaCreazione(); };
+      $("c-allinea").onclick = async () => { await aggiornaCreazione(); toast("Allineamento verificato"); };
+      document.querySelectorAll("[data-t]").forEach(b => b.onclick = () => { const g = b.dataset.t; c.tipologie = c.tipologie.includes(g) ? c.tipologie.filter(x => x !== g) : [...c.tipologie, g]; disegnaCreazione(); });
+      $("c-crea").onclick = async () => {
+        try { const r = await chiama("/api/monitoraggi", corpoJson("POST", { mese_riferimento: c.mese, tipologie: c.tipologie })); location.href = `/monitoraggio/mensili/${r.mese}`; }
+        catch (err) { toast(err.message); }
       };
     }
 
-    function disegna(m) {
-      if (m.stato === "chiuso") { disegnaChiuso(m); caricaRegistro(m.mese); return; }
-      const e = m.email, p = m.posta;
-      const opzioniMesi = [];
-      const [anno, numero] = m.mese.split("-").map(Number);
-      for (let i = 0; i < 13; i++) {
-        const d = new Date(anno, numero - 1 - i, 1);
-        const valore = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-        opzioniMesi.push(`<option value="${valore}"${valore === m.mese_dati ? " selected" : ""}>${MESI[d.getMonth()]} ${String(d.getFullYear()).slice(2)}</option>`);
-      }
+    // ------------------------------------------------------------------- dettaglio
+    const stato = { m: null, atti: null, scheda: "difformita", filtri: { tipologia: "", comunicazione: "", solo: false, q: "" }, ver: null };
+    const POSTA = () => stato.m.posta;
+
+    async function dettaglio() {
+      const [m, atti] = await Promise.all([chiama(`/api/monitoraggi/${meseScelto}${stato.ver ? `?versione=${stato.ver}` : ""}`), chiama(`/api/monitoraggi/${meseScelto}/atti`)]);
+      stato.m = m; stato.atti = atti;
+      disegna();
+    }
+    function disegna() {
+      const m = stato.m, c = stato.atti.conteggi, chiuso = m.stato === "chiuso";
+      const R = stato.atti.righe;
+      const conta = (f) => R.filter(f).length, contaD = (f) => R.filter(r => f(r) && r.con_difformita).length;
+      const SCHEDE = [["difformita", "Tutte le difformità", c.difformita, c.difformita],
+        ["bando", "Bandi pubblicati", conta(r => r.atto === "bando"), 0],
+        ["graduatoria", "Graduatorie", conta(r => r.atto === "graduatoria"), contaD(r => r.atto === "graduatoria")],
+        ["scorrimento", "Scorrimenti", conta(r => r.atto === "scorrimento"), contaD(r => r.atto === "scorrimento")],
+        ["subentro", "Subentri", conta(r => r.sottotipo === "subentro"), contaD(r => r.sottotipo === "subentro")],
+        ["correzioni", "Correzioni", null, 0], ["comunicazioni", "Comunicazioni", null, 0],
+        ["preparazione", "File ed email", null, 0], ["versioni", chiuso ? "Dati salvati" : "Versioni", m.fotografia.versioni.length, 0]];
       $("contenuto").innerHTML = `
-        <p class="small"><a href="/monitoraggio/mensili">← Monitoraggi mensili</a></p>
-        <h1>Monitoraggio di ${esc(m.etichetta)}</h1>
-        <p class="muted">Dati di ${esc(m.etichetta_dati)} · creato da ${esc(m.creato_da)} il ${ora(m.creato_il)}</p>
-        <div class="${p.prova ? "avviso" : "ok"} solo-admin">${p.prova ? `Email di prova attiva: vanno solo a ${esc(p.prova)}.` : "Invio reale attivo: le email vanno ai destinatari veri."} <a href="/monitoraggio/impostazioni">Impostazioni</a></div>
-        <section class="solo-admin">
-          <h2>Chiusura</h2>
-          <p class="muted small">Quando hai finito, chiudi il monitoraggio: viene salvata una versione di atti, difformità, solleciti e conteggi dei punteggi di ${esc(m.etichetta_dati)}, che non cambia più. Se poi correggono i dati, puoi generarne una nuova: le precedenti restano. Lancia prima un aggiornamento dei dati e la verifica dei punteggi.</p>
-          <div class="azioni"><button class="primario" type="button" id="chiudi-monitoraggio">Chiudi il monitoraggio</button></div>
-        </section>
+        <div class="small"><a href="/monitoraggio/mensili">← Monitoraggi</a> <span class="muted">/ <span class="mono">${esc(m.id)}</span></span></div>
         <section>
-          <h2>Vista e difformità</h2>
-          <div class="azioni">
-            <a class="pulsante primario" href="${esc(m.link_vista)}">Difformità del mese e solleciti</a>
-            <a class="pulsante" href="/monitoraggio?mese=${esc(m.mese_dati)}">Tutti gli atti</a>
-          </div>
-          <p class="muted small">Nelle difformità trovi anteprima, invio e spunta per ogni bando. Solleciti segnati: ${m.solleciti.length}.</p>
-          <label class="solo-admin">Mese dei dati <select id="mese-dati">${opzioniMesi.join("")}</select></label>
+          <div class="tra"><div><h1 style="display:inline">Monitoraggio ${esc(m.titolo)}</h1> <span class="pillola ${chiuso ? "p-na" : "p-blu"}">${chiuso ? "chiuso" : "in corso"}</span>
+            <span class="muted small"> creato il ${ora(m.creato_il)}${m.creato_da ? ` da ${esc(m.creato_da)}` : ""}${chiuso ? ` · chiuso il ${ora(m.chiuso_il)}` : ""}</span></div>
+            <div class="riga solo-admin"><button type="button" id="riverifica">Riverifica fonti</button>
+              ${chiuso ? `<button type="button" id="riapri">Riapri monitoraggio</button><button class="primario" type="button" id="nuova-versione">Genera nuova versione</button>` : `<button class="primario" type="button" id="chiudi">Chiudi monitoraggio</button>`}</div></div>
+          <div class="riga" style="margin:10px 0;align-items:center">${Object.keys(TIPOLOGIE).map(g => chiuso
+            ? (m.tipologie.includes(g) ? chipGruppo(g) : "")
+            : `<button type="button" class="selezione solo-admin${m.tipologie.includes(g) ? " attiva" : ""}" data-includi="${g}">${m.tipologie.includes(g) ? "✓" : "+"} ${TIPOLOGIE[g]}</button>`).join("")}</div>
+          <details style="margin-bottom:12px"><summary class="small">Allineamento delle fonti${m.verifica_fonti_il ? ` · ultima verifica ${ora(m.verifica_fonti_il)}` : ""}: ${m.allineamento.filter(f => f.allineata).length}/3 allineate</summary>${righeAllineamento(m.allineamento)}</details>
+          <div class="kpi"><div><b>${c.atti}</b><span>Atti nel mese</span></div><div><b class="${c.difformita ? "rosso" : ""}">${c.difformita}</b><span>Atti con difformità · ${c.bandi} bandi coinvolti</span></div>
+            <div><b class="${c.da_inviare ? "rosso" : ""}">${c.da_inviare}</b><span>Comunicazioni da inviare</span></div><div><b class="verde">${c.inviate}/${c.bandi}</b><span>Comunicazioni inviate${c.da_confermare ? ` · ${c.da_confermare} da confermare` : ""}</span></div></div>
         </section>
-        <section id="registro-difformita"></section>
-        <section class="solo-admin">
-          <h2>File Excel</h2>
-          <div class="azioni">
-            <a class="pulsante primario" href="/api/monitoraggi/${m.mese}/excel/scorrimenti">${esc(m.file_scorrimenti)}</a>
-            <a class="pulsante primario" href="/api/monitoraggi/${m.mese}/excel/graduatorie">${esc(m.file_graduatorie)}</a>
-          </div>
-          <p class="muted small">Sono vuoti e già rinominati: caricali sulla cartella condivisa.</p>
-          <details>
-            <summary>Graduatorie con i dati raccolti</summary>
-            <p class="small"><a href="/api/monitoraggi/${m.mese}/excel/graduatorie-con-dati">Scarica il file compilato con i dati di ${esc(m.etichetta_dati)}</a></p>
-            ${m.graduatorie_senza_elenco ? `<div class="avviso">${m.graduatorie_senza_elenco} graduatorie senza elenco dei candidati: lancia prima la verifica dei punteggi.</div>` : ""}
-            <p class="muted small">Contiene dati personali dei candidati, se la verifica è stata eseguita.</p>
-          </details>
-        </section>
-        <section class="solo-admin">
-          <h2>Email di richiesta di compilazione</h2>
-          <div class="riga">
-            <label class="campo-largo">Link del file scorrimenti <input id="link-scorrimenti" type="url" value="${esc(m.link_scorrimenti)}" placeholder="https://"></label>
-            <label class="campo-largo">Link del file graduatorie <input id="link-graduatorie" type="url" value="${esc(m.link_graduatorie)}" placeholder="https://"></label>
-          </div>
-          <div class="azioni"><button type="button" id="salva-link">Salva i link</button></div>
-          <h3>Destinatari</h3>
-          <textarea id="destinatari" style="min-height:70px" placeholder="un indirizzo per riga">${esc(e.destinatari.join("\n"))}</textarea>
-          <div class="azioni"><button type="button" id="salva-destinatari">Salva i destinatari</button><span class="muted small">Valgono per tutti i mesi.</span></div>
-          <h3>Anteprima</h3>
-          <p class="small"><b>Oggetto:</b> ${esc(e.oggetto)}</p>
-          <textarea id="anteprima" readonly>${esc(e.corpo)}</textarea>
-          ${e.mancanti.length ? `<div class="avviso">Per inviare manca: ${esc(e.mancanti.join(", "))}.</div>` : ""}
-          ${p.configurata ? "" : `<div class="avviso">Invio email non configurato: puoi copiare il testo.</div>`}
-          <div class="azioni">
-            <button class="primario" type="button" id="invia"${p.configurata && !e.mancanti.length ? "" : " disabled"}>Invia ai ${e.destinatari.length} destinatari</button>
-            <button type="button" id="copia">Copia il testo</button>
-            <span class="muted small" id="esito" aria-live="polite"></span>
-          </div>
-          <details style="margin-top:14px">
-            <summary>Modifica il testo</summary>
-            <p class="muted small">Segnaposto: {mese} {mese_dati} {cartella} {file_scorrimenti} {link_scorrimenti} {file_graduatorie} {link_graduatorie}</p>
-            <label class="campo-largo">Oggetto <input id="modello-oggetto" value="${esc(e.modello_oggetto)}"></label>
-            <textarea id="modello-testo" style="margin-top:10px">${esc(e.modello_testo)}</textarea>
-            <div class="azioni">
-              <button type="button" id="salva-mese">Salva solo per ${esc(m.etichetta)}</button>
-              <button type="button" id="salva-generale">Salva per i mesi successivi</button>
-              ${e.personalizzato ? `<button type="button" id="ripristina">Torna al testo generale</button>` : ""}
-            </div>
-          </details>
-          <div class="errore" id="errore" role="alert" hidden></div>
-        </section>
-        <section class="solo-admin">
-          <h2>Registro degli invii</h2>
-          <div class="scroll"><table><thead><tr><th>Quando</th><th>Tipo</th><th>Bando</th><th>A</th><th>Esito</th><th>Da</th></tr></thead><tbody>
-          ${m.invii.map(i => `<tr><td>${ora(i.quando)}</td><td>${i.tipo === "sollecito" ? "Sollecito" : "Compilazione"}</td><td>${esc(i.numero_bando)}</td><td>${esc(i.destinatari)}</td><td>${esc(i.esito)}${i.errore ? `: ${esc(i.errore)}` : ""}</td><td>${esc(i.utente)}</td></tr>`).join("")
-            || `<tr><td colspan="6" class="muted">Nessun invio.</td></tr>`}
-          </tbody></table></div>
-        </section>`;
-      caricaRegistro(m.mese);
-      const errore = (t) => { $("errore").hidden = !t; $("errore").textContent = t || ""; };
-      const azione = (id, fn) => { const b = $(id); if (b) b.onclick = async () => { try { errore(); await fn(); } catch (err) { errore(err.message); } }; };
-      const aggiorna = async (dati) => disegna(await chiama(`/api/monitoraggi/${m.mese}`, jsonPost("PUT", dati)));
-      $("mese-dati").onchange = () => aggiorna({ mese_dati: $("mese-dati").value }).catch(err => errore(err.message));
-      azione("chiudi-monitoraggio", async () => {
-        if (!confirm(`Chiudere il monitoraggio di ${m.etichetta}?\n\nI dati vengono salvati così come sono ora.`)) return;
-        disegna(await chiama(`/api/monitoraggi/${m.mese}/chiudi`, { method: "POST" }));
-      });
-      azione("salva-link", () => aggiorna({ link_scorrimenti: $("link-scorrimenti").value, link_graduatorie: $("link-graduatorie").value }));
-      azione("salva-destinatari", async () => { await chiama("/api/impostazioni/email", jsonPost("PUT", { destinatari: $("destinatari").value })); await dettaglio(); });
-      azione("salva-mese", () => aggiorna({ oggetto: $("modello-oggetto").value, testo: $("modello-testo").value }));
-      azione("salva-generale", async () => {
-        await chiama("/api/impostazioni/email", jsonPost("PUT", { oggetto: $("modello-oggetto").value, testo: $("modello-testo").value }));
-        await aggiorna({ oggetto: "", testo: "" });
-      });
-      azione("ripristina", () => aggiorna({ oggetto: "", testo: "" }));
-      azione("copia", async () => {
-        const testo = `Oggetto: ${e.oggetto}\n\n${e.corpo}`;
-        try { await navigator.clipboard.writeText(testo); $("esito").textContent = "Copiato."; }
-        catch { $("anteprima").select(); $("esito").textContent = "Copia automatica non disponibile: seleziona e copia."; }
-      });
-      azione("invia", async () => {
-        const avviso = p.prova ? `In prova, solo a ${p.prova}` : `INVIO REALE a: ${e.destinatari.join(", ")}`;
-        if (!confirm(`Inviare l'email?\n\n${avviso}`)) return;
-        const r = await chiama(`/api/monitoraggi/${m.mese}/email-compilazione/invia`, { method: "POST" });
-        await dettaglio();
-        $("esito").textContent = r.prova ? "Inviata in prova." : "Inviata.";
+        <div class="tra">
+          <div class="schede" role="tablist">${SCHEDE.map(([k, t, n, d]) => `<button type="button" role="tab" data-scheda="${k}" aria-selected="${stato.scheda === k}">${t}${n !== null ? ` (${n})` : ""}${d ? ` <span class="numero-ko">${d}</span>` : ""}</button>`).join("")}</div>
+          <div id="filtri-atti"></div>
+        </div>
+        <div id="corpo-scheda" style="display:flex;flex-direction:column;gap:14px"></div>`;
+      document.querySelectorAll("[data-scheda]").forEach(b => b.onclick = () => { stato.scheda = b.dataset.scheda; disegna(); });
+      collegaIntestazione();
+      disegnaScheda();
+    }
+    function collegaIntestazione() {
+      const m = stato.m;
+      const azione = (id, fn) => { const b = $(id); if (b) b.onclick = () => fn().catch(err => toast(err.message)); };
+      azione("riverifica", async () => { stato.m = await chiama(`/api/monitoraggi/${m.mese}/verifica-fonti`, { method: "POST" }); toast("Fonti riverificate"); disegna(); });
+      azione("chiudi", async () => { if (!confirm(`Chiudere il monitoraggio di ${m.titolo}?\n\nGli atti e le difformità di adesso vengono salvati in una versione che non cambia più.`)) return; await chiama(`/api/monitoraggi/${m.mese}/chiudi`, { method: "POST" }); stato.ver = null; await dettaglio(); toast("Monitoraggio chiuso"); });
+      azione("riapri", async () => { if (!confirm("Riaprire il monitoraggio? Le versioni salvate restano.")) return; await chiama(`/api/monitoraggi/${m.mese}/riapri`, { method: "POST" }); await dettaglio(); });
+      azione("nuova-versione", async () => { const motivo = prompt("Motivo della nuova versione (facoltativo):", ""); if (motivo === null) return; await chiama(`/api/monitoraggi/${m.mese}/nuova-versione`, corpoJson("POST", { motivo })); stato.ver = null; stato.scheda = "versioni"; await dettaglio(); toast("Nuova versione salvata"); });
+      document.querySelectorAll("[data-includi]").forEach(b => b.onclick = async () => {
+        const g = b.dataset.includi, scelte = m.tipologie.includes(g) ? m.tipologie.filter(x => x !== g) : [...m.tipologie, g];
+        try { await chiama(`/api/monitoraggi/${m.mese}`, corpoJson("PUT", { tipologie: scelte })); await dettaglio(); } catch (err) { toast(err.message); }
       });
     }
-    // --- registro delle difformità
+    function disegnaScheda() {
+      const s = stato.scheda;
+      $("filtri-atti").innerHTML = "";
+      if (["difformita", "bando", "graduatoria", "scorrimento", "subentro"].includes(s)) return schedaAtti();
+      if (s === "correzioni") return schedaCorrezioni();
+      if (s === "comunicazioni") return schedaComunicazioni();
+      if (s === "preparazione") return schedaPreparazione();
+      schedaVersioni();
+    }
+
+    // --- atti
+    function righeScheda() {
+      const f = stato.filtri, s = stato.scheda, q = f.q.toLowerCase();
+      return stato.atti.righe.filter(r => {
+        if (s === "difformita" && !r.con_difformita) return false;
+        if (s === "subentro" ? r.sottotipo !== "subentro" : (s !== "difformita" && r.atto !== s)) return false;
+        if (f.tipologia && r.gruppo_tipologia && r.gruppo_tipologia !== f.tipologia) return false;
+        if (f.solo && !r.con_difformita) return false;
+        if (f.comunicazione === "da_inviare" && r.comunicazione.stato !== "da_inviare") return false;
+        if (f.comunicazione === "da_confermare" && r.comunicazione.stato !== "da_confermare") return false;
+        if (f.comunicazione === "inviate" && !["inviata", "inviata_a_mano"].includes(r.comunicazione.stato)) return false;
+        return !q || `${r.numero_bando} ${r.codice} ${r.protocollo} ${(r.rdp || []).map(p => `${p.nome} ${p.cognome}`).join(" ")}`.toLowerCase().includes(q);
+      });
+    }
+    function cellaComunicazione(r) {
+      const c = r.comunicazione, chiuso = stato.m.stato === "chiuso";
+      if (c.stato === "in_regola") return `<td><span class="pillola p-na">in regola</span></td>`;
+      const P = { da_inviare: ["p-ko", "da inviare"], da_confermare: ["p-warn", "copiata · da confermare"], inviata: ["p-ok", `inviata ${dataIt(c.quando).slice(0, 5)}`], inviata_a_mano: ["p-ok", `inviata ${dataIt(c.quando).slice(0, 5)}`] }[c.stato];
+      const inviata = ["inviata", "inviata_a_mano"].includes(c.stato);
+      return `<td style="min-width:150px"><span class="pillola ${P[0]}">${P[1]}</span>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:5px"><button type="button" class="piccolo apri-messaggio" data-c="${esc(r.chiave)}">Messaggio</button>
+        ${chiuso ? "" : `<label class="spunta solo-admin" style="font-size:12px"><input type="checkbox" class="spunta-inviata" data-c="${esc(r.chiave)}"${inviata ? " checked" : ""}> inviata</label>`}</div>
+        ${c.id ? `<div class="mono muted2" style="font-size:10.5px;margin-top:3px">${esc(c.id)}</div>` : ""}</td>`;
+    }
+    function schedaAtti() {
+      const f = stato.filtri, m = stato.m, righe = righeScheda();
+      const daInviare = [...new Set(stato.atti.righe.filter(r => r.con_difformita && r.comunicazione.stato === "da_inviare").map(r => r.chiave))];
+      $("filtri-atti").innerHTML = `<div class="riga">
+        <select id="f-tip" aria-label="Tipologia"><option value="">Tutte le tipologie</option>${m.tipologie.map(g => `<option value="${g}"${f.tipologia === g ? " selected" : ""}>${TIPOLOGIE[g]}</option>`).join("")}</select>
+        <select id="f-com" aria-label="Comunicazione"><option value="">Tutte le comunicazioni</option>${[["da_inviare", "Da inviare"], ["da_confermare", "Da confermare"], ["inviate", "Inviate"]].map(([k, t]) => `<option value="${k}"${f.comunicazione === k ? " selected" : ""}>${t}</option>`).join("")}</select>
+        <label class="spunta"><input type="checkbox" id="f-solo"${f.solo ? " checked" : ""}> solo con difformità</label>
+        <input type="search" id="f-q" placeholder="Bando, protocollo, RdP" value="${esc(f.q)}" aria-label="Cerca"></div>`;
+      $("corpo-scheda").innerHTML = `
+        ${daInviare.length && m.stato !== "chiuso" ? `<div class="banda solo-admin"><span><b>${daInviare.length}</b> bandi con difformità ancora da comunicare</span>
+          <button class="primario" type="button" id="invia-tutti">Invia tutti dalla casella dell'ufficio…</button></div>` : ""}
+        <section style="padding:0"><div class="scroll"><table style="min-width:1250px"><thead><tr><th>Data</th><th>Bando</th><th>Tipologia</th><th>Atto</th><th>Prot.</th><th>SOL</th><th>URP</th><th>Segreteria</th><th>Difformità rilevate</th><th>RdP</th><th>Comunicazione</th></tr></thead><tbody id="righe-atti">
+        ${righe.map(r => `<tr class="${r.con_difformita ? "difforme" : "in-regola"}"><td style="white-space:nowrap">${esc(dataIt(r.data))}</td>
+          <td style="min-width:170px"><b>${esc(r.codice || r.numero_bando)}</b><div class="muted2 small" style="max-width:240px">${esc(r.titolo_bando)}</div></td><td>${chipTipologia(r.tipologia)}</td>
+          <td>${esc(ATTI[r.atto] || r.atto)}${r.sottotipo && r.sottotipo !== "non_specificato" ? ` <span class="chip t-altro">${esc(r.sottotipo)}</span>` : ""}${r.persone ? `<div class="muted2 small">${r.persone} persone nel file segreteria</div>` : ""}${celleCandidati(r)}</td>
+          <td class="mono small">${esc(r.protocollo)}</td>${cellaFonte(r, "sol")}${cellaFonte(r, "urp")}${cellaFonte(r, "segreteria")}
+          <td style="min-width:240px">${r.rilievi.length ? `<ul class="rilievi">${r.rilievi.map(t => `<li class="${t.startsWith("protocollo diverso") ? "diverso" : ""}">${esc(t)}</li>`).join("")}</ul>` : `<span style="color:var(--ok)" class="small">Nessuna difformità</span>`}</td>
+          ${cellaRdp(r)}${cellaComunicazione(r)}</tr>`).join("") || `<tr><td colspan="11" class="muted">Nessun atto con questi filtri.</td></tr>`}
+        </tbody></table></div></section>`;
+      const aggiorna = () => { f.tipologia = $("f-tip").value; f.comunicazione = $("f-com").value; f.solo = $("f-solo").checked; f.q = $("f-q").value; const pos = $("f-q").selectionStart; schedaAtti(); $("f-q").focus(); $("f-q").setSelectionRange(pos, pos); };
+      ["f-tip", "f-com", "f-solo"].forEach(id => $(id).onchange = () => { f.tipologia = $("f-tip").value; f.comunicazione = $("f-com").value; f.solo = $("f-solo").checked; schedaAtti(); });
+      $("f-q").oninput = aggiorna;
+      const corpo = $("corpo-scheda");
+      collegaRdp(corpo); collegaCandidati(corpo, 11);
+      corpo.querySelectorAll(".apri-messaggio").forEach(b => b.onclick = () => apriMessaggio(b.dataset.c));
+      corpo.querySelectorAll(".spunta-inviata").forEach(c => c.onchange = async () => {
+        try { await chiama(`/api/monitoraggi/${m.mese}/solleciti/${encodeURIComponent(c.dataset.c)}`, corpoJson("PUT", { inviata: c.checked })); await dettaglio(); }
+        catch (err) { toast(err.message); }
+      });
+      if ($("invia-tutti")) $("invia-tutti").onclick = () => confermaInviaTutti(daInviare);
+    }
+    async function confermaInviaTutti(codici) {
+      const m = stato.m, p = POSTA();
+      const msg = await Promise.all(codici.map(c => chiama(`/api/monitoraggi/${m.mese}/comunicazioni/${encodeURIComponent(c)}/messaggio`)));
+      const o = apriFinestra(`<header><b>Invio dalla casella dell'ufficio</b></header><div class="corpo">
+        ${p.ufficiali_attive ? `<div class="avviso">Le email partono ai destinatari veri.</div>` : `<div class="errore">Le email ufficiali sono disattivate. <a href="/monitoraggio/impostazioni#email">Impostazioni</a></div>`}
+        <div class="scroll"><table><thead><tr><th>Bando</th><th>Destinatari</th><th>Difformità</th></tr></thead><tbody>${msg.map(x => `<tr><td>${esc(x.chiave)}</td><td class="small">${esc(x.destinatari.join(", ")) || `<span class="etichetta">nessuna email RdP</span>`}</td><td>${x.n_difformita}</td></tr>`).join("")}</tbody></table></div></div>
+        <footer><button type="button" id="no">Annulla</button><button class="primario" type="button" id="si"${p.ufficiali_attive ? "" : " disabled"}>Invia ${msg.length} email</button></footer>`);
+      o.querySelector("#no").onclick = chiudiFinestra;
+      o.querySelector("#si").onclick = async () => {
+        o.querySelector("#si").disabled = true;
+        try { const r = await chiama(`/api/monitoraggi/${m.mese}/comunicazioni-invia-tutti`, { method: "POST" }); chiudiFinestra(); toast(`Inviate ${r.inviate}${r.errori.length ? `, ${r.errori.length} non riuscite` : ""}`); await dettaglio(); }
+        catch (err) { toast(err.message); o.querySelector("#si").disabled = false; }
+      };
+    }
+
+    // --- messaggio
+    async function apriMessaggio(codice) {
+      const m = stato.m;
+      let d;
+      try { d = await chiama(`/api/monitoraggi/${m.mese}/comunicazioni/${encodeURIComponent(codice)}/messaggio`); } catch (err) { return toast(err.message); }
+      const lavoro = { oggetto: d.oggetto, corpo: d.corpo, modifica: false };
+      const p = d.posta, chiuso = d.chiuso, inviata = ["inviata", "inviata_a_mano"].includes(d.stato);
+      const PILL = { da_inviare: ["p-ko", "da inviare"], da_confermare: ["p-warn", "da confermare"], inviata: ["p-ok", "inviata"], inviata_a_mano: ["p-ok", "inviata"], in_regola: ["p-na", "in regola"] }[d.stato];
+      const o = apriFinestra(`<header><div><b>Comunicazione difformità · bando ${esc(codice)}</b><div class="mono small muted">${esc(d.id_monitoraggio)}</div></div><span class="pillola ${PILL[0]}">${PILL[1]}</span></header>
+        <div class="corpo">
+          <div class="small"><b>Da:</b> Ufficio Reclutamento &lt;${esc(p.mittente || "non impostata")}&gt; · casella dell'ufficio${p.cc ? `<br><b>Cc:</b> ${esc(p.cc)}` : ""}</div>
+          <div class="small"><b>A:</b> ${d.referenti.map(r => `<span class="chip t-altro">${esc(r.nome)} &lt;${esc(r.email)}&gt;</span>`).join(" ") || `<span class="etichetta">nessuna email RdP disponibile</span>`}</div>
+          <div class="schede" style="align-self:flex-start"><button type="button" id="v-ant" aria-selected="true">Anteprima</button><button type="button" id="v-mod" aria-selected="false">Modifica testo</button></div>
+          <div id="area-testo"></div>
+          ${d.storico.length ? `<details><summary class="small">Storico (${d.storico.length})</summary>${d.storico.map(s => `<div class="small">${ora(s.data)} · ${esc(s.canale)} · ${esc(s.stato)} · <span class="mono">${esc(s.id)}</span></div>`).join("")}</details>` : ""}
+        </div>
+        <footer><div class="riga" style="align-items:center"><button type="button" id="copia-msg">Copia messaggio</button><a class="pulsante" id="apri-client" href="#">Apri nel mio client email</a>
+          ${chiuso ? "" : `<label class="spunta solo-admin"><input type="checkbox" id="spunta"${inviata ? " checked" : ""}> Email inviata</label>`}</div>
+          <div class="riga solo-admin" style="align-items:center">${chiuso ? "" : `${p.prova_attiva ? `<button type="button" class="prova" id="invia-prova">Invia prova</button>` : ""}
+            ${p.ufficiali_attive ? `<button class="primario" type="button" id="invia-uff">Invia dalla casella dell'ufficio</button>` : `<a class="small" href="/monitoraggio/impostazioni#email">Email ufficiali disattivate · impostazioni</a>`}`}
+            <button type="button" id="chiudi-msg">Chiudi</button></div></footer>`);
+      const area = o.querySelector("#area-testo");
+      function testo() {
+        area.innerHTML = lavoro.modifica
+          ? `<label class="campo-largo">Oggetto <input id="m-oggetto" value="${esc(lavoro.oggetto)}"></label><textarea id="m-corpo" style="margin-top:8px" aria-label="Testo">${esc(lavoro.corpo)}</textarea>`
+          : `<div class="small"><b>Oggetto:</b> ${esc(lavoro.oggetto)}</div><div class="anteprima-testo" style="margin-top:6px">${esc(lavoro.corpo)}</div>`;
+        if (lavoro.modifica) { o.querySelector("#m-oggetto").oninput = (e) => { lavoro.oggetto = e.target.value; }; o.querySelector("#m-corpo").oninput = (e) => { lavoro.corpo = e.target.value; }; }
+        o.querySelector("#v-ant").setAttribute("aria-selected", String(!lavoro.modifica));
+        o.querySelector("#v-mod").setAttribute("aria-selected", String(lavoro.modifica));
+      }
+      testo();
+      o.querySelector("#v-ant").onclick = () => { lavoro.modifica = false; testo(); };
+      o.querySelector("#v-mod").onclick = () => { lavoro.modifica = true; testo(); };
+      o.querySelector("#chiudi-msg").onclick = chiudiFinestra;
+      const traccia = (canale) => chiuso ? Promise.resolve() : chiama(`/api/monitoraggi/${m.mese}/comunicazioni/${encodeURIComponent(codice)}/traccia`, corpoJson("POST", { canale, oggetto: lavoro.oggetto, corpo: lavoro.corpo })).catch(() => {});
+      o.querySelector("#copia-msg").onclick = async () => { if (await copia(`A: ${d.destinatari.join("; ")}\nOggetto: ${lavoro.oggetto}\n\n${lavoro.corpo}`, "Messaggio copiato")) { await traccia("Copia manuale"); await dettaglio(); } };
+      o.querySelector("#apri-client").onclick = async (e) => { e.preventDefault(); location.href = `mailto:${d.destinatari.join(",")}?subject=${encodeURIComponent(lavoro.oggetto)}&body=${encodeURIComponent(lavoro.corpo)}`; await traccia("Client email"); await dettaglio(); };
+      const spunta = o.querySelector("#spunta");
+      if (spunta) spunta.onchange = async () => { try { await chiama(`/api/monitoraggi/${m.mese}/solleciti/${encodeURIComponent(codice)}`, corpoJson("PUT", { inviata: spunta.checked })); toast("Stato aggiornato"); await dettaglio(); } catch (err) { toast(err.message); } };
+      async function invia(modo, conferma = false) {
+        try {
+          const r = await chiama(`/api/monitoraggi/${m.mese}/comunicazioni/${encodeURIComponent(codice)}/invia`, corpoJson("POST", { modo, oggetto: lavoro.oggetto, corpo: lavoro.corpo, conferma }));
+          toast(r.prova ? `Prova inviata a ${p.indirizzo_prova}` : "Email inviata");
+          if (!r.prova) chiudiFinestra();
+          await dettaglio();
+        } catch (err) {
+          if (err.corpo?.gia_inviata && confirm("Questa comunicazione risulta già inviata. Vuoi inviarla di nuovo?")) return invia(modo, true);
+          toast(err.message);
+        }
+      }
+      const bp = o.querySelector("#invia-prova"), bu = o.querySelector("#invia-uff");
+      if (bp) bp.onclick = () => invia("prova");
+      if (bu) bu.onclick = () => { if (confirm(`INVIO REALE a:\n${d.destinatari.join(", ")}\n\nProcedere?`)) invia("ufficiale"); };
+    }
+
+    // --- correzioni
     const BADGE = { da_correggere: "Da correggere", parziale: "Parzialmente corretta", corretta: "Corretta", da_controllare: "Da controllare" };
     const EVENTI = { rilevata: "rilevata", cambiata: "rilievi cambiati", corretta: "corretta", ricomparsa: "ricomparsa", non_trovata: "atto non più trovato" };
-    const dataIt = (d) => (d || "").slice(0, 10).split("-").reverse().join("/");
     const INDETERMINATO = ["tempo_indeterminato", "reclutamento_speciale", "categorie_protette"];
-    let filtriRegistro = { stato: "", tipologia: "" };
+    const filtriRegistro = { stato: "", tipologia: "" };
     let attesaRegistro = null;
     function esitoVerifica(v) {
       if (!v || v.in_corso || !v.fine) return "";
       const r = v.risultato || {};
-      const parti = [`Verifica finita. Corrette: ${r.corrette || 0}, ricomparse: ${r.ricomparse || 0}, nuove: ${r.nuove || 0}.`];
-      parti.push(v.punteggi_riletti ? "Punteggi riletti." : "Punteggi NON riletti: per controllarli avvia Collega-SOL.");
+      const parti = [`Verifica finita. Corrette: ${r.corrette || 0}, ricomparse: ${r.ricomparse || 0}, nuove: ${r.nuove || 0}.`, v.punteggi_riletti ? "Punteggi riletti." : "Punteggi NON riletti: per controllarli avvia Collega-SOL."];
       return `<div class="${v.errori.length ? "avviso" : "ok"}">${esc(parti.join(" "))}${v.errori.map(e => `<div class="small">${esc(e)}</div>`).join("")}</div>`;
     }
-    async function caricaRegistro(mese) {
-      const contenitore = $("registro-difformita");
-      if (!contenitore) return;
+    function schedaCorrezioni() { $("corpo-scheda").innerHTML = `<section id="registro"><p class="muted">Caricamento…</p></section>`; caricaRegistro(); }
+    async function caricaRegistro() {
+      const mese = stato.m.mese, box = $("registro");
+      if (!box) return;
       let d;
-      try { d = await chiama(`/api/monitoraggi/${mese}/difformita`); }
-      catch (err) { contenitore.innerHTML = `<div class="errore" role="alert">${esc(err.message)}</div>`; return; }
-      const v = d.verifica, inCorso = v.in_corso, qui = v.mese === mese;
-      const visibili = d.voci.filter(x => (!filtriRegistro.stato || x.badge === filtriRegistro.stato)
-        && (!filtriRegistro.tipologia || !x.tipologia || (filtriRegistro.tipologia === "indeterminato") === INDETERMINATO.includes(x.tipologia)));
-      contenitore.innerHTML = `
-        <h2>Difformità e correzioni</h2>
+      try { d = await chiama(`/api/monitoraggi/${mese}/difformita`); } catch (err) { box.innerHTML = `<div class="errore">${esc(err.message)}</div>`; return; }
+      const v = d.verifica, inCorso = v.in_corso, qui = v.mese === mese, f = filtriRegistro;
+      const visibili = d.voci.filter(x => (!f.stato || x.badge === f.stato) && (!f.tipologia || !x.tipologia || (f.tipologia === "indeterminato") === INDETERMINATO.includes(x.tipologia)));
+      box.innerHTML = `<h2>Difformità e correzioni</h2>
         <p class="muted small">Restano qui anche dopo la correzione. Ultimo controllo: ${d.ultimo_controllo ? ora(d.ultimo_controllo) : "mai"}. Si aggiornano da sole dopo ogni aggiornamento dei dati, e subito con Verifica.</p>
         ${d.fonti_affidabili ? "" : `<div class="avviso">L'ultima raccolta di una fonte non è riuscita o non è stata fatta: finché non riesce, nessuna difformità viene segnata come corretta.</div>`}
-        <div class="conteggi">
-          <span class="badge da_correggere">Da correggere: ${d.conteggi.da_correggere}</span>
-          <span class="badge parziale">Parziali: ${d.conteggi.parziale}</span>
-          <span class="badge corretta">Corrette: ${d.conteggi.corretta}</span>
-          ${d.conteggi.da_controllare ? `<span class="badge da_controllare">Da controllare: ${d.conteggi.da_controllare}</span>` : ""}
-        </div>
-        <div class="azioni">
-          <label>Stato <select id="filtro-stato"><option value="">Tutti</option>${Object.entries(BADGE).map(([k, t]) => `<option value="${k}"${filtriRegistro.stato === k ? " selected" : ""}>${t}</option>`).join("")}</select></label>
-          <label>Tipologia <select id="filtro-tipologia"><option value="">Tutte</option><option value="indeterminato"${filtriRegistro.tipologia === "indeterminato" ? " selected" : ""}>Tempo indeterminato (concorsi pubblici)</option><option value="mobilita"${filtriRegistro.tipologia === "mobilita" ? " selected" : ""}>Mobilità e comandi</option></select></label>
-          <button class="primario solo-admin" type="button" id="verifica-tutte"${inCorso ? " disabled" : ""}>Verifica tutte</button>
-        </div>
+        <div class="conteggi"><span class="badge da_correggere">Da correggere: ${d.conteggi.da_correggere}</span><span class="badge parziale">Parziali: ${d.conteggi.parziale}</span><span class="badge corretta">Corrette: ${d.conteggi.corretta}</span>${d.conteggi.da_controllare ? `<span class="badge da_controllare">Da controllare: ${d.conteggi.da_controllare}</span>` : ""}</div>
+        <div class="riga" style="margin-bottom:10px"><label>Stato <select id="r-stato"><option value="">Tutti</option>${Object.entries(BADGE).map(([k, t]) => `<option value="${k}"${f.stato === k ? " selected" : ""}>${t}</option>`).join("")}</select></label>
+          <label>Tipologia <select id="r-tip"><option value="">Tutte</option><option value="indeterminato"${f.tipologia === "indeterminato" ? " selected" : ""}>Tempo indeterminato (concorsi pubblici)</option><option value="mobilita"${f.tipologia === "mobilita" ? " selected" : ""}>Mobilità e comandi</option></select></label>
+          <button class="primario solo-admin" type="button" id="verifica-tutte"${inCorso ? " disabled" : ""}>Verifica tutte</button></div>
         ${inCorso ? `<div class="avviso" role="status">Verifica in corso${qui ? `: ${v.fatti} di ${v.totale} bandi` : " su un altro monitoraggio"}…</div>` : qui ? esitoVerifica(v) : ""}
         <div class="errore" id="errore-registro" role="alert" hidden></div>
-        <div class="scroll"><table>
-          <thead><tr><th>Stato</th><th>Atto</th><th>Rilievi</th><th>Sollecito</th><th></th></tr></thead><tbody>
-          ${visibili.map(x => `<tr>
-            <td><span class="badge ${x.badge}">${BADGE[x.badge]}</span>${x.corretta_il ? `<div class="muted small">il ${ora(x.corretta_il)}</div>` : ""}</td>
-            <td><b>${esc(x.codice || x.numero_bando)}</b><div class="small">${esc(x.atto)} del ${esc(dataIt(x.data))}</div>${x.protocollo ? `<div class="muted small">prot. ${esc(x.protocollo)}</div>` : ""}</td>
-            <td><ul class="rilievi">${x.rilievi.map(r => `<li${r.risolto ? ' class="risolto"' : ""}>${esc(r.testo)}${r.nuovo ? " (nuovo)" : ""}</li>`).join("")}</ul>
-              <details><summary>Storico</summary>${x.storico.map(e => `<div class="small">${ora(e.quando)}: ${esc(EVENTI[e.tipo] || e.tipo)} (${esc(e.origine)}${e.utente ? `, ${esc(e.utente)}` : ""})</div>`).join("")}</details></td>
-            <td class="small">${x.sollecito ? `${x.sollecito.stato === "inviata" ? "Inviata" : "Inviata a mano"}<div class="muted">${ora(x.sollecito.quando)}</div>` : `<span class="muted">Non inviata</span>`}</td>
-            <td>${x.badge === "corretta" ? "" : `<button type="button" class="solo-admin" data-verifica="${x.id}"${inCorso ? " disabled" : ""}>Verifica</button>`}</td>
-          </tr>`).join("") || `<tr><td colspan="5" class="muted">${d.totale ? "Nessuna difformità con questi filtri." : "Nessuna difformità rilevata."}</td></tr>`}
-          </tbody></table></div>`;
-      $("filtro-stato").onchange = () => { filtriRegistro.stato = $("filtro-stato").value; caricaRegistro(mese); };
-      $("filtro-tipologia").onchange = () => { filtriRegistro.tipologia = $("filtro-tipologia").value; caricaRegistro(mese); };
-      const avvia = async (dati) => {
-        try { await chiama(`/api/monitoraggi/${mese}/difformita/verifica`, jsonPost("POST", dati)); caricaRegistro(mese); }
-        catch (err) { $("errore-registro").hidden = false; $("errore-registro").textContent = err.message; }
-      };
+        <div class="scroll"><table style="min-width:760px"><thead><tr><th>Stato</th><th>Atto</th><th>Rilievi</th><th>Sollecito</th><th></th></tr></thead><tbody>
+        ${visibili.map(x => `<tr><td><span class="badge ${x.badge}">${BADGE[x.badge]}</span>${x.corretta_il ? `<div class="muted small">il ${ora(x.corretta_il)}</div>` : ""}</td>
+          <td><b>${esc(x.codice || x.numero_bando)}</b><div class="small">${esc(x.atto)} del ${esc(dataIt(x.data))}</div>${x.protocollo ? `<div class="muted small mono">prot. ${esc(x.protocollo)}</div>` : ""}</td>
+          <td><ul class="rilievi">${x.rilievi.map(r => `<li${r.risolto ? ' class="risolto"' : ""}>${esc(r.testo)}${r.nuovo ? " (nuovo)" : ""}</li>`).join("")}</ul>
+            <details><summary>Storico</summary>${x.storico.map(e => `<div class="small">${ora(e.quando)}: ${esc(EVENTI[e.tipo] || e.tipo)} (${esc(e.origine)}${e.utente ? `, ${esc(e.utente)}` : ""})</div>`).join("")}</details></td>
+          <td class="small">${x.sollecito ? `${x.sollecito.stato === "da_confermare" ? "Da confermare" : x.sollecito.stato === "inviata" ? "Inviata" : "Inviata a mano"}<div class="muted">${ora(x.sollecito.quando)}</div>` : `<span class="muted">Non inviata</span>`}</td>
+          <td>${x.badge === "corretta" ? "" : `<button type="button" class="piccolo solo-admin" data-verifica="${x.id}"${inCorso ? " disabled" : ""}>Verifica</button>`}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">${d.totale ? "Nessuna difformità con questi filtri." : "Nessuna difformità rilevata."}</td></tr>`}
+        </tbody></table></div>`;
+      $("r-stato").onchange = () => { f.stato = $("r-stato").value; caricaRegistro(); };
+      $("r-tip").onchange = () => { f.tipologia = $("r-tip").value; caricaRegistro(); };
+      const avvia = async (dati) => { try { await chiama(`/api/monitoraggi/${mese}/difformita/verifica`, corpoJson("POST", dati)); caricaRegistro(); } catch (err) { $("errore-registro").hidden = false; $("errore-registro").textContent = err.message; } };
       $("verifica-tutte").onclick = () => avvia({});
-      contenitore.querySelectorAll("[data-verifica]").forEach(b => b.onclick = () => avvia({ ids: [Number(b.dataset.verifica)] }));
+      box.querySelectorAll("[data-verifica]").forEach(b => b.onclick = () => avvia({ ids: [Number(b.dataset.verifica)] }));
       clearTimeout(attesaRegistro);
-      if (inCorso) attesaRegistro = setTimeout(() => caricaRegistro(mese), 2000);
+      if (inCorso) attesaRegistro = setTimeout(caricaRegistro, 2000);
+      else if (qui && v.fine && !stato.dopoVerifica?.includes?.(v.fine)) { stato.dopoVerifica = v.fine; chiama(`/api/monitoraggi/${mese}/atti`).then(a => { stato.atti = a; }).catch(() => {}); }
     }
 
-    function statoCella(stato, protocollo) {
-      return `${esc((stato || "").replaceAll("_", " "))}${protocollo ? `<div class="muted small">${esc(protocollo)}</div>` : ""}`;
+    // --- comunicazioni del monitoraggio
+    async function schedaComunicazioni() {
+      const P = { inviata: "p-ok", "da confermare": "p-warn", prova: "p-test", annullata: "p-na" };
+      $("corpo-scheda").innerHTML = `<section><p class="muted">Caricamento…</p></section>`;
+      const d = await chiama(`/api/comunicazioni?mese=${stato.m.mese}`);
+      $("corpo-scheda").innerHTML = `<section><div class="scroll"><table style="min-width:900px"><thead><tr><th>ID comunicazione</th><th>Data</th><th>Codice</th><th>Destinatari</th><th>Oggetto</th><th>Difformità</th><th>Canale</th><th>Stato</th></tr></thead><tbody>
+        ${d.comunicazioni.map(c => `<tr><td class="mono small">${esc(c.id)}</td><td>${ora(c.data)}</td><td>${esc(c.chiave)}</td><td class="small" title="${esc(c.destinatari.join(", "))}">${esc(c.destinatari[0] || "–")}${c.destinatari.length > 1 ? ` +${c.destinatari.length - 1}` : ""}</td>
+          <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.oggetto)}">${esc(c.oggetto)}</td><td>${c.n_difformita ?? ""}</td><td>${esc(c.canale)}</td><td><span class="pillola ${P[c.stato]}">${esc(c.stato)}</span></td></tr>`).join("") || `<tr><td colspan="8" class="muted">Nessuna comunicazione per questo monitoraggio.</td></tr>`}
+      </tbody></table></div></section>`;
     }
-    function disegnaChiuso(m) {
-      const f = m.fotografia;
-      const tabella = (righe) => `<div class="scroll"><table>
-        <thead><tr><th>Data</th><th>Codice</th><th>Atto</th><th>Protocollo</th><th>SOL</th><th>URP</th><th>File segreteria</th><th>RdP</th><th>Note</th><th>Sollecito</th></tr></thead><tbody>
-        ${righe.map(r => `<tr><td>${esc((r.data || "").split("-").reverse().join("/"))}</td><td>${esc(r.codice || r.numero_bando)}</td><td>${esc(r.atto)}</td><td>${esc(r.protocollo)}</td>
-          <td>${statoCella(r.sol_stato, r.sol_protocollo)}</td><td>${statoCella(r.urp_stato, r.urp_protocollo)}</td><td>${statoCella(r.segreteria_stato, r.segreteria_protocollo)}</td>
-          <td>${r.rdp.map(p => esc([p.nome, p.cognome].filter(Boolean).join(" "))).join("<br>")}</td><td>${r.note.map(esc).join("<br>")}</td>
-          <td>${r.sollecito_stato ? `${r.sollecito_stato === "inviata" ? "Inviata" : "Inviata a mano"} ${ora(r.sollecito_quando)}` : ""}</td></tr>`).join("")
-          || `<tr><td colspan="10" class="muted">Nessuna riga.</td></tr>`}
-        </tbody></table></div>`;
-      const vecchia = f.versione !== f.ultima;
-      const attuale = f.versioni.find(v => v.versione === f.versione) || {};
-      $("contenuto").innerHTML = `
-        <p class="small"><a href="/monitoraggio/mensili">← Monitoraggi mensili</a></p>
-        <h1>Monitoraggio di ${esc(m.etichetta)}</h1>
-        <div class="ok">Chiuso da ${esc(m.chiuso_da)} il ${ora(m.chiuso_il)}. Stai vedendo la versione ${f.versione} di ${f.ultima}, creata il ${ora(attuale.creata_il)}${attuale.motivo ? `: ${esc(attuale.motivo)}` : ""}.</div>
-        ${vecchia ? `<div class="avviso">Questa non è l'ultima versione. <a href="/monitoraggio/mensili/${m.mese}">Vai all'ultima</a></div>` : ""}
-        ${f.dati_piu_recenti.length ? `<div class="avviso solo-admin">Dopo l'ultima versione c'è stata una nuova ${esc(f.dati_piu_recenti.join(" e una nuova "))}: se è il caso, genera una nuova versione.</div>` : ""}
-        <p class="muted">Dati di ${esc(m.etichetta_dati)} · ${f.fonti.map(x => `ultima raccolta ${esc(x.fonte.toUpperCase())}: ${x.ultima_raccolta ? ora(x.ultima_raccolta) : "mai"}`).join(" · ")}</p>
-        <section class="solo-admin">
-          <h2>Aggiornare i dati del mese</h2>
-          <p class="muted small">Se hanno corretto Selezioni Online: aggiorna i dati e verifica i punteggi di ${esc(m.etichetta_dati)}, poi genera una nuova versione. Le precedenti restano consultabili.</p>
-          <div class="azioni">
-            <a class="pulsante" href="${esc(m.link_vista)}">Aggiorna i dati e verifica i punteggi</a>
-            <button class="primario" type="button" id="nuova-versione">Genera nuova versione</button>
-            <span class="muted small" id="esito-versione" aria-live="polite"></span>
-          </div>
-        </section>
-        <section><h2>Versioni</h2><div class="scroll"><table>
-          <thead><tr><th>Versione</th><th>Creata</th><th>Motivo</th><th>Atti</th><th>Difformità</th><th>Solleciti</th><th>Punteggi verificati</th></tr></thead><tbody>
-          ${f.versioni.map(v => `<tr><td>${v.versione === f.versione ? `<b>${v.versione}</b>` : `<a href="#" data-versione="${v.versione}">${v.versione}</a>`}</td><td>${ora(v.creata_il)} ${esc(v.creata_da)}</td><td>${esc(v.motivo)}</td><td>${v.totale}</td><td>${v.difformi}</td><td>${v.inviate}</td><td>${v.punteggi_verificati}</td></tr>`).join("")}
-          </tbody></table></div></section>
-        <section id="registro-difformita"></section>
-        <section><h2>Difformità in questa versione: ${f.difformi} su ${f.totale} atti, solleciti segnati su ${f.inviate}</h2>${tabella(f.righe.filter(r => r.difforme))}</section>
-        <details><summary>Tutti gli atti del mese (${f.totale})</summary>${tabella(f.righe)}</details>
-        <section style="margin-top:14px"><h2>Punteggi di questa versione (${f.punteggi.length})</h2><div class="scroll"><table>
-          <thead><tr><th>Codice</th><th>Protocollo</th><th>Domande</th><th>Con punteggi</th><th>V</th><th>I</th><th>S</th><th>Senza protocollo</th><th>Esito</th><th>Verificato il</th></tr></thead><tbody>
-          ${f.punteggi.map(p => `<tr><td>${esc(p.codice)}</td><td>${esc(p.protocollo)}</td><td>${esc(p.domande)}</td><td>${esc(p.con_punteggi)}</td><td>${esc(p.vincitori)}</td><td>${esc(p.idonei)}</td><td>${esc(p.scorrimento)}</td><td>${esc(p.senza_protocollo)}</td><td>${esc(p.esito)}</td><td>${ora(p.verificato_il)}</td></tr>`).join("")
-            || `<tr><td colspan="10" class="muted">Nessuna verifica salvata.</td></tr>`}
-          </tbody></table></div></section>
-        <section><h2>Storico</h2>${f.eventi.map(e => `<div class="small">${ora(e.quando)}: ${esc(e.azione)} da ${esc(e.autore)}</div>`).join("")}
-          <div class="azioni solo-admin"><button type="button" id="riapri">Riapri il monitoraggio</button></div>
-          <div class="errore" id="errore" role="alert" hidden></div></section>`;
-      const errore = (err) => { $("errore").hidden = false; $("errore").textContent = err.message; };
-      $("riapri").onclick = async () => {
-        if (!confirm("Riaprire il monitoraggio? Potrai di nuovo modificarlo e inviare email. Le versioni salvate restano.")) return;
-        try { disegna(await chiama(`/api/monitoraggi/${m.mese}/riapri`, { method: "POST" })); } catch (err) { errore(err); }
-      };
-      $("nuova-versione").onclick = async () => {
-        const motivo = prompt("Motivo della nuova versione (facoltativo):", "");
-        if (motivo === null) return;
-        try { disegna(await chiama(`/api/monitoraggi/${m.mese}/nuova-versione`, jsonPost("POST", { motivo }))); } catch (err) { errore(err); }
-      };
-      document.querySelectorAll("[data-versione]").forEach(a => a.onclick = async (e) => {
-        e.preventDefault();
-        try { disegna(await chiama(`/api/monitoraggi/${m.mese}?versione=${a.dataset.versione}`)); } catch (err) { errore(err); }
+
+    // --- file ed email di richiesta
+    function schedaPreparazione() {
+      const m = stato.m, e = m.email, p = m.posta, chiuso = m.stato === "chiuso";
+      $("corpo-scheda").innerHTML = `
+        <section class="solo-admin"><h2>File Excel</h2>
+          <div class="riga"><a class="pulsante primario" href="/api/monitoraggi/${m.mese}/excel/scorrimenti">${esc(m.file_scorrimenti)}</a><a class="pulsante primario" href="/api/monitoraggi/${m.mese}/excel/graduatorie">${esc(m.file_graduatorie)}</a></div>
+          <p class="muted small">Sono vuoti e già rinominati: caricali sulla cartella condivisa.</p>
+          <details><summary class="small">Graduatorie con i dati raccolti</summary><p class="small"><a href="/api/monitoraggi/${m.mese}/excel/graduatorie-con-dati">Scarica il file compilato con i dati di ${esc(m.etichetta_dati)}</a></p>
+            ${m.graduatorie_senza_elenco ? `<div class="avviso">${m.graduatorie_senza_elenco} graduatorie senza elenco dei candidati: lancia prima la verifica dei punteggi.</div>` : ""}<p class="muted small">Contiene dati personali dei candidati, se la verifica è stata eseguita.</p></details></section>
+        <section class="solo-admin"><h2>Email di richiesta di compilazione</h2>
+          <div class="griglia2"><label class="campo-largo">Link del file scorrimenti <input id="link-scorrimenti" type="url" value="${esc(m.link_scorrimenti)}" placeholder="https://"></label><label class="campo-largo">Link del file graduatorie <input id="link-graduatorie" type="url" value="${esc(m.link_graduatorie)}" placeholder="https://"></label></div>
+          <div class="riga" style="margin-top:8px"><button type="button" id="salva-link"${chiuso ? " disabled" : ""}>Salva i link</button></div>
+          <h3>Destinatari</h3><textarea id="destinatari" style="min-height:70px" placeholder="un indirizzo per riga">${esc(e.destinatari.join("\n"))}</textarea>
+          <div class="riga" style="margin-top:8px;align-items:center"><button type="button" id="salva-destinatari">Salva i destinatari</button><span class="muted small">Valgono per tutti i mesi.</span></div>
+          <h3>Anteprima</h3><p class="small" style="margin:0 0 6px"><b>Oggetto:</b> ${esc(e.oggetto)}</p><div class="anteprima-testo">${esc(e.corpo)}</div>
+          ${e.mancanti.length ? `<div class="avviso" style="margin-top:8px">Per inviare manca: ${esc(e.mancanti.join(", "))}.</div>` : ""}
+          ${p.configurata ? "" : `<div class="avviso" style="margin-top:8px">Invio email non configurato: puoi copiare il testo.</div>`}
+          <div class="riga" style="margin-top:10px;align-items:center"><button class="primario" type="button" id="invia"${p.configurata && !e.mancanti.length && !chiuso ? "" : " disabled"}>${p.prova ? `Invia in prova a ${esc(p.prova)}` : `Invia ai ${e.destinatari.length} destinatari`}</button><button type="button" id="copia">Copia il testo</button></div>
+          <details style="margin-top:14px"><summary>Modifica il testo</summary><p class="muted small">Segnaposto: {mese} {mese_dati} {cartella} {file_scorrimenti} {link_scorrimenti} {file_graduatorie} {link_graduatorie}</p>
+            <label class="campo-largo">Oggetto <input id="modello-oggetto" value="${esc(e.modello_oggetto)}"></label><textarea id="modello-testo" style="margin-top:10px" aria-label="Testo">${esc(e.modello_testo)}</textarea>
+            <div class="riga" style="margin-top:8px"><button type="button" id="salva-mese"${chiuso ? " disabled" : ""}>Salva solo per questo monitoraggio</button><button type="button" id="salva-generale">Salva per i mesi successivi</button>${e.personalizzato ? `<button type="button" id="ripristina"${chiuso ? " disabled" : ""}>Torna al testo generale</button>` : ""}</div></details></section>`;
+      const azione = (id, fn) => { const b = $(id); if (b) b.onclick = () => fn().catch(err => toast(err.message)); };
+      const aggiorna = async (dati) => { stato.m = await chiama(`/api/monitoraggi/${m.mese}`, corpoJson("PUT", dati)); schedaPreparazione(); toast("Salvato"); };
+      azione("salva-link", () => aggiorna({ link_scorrimenti: $("link-scorrimenti").value, link_graduatorie: $("link-graduatorie").value }));
+      azione("salva-destinatari", async () => { await chiama("/api/impostazioni/email", corpoJson("PUT", { destinatari: $("destinatari").value })); stato.m = await chiama(`/api/monitoraggi/${m.mese}`); schedaPreparazione(); toast("Destinatari salvati"); });
+      azione("salva-mese", () => aggiorna({ oggetto: $("modello-oggetto").value, testo: $("modello-testo").value }));
+      azione("salva-generale", async () => { await chiama("/api/impostazioni/email", corpoJson("PUT", { oggetto: $("modello-oggetto").value, testo: $("modello-testo").value })); await aggiorna({ oggetto: "", testo: "" }); });
+      azione("ripristina", () => aggiorna({ oggetto: "", testo: "" }));
+      azione("copia", async () => { await copia(`Oggetto: ${e.oggetto}\n\n${e.corpo}`, "Testo copiato"); });
+      azione("invia", async () => {
+        if (!confirm(`Inviare l'email?\n\n${p.prova ? `In prova, solo a ${p.prova}` : `INVIO REALE a: ${e.destinatari.join(", ")}`}`)) return;
+        const r = await chiama(`/api/monitoraggi/${m.mese}/email-compilazione/invia`, { method: "POST" });
+        stato.m = await chiama(`/api/monitoraggi/${m.mese}`); schedaPreparazione(); toast(r.prova ? "Inviata in prova" : "Inviata");
       });
     }
-    const dettaglio = async () => disegna(await chiama(`/api/monitoraggi/${meseScelto}`));
-    (meseScelto ? dettaglio() : elenco()).catch(err => { $("contenuto").innerHTML = `<div class="errore" role="alert">${esc(err.message)}</div>`; });
+
+    // --- versioni salvate
+    function schedaVersioni() {
+      const m = stato.m, f = m.fotografia, chiuso = m.stato === "chiuso";
+      const att = f.versioni.find(v => v.versione === f.versione);
+      const cella = (st, pr) => `<td class="cella-fonte ${st === "presente" ? "f-presente" : st === "mancante" ? "f-mancante" : "f-nonprev"}">${esc((st || "").replaceAll("_", " "))}${pr ? `<small>${esc(pr)}</small>` : ""}</td>`;
+      const tabella = (righe) => `<div class="scroll"><table style="min-width:980px"><thead><tr><th>Data</th><th>Codice</th><th>Atto</th><th>Protocollo</th><th>SOL</th><th>URP</th><th>Segreteria</th><th>RdP</th><th>Note</th><th>Sollecito</th></tr></thead><tbody>
+        ${righe.map(r => `<tr class="${r.difforme ? "difforme" : "in-regola"}"><td>${esc(dataIt(r.data))}</td><td>${esc(r.codice || r.numero_bando)}</td><td>${esc(ATTI[r.atto] || r.atto)}</td><td class="mono small">${esc(r.protocollo)}</td>${cella(r.sol_stato, r.sol_protocollo)}${cella(r.urp_stato, r.urp_protocollo)}${cella(r.segreteria_stato, r.segreteria_protocollo)}
+          <td class="small">${r.rdp.map(p => esc([p.nome, p.cognome].filter(Boolean).join(" "))).join("<br>")}</td><td class="small">${r.note.map(esc).join("<br>")}</td><td class="small">${r.sollecito_stato ? `${r.sollecito_stato === "inviata" ? "Inviata" : "Inviata a mano"} ${ora(r.sollecito_quando)}` : ""}</td></tr>`).join("") || `<tr><td colspan="10" class="muted">Nessuna riga.</td></tr>`}</tbody></table></div>`;
+      if (!f.versioni.length) { $("corpo-scheda").innerHTML = `<section><p class="muted">Nessuna versione salvata: se ne crea una alla chiusura del monitoraggio.</p></section>`; return; }
+      $("corpo-scheda").innerHTML = `
+        ${f.dati_piu_recenti.length && chiuso ? `<div class="avviso solo-admin">Dopo l'ultima versione c'è stata una nuova ${esc(f.dati_piu_recenti.join(" e una nuova "))}: se è il caso, genera una nuova versione.</div>` : ""}
+        ${chiuso ? `<section class="solo-admin"><h2>Aggiornare i dati del mese</h2><p class="muted small">Se hanno corretto Selezioni Online: aggiorna i dati e verifica i punteggi di ${esc(m.etichetta_dati)}, poi genera una nuova versione. Le precedenti restano consultabili.</p><a class="pulsante" href="/monitoraggio?mese=${esc(m.mese_dati)}">Aggiorna i dati e verifica i punteggi</a></section>` : ""}
+        <section><h2>Versioni salvate</h2><div class="scroll"><table><thead><tr><th>Versione</th><th>Creata</th><th>Motivo</th><th>Atti</th><th>Difformità</th><th>Solleciti</th><th>Punteggi verificati</th></tr></thead><tbody>
+          ${f.versioni.map(v => `<tr><td>${v.versione === f.versione ? `<b>${v.versione}</b>` : `<a href="#" data-versione="${v.versione}">${v.versione}</a>`}</td><td>${ora(v.creata_il)} ${esc(v.creata_da)}</td><td>${esc(v.motivo)}</td><td>${v.totale}</td><td>${v.difformi}</td><td>${v.inviate}</td><td>${v.punteggi_verificati}</td></tr>`).join("")}</tbody></table></div></section>
+        <section><h2>Versione ${f.versione}${att ? ` del ${ora(att.creata_il)}` : ""}: ${f.difformi} difformità su ${f.totale} atti</h2>
+          <p class="muted small">${f.fonti.map(x => `Raccolta ${esc(x.fonte.toUpperCase())}: ${x.ultima_raccolta ? ora(x.ultima_raccolta) : "mai"}`).join(" · ")}</p>${tabella(f.righe.filter(r => r.difforme))}
+          <details style="margin-top:10px"><summary class="small">Tutti gli atti (${f.totale})</summary>${tabella(f.righe)}</details></section>
+        <section><h2>Punteggi di questa versione (${f.punteggi.length})</h2><div class="scroll"><table><thead><tr><th>Codice</th><th>Protocollo</th><th>Domande</th><th>Con punteggi</th><th>V</th><th>I</th><th>S</th><th>Senza protocollo</th><th>Esito</th><th>Verificato il</th></tr></thead><tbody>
+          ${f.punteggi.map(p => `<tr><td>${esc(p.codice)}</td><td class="mono small">${esc(p.protocollo)}</td><td>${esc(p.domande)}</td><td>${esc(p.con_punteggi)}</td><td>${esc(p.vincitori)}</td><td>${esc(p.idonei)}</td><td>${esc(p.scorrimento)}</td><td>${esc(p.senza_protocollo)}</td><td>${esc(p.esito)}</td><td>${ora(p.verificato_il)}</td></tr>`).join("") || `<tr><td colspan="10" class="muted">Nessuna verifica salvata.</td></tr>`}</tbody></table></div></section>
+        <section><h2>Storico</h2>${f.eventi.map(e => `<div class="small">${ora(e.quando)}: ${esc(e.azione)} da ${esc(e.autore)}</div>`).join("")}</section>`;
+      document.querySelectorAll("[data-versione]").forEach(a => a.onclick = async (e) => { e.preventDefault(); stato.ver = Number(a.dataset.versione); stato.m = await chiama(`/api/monitoraggi/${m.mese}?versione=${stato.ver}`); disegna(); });
+    }
+
+    (meseScelto ? dettaglio() : elenco()).catch(errorePagina);
   </script>
 </body>
 </html>

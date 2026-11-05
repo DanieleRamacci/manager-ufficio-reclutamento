@@ -65,10 +65,11 @@ def etichetta(mese: str) -> str:
 
 
 def elenco(conn) -> list[dict]:
-    inviati = {r["mese"]: r["n"] for r in conn.execute("SELECT mese, COUNT(*) AS n FROM sollecito GROUP BY mese")}
+    inviati = {m: sum(c["stato"] != "da_confermare" for c in solleciti(conn, m).values())
+               for m in [r["mese"] for r in conn.execute("SELECT mese FROM monitoraggio_mese")]}
     return [{**dict(r), "etichetta": etichetta(r["mese"]), "etichetta_dati": etichetta(r["mese_dati"]),
              "solleciti_inviati": inviati.get(r["mese"], 0)}
-            for r in conn.execute("SELECT mese, mese_dati, creato_da, creato_il, stato, chiuso_da, chiuso_il "
+            for r in conn.execute("SELECT mese, mese_dati, creato_da, creato_il, stato, chiuso_da, chiuso_il, tipologie, verifica_fonti_il "
                                   "FROM monitoraggio_mese ORDER BY mese DESC")]
 
 
@@ -79,13 +80,27 @@ def mese_anno_corrente(numero, oggi: date | None = None) -> str:
     return f"{(oggi or date.today()).year}-{numero:02d}"
 
 
-def crea(conn, mese: str, mese_dati: str | None, autore: str | None) -> dict:
+def mese_successivo(mese: str) -> str:
+    anno, numero = map(int, mese.split("-"))
+    return f"{anno + 1}-01" if numero == 12 else f"{anno}-{numero + 1:02d}"
+
+
+TIPOLOGIE_MONITORABILI = {"TI": ("tempo_indeterminato", "reclutamento_speciale", "categorie_protette"), "MOB": ("mobilita", "comando")}
+
+
+def tipologie_di(monitoraggio: dict) -> list[str]:
+    return json.loads(monitoraggio.get("tipologie") or '["TI", "MOB"]')
+
+
+def crea(conn, mese: str, mese_dati: str | None, autore: str | None, tipologie: list[str] | None = None) -> dict:
     if not mese_valido(mese) or (mese_dati and not mese_valido(mese_dati)):
         raise ValueError("Mese non valido")
+    if tipologie is not None and (not tipologie or set(tipologie) - set(TIPOLOGIE_MONITORABILI)):
+        raise ValueError("Scegli almeno una tipologia")
     if conn.execute("SELECT 1 FROM monitoraggio_mese WHERE mese = ?", (mese,)).fetchone():
         raise MeseEsistente(mese)
-    conn.execute("INSERT INTO monitoraggio_mese (mese, mese_dati, creato_da, creato_il) VALUES (?, ?, ?, ?)",
-                 (mese, mese_dati or mese_precedente(mese), autore, _adesso()))
+    conn.execute("INSERT INTO monitoraggio_mese (mese, mese_dati, creato_da, creato_il, tipologie) VALUES (?, ?, ?, ?, ?)",
+                 (mese, mese_dati or mese_precedente(mese), autore, _adesso(), json.dumps(tipologie or ["TI", "MOB"])))
     _evento(conn, mese, "creato", autore)
     return leggi(conn, mese)
 
@@ -120,6 +135,8 @@ def _genera_versione(conn, mese: str, autore: str | None, motivo: str | None, az
         for r in righe:
             f = r["fonti"]
             inviato = inviati.get(r.get("codice") or "") or inviati.get(r.get("numero_bando") or "") or {}
+            if inviato.get("stato") == "da_confermare":
+                inviato = {}
             conn.execute(
                 "INSERT INTO monitoraggio_riga (mese, versione, numero_bando, codice, titolo_bando, tipologia, atto, sottotipo, data, "
                 "protocollo, sol_stato, sol_protocollo, urp_stato, urp_protocollo, segreteria_stato, segreteria_protocollo, "
@@ -223,9 +240,13 @@ def leggi(conn, mese: str) -> dict | None:
 
 
 def aggiorna(conn, mese: str, campi: dict) -> dict | None:
-    ammessi = {k: v for k, v in campi.items() if k in ("mese_dati", "link_scorrimenti", "link_graduatorie", "oggetto", "testo")}
+    ammessi = {k: v for k, v in campi.items() if k in ("mese_dati", "link_scorrimenti", "link_graduatorie", "oggetto", "testo", "tipologie")}
     if "mese_dati" in ammessi and not mese_valido(ammessi["mese_dati"]):
         raise ValueError("Mese dei dati non valido")
+    if "tipologie" in ammessi:
+        if not ammessi["tipologie"] or set(ammessi["tipologie"]) - set(TIPOLOGIE_MONITORABILI):
+            raise ValueError("Scegli almeno una tipologia")
+        ammessi["tipologie"] = json.dumps(ammessi["tipologie"])
     for colonna, valore in ammessi.items():
         conn.execute(f"UPDATE monitoraggio_mese SET {colonna} = ? WHERE mese = ?",
                      ((valore or "").strip() or None, mese))
@@ -312,20 +333,80 @@ def invii(conn, mese: str, limite: int = 200) -> list[dict]:
         "ORDER BY id DESC LIMIT ?", (mese, limite))]
 
 
+def _ultime_comunicazioni(conn, mese: str) -> dict[str, dict]:
+    ultime: dict[str, dict] = {}
+    for r in conn.execute("SELECT * FROM comunicazione WHERE mese = ? AND stato != 'prova' ORDER BY data, rowid", (mese,)):
+        ultime[r["chiave"]] = dict(r)
+    return ultime
+
+
 def solleciti(conn, mese: str) -> dict[str, dict]:
-    return {r["numero_bando"]: dict(r) for r in conn.execute("SELECT * FROM sollecito WHERE mese = ?", (mese,))}
+    """Stato per codice: l'ultima comunicazione non di prova (specifiche grafiche, sezione 4)."""
+    risultato = {}
+    for chiave, c in _ultime_comunicazioni(conn, mese).items():
+        if c["stato"] == "annullata":
+            continue
+        stato = "da_confermare" if c["stato"] == "da confermare" else "inviata_a_mano" if c["canale"] == "Segnata a mano" else "inviata"
+        risultato[chiave] = {"mese": mese, "numero_bando": chiave, "stato": stato, "autore": c["utente"], "quando": c["data"],
+                             "destinatari": ", ".join(json.loads(c["destinatari"] or "[]")), "oggetto": c["oggetto"],
+                             "canale": c["canale"], "id": c["id"]}
+    return risultato
+
+
+def id_monitoraggio(monitoraggio: dict) -> str:
+    """'MON-10.2026' dal mese di riferimento dei dati."""
+    anno, numero = monitoraggio["mese_dati"].split("-")
+    return f"MON-{numero}.{anno}"
+
+
+def nuovo_id_comunicazione(conn, monitoraggio: dict, chiave: str, numero_bando: str | None) -> str:
+    from .normalizza import codice_sotto
+    sotto = codice_sotto(chiave)
+    base = "/".join(x for x in (id_monitoraggio(monitoraggio), numero_bando or chiave, sotto) if x)
+    usati = conn.execute("SELECT COUNT(*) FROM comunicazione WHERE id = ? OR id LIKE ?", (base, base + "-%")).fetchone()[0]
+    return f"{base}-{usati + 1}" if usati else base
+
+
+def registra_comunicazione(conn, mese: str, chiave: str, numero_bando: str | None, canale: str, stato: str, utente: str | None,
+                           destinatari: list[str] | None = None, oggetto: str | None = None, corpo: str | None = None,
+                           n_difformita: int | None = None) -> str:
+    id_c = nuovo_id_comunicazione(conn, leggi(conn, mese), chiave, numero_bando)
+    conn.execute("INSERT INTO comunicazione (id, mese, chiave, numero_bando, codice, destinatari, oggetto, corpo, n_difformita, canale, stato, data, utente) "
+                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 (id_c, mese, chiave, numero_bando, chiave, json.dumps(destinatari or []), oggetto, corpo, n_difformita, canale, stato, _adesso(), utente))
+    return id_c
 
 
 def segna(conn, mese: str, numero_bando: str, stato: str, autore: str | None, destinatari: list[str] | None = None,
           oggetto: str | None = None) -> None:
-    conn.execute("INSERT INTO sollecito (mese, numero_bando, stato, autore, quando, destinatari, oggetto) "
-                 "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(mese, numero_bando) DO UPDATE SET stato = excluded.stato, "
-                 "autore = excluded.autore, quando = excluded.quando, destinatari = excluded.destinatari, oggetto = excluded.oggetto",
-                 (mese, numero_bando, stato, autore, _adesso(), ", ".join(destinatari or []), oggetto))
+    """Spunta "inviata": conferma l'ultima copiata, altrimenti aggiunge una voce "Segnata a mano"."""
+    ultima = _ultime_comunicazioni(conn, mese).get(numero_bando)
+    if stato != "inviata" and ultima and ultima["stato"] == "da confermare":
+        conn.execute("UPDATE comunicazione SET stato = 'inviata', data = ?, utente = ? WHERE id = ?", (_adesso(), autore, ultima["id"]))
+        return
+    registra_comunicazione(conn, mese, numero_bando, numero_bando.split(" ")[0], "Casella ufficio" if stato == "inviata" else "Segnata a mano",
+                           "inviata", autore, destinatari, oggetto)
 
 
 def togli_segno(conn, mese: str, numero_bando: str) -> None:
-    conn.execute("DELETE FROM sollecito WHERE mese = ? AND numero_bando = ?", (mese, numero_bando))
+    """La spunta tolta resta nel registro come voce annullata."""
+    ultima = _ultime_comunicazioni(conn, mese).get(numero_bando)
+    if ultima and ultima["stato"] != "annullata":
+        registra_comunicazione(conn, mese, numero_bando, ultima["numero_bando"], "Segnata a mano", "annullata", ultima["utente"])
+
+
+def registro_comunicazioni(conn, mese: str | None = None, chiave: str | None = None) -> list[dict]:
+    condizioni, argomenti = ["1 = 1"], []
+    if mese:
+        condizioni.append("c.mese = ?")
+        argomenti.append(mese)
+    if chiave:
+        condizioni.append("c.chiave = ?")
+        argomenti.append(chiave)
+    righe = conn.execute(f"SELECT c.*, m.mese_dati FROM comunicazione c JOIN monitoraggio_mese m ON m.mese = c.mese "
+                         f"WHERE {' AND '.join(condizioni)} ORDER BY c.data DESC, c.rowid DESC", argomenti)
+    return [{**dict(r), "destinatari": json.loads(r["destinatari"] or "[]"), "monitoraggio": id_monitoraggio({"mese_dati": r["mese_dati"]})}
+            for r in righe]
 
 
 def email_rdp(conn, bando: str) -> set[str]:

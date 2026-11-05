@@ -48,6 +48,15 @@ def email_di(nome: str) -> str:
     return riga["email"] if riga and riga["email"] else f"{nome}@{os.environ.get('ACCESSO_DOMINIO_EMAIL', 'cnr.it')}"
 
 
+def segna_ultimo_accesso(nome: str) -> None:
+    conn = _conn()
+    try:
+        conn.execute("INSERT INTO utente_accesso (username, quando) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET quando = excluded.quando",
+                     (normalizza(nome), _adesso()))
+    finally:
+        conn.close()
+
+
 def registra_accesso(nome: str) -> None:
     conn = _conn()
     try:
@@ -73,11 +82,12 @@ def ruolo(nome: str | None) -> str | None:
 
 def elenco(conn) -> list[dict]:
     fissi = iniziali()
+    accessi = {r["username"]: r["quando"] for r in conn.execute("SELECT * FROM utente_accesso")}
     righe = [{"username": u, "ruolo": AMMINISTRATORE, "iniziale": True, "email": None, "aggiunto_da": None, "aggiunto_il": None}
              for u in sorted(fissi)]
     righe += [{**dict(r), "iniziale": False} for r in conn.execute("SELECT * FROM utente ORDER BY username")
               if r["username"] not in fissi]
-    return righe
+    return [{**r, "ultimo_accesso": accessi.get(r["username"])} for r in righe]
 
 
 def registro(conn, limite: int = 50) -> list[dict]:

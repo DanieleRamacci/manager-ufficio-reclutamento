@@ -27,6 +27,11 @@ def _scrivi(conn, chiave: str, valore: str, autore: str | None) -> None:
                  (chiave, valore, autore, datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")))
 
 
+def controlla_orario(orario: str) -> None:
+    if not _ORARIO.fullmatch(orario or ""):
+        raise ValueError("Orario non valido: usa il formato OO:MM")
+
+
 def orario_raccolta() -> tuple[int, int]:
     salvato = _leggi("raccolta_orario")
     if salvato:

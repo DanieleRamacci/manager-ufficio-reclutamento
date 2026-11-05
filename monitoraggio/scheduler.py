@@ -6,9 +6,8 @@ import threading
 import time
 from datetime import datetime
 
-from . import collegamento, compat, config, db, difformita, impostazioni, notifiche
+from . import attivita, collegamento, compat, config, db, difformita, impostazioni, notifiche
 from .raccolta import RaccoltaInCorso, raccogli
-from .web import prossima_notturna
 
 log = logging.getLogger(__name__)
 FONTI = ("urp", "sol")
@@ -57,10 +56,6 @@ def fonti_mai_lette() -> list[str]:
         conn.close()
 
 
-def _prossima() -> datetime:
-    return datetime.fromisoformat(prossima_notturna(datetime.now().astimezone()))
-
-
 def _ciclo() -> None:
     try:
         mancanti = fonti_mai_lette()
@@ -68,15 +63,15 @@ def _ciclo() -> None:
             esegui(mancanti, "notturna", "avvio")
     except Exception:
         log.exception("Raccolta iniziale non riuscita")
-    prossima = _prossima()
+    attese: dict = {}
+    attivita.dovute(datetime.now().astimezone(), attese)
     while True:
-        time.sleep(CONTROLLO_ORARIO_S)  # a intervalli: l'orario si può cambiare dalle Impostazioni
-        if datetime.now().astimezone() >= prossima:
-            try:
-                esegui(FONTI, modalita(prossima), "pianificata")
-            except Exception:
-                log.exception("Raccolta pianificata non riuscita")
-        prossima = _prossima()
+        time.sleep(CONTROLLO_ORARIO_S)  # a intervalli: gli orari si possono cambiare dalle Impostazioni
+        try:
+            for chiave in attivita.dovute(datetime.now().astimezone(), attese):
+                attivita.esegui(chiave)
+        except Exception:
+            log.exception("Aggiornamento pianificato non riuscito")
 
 
 def avvia() -> bool:

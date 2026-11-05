@@ -991,3 +991,231 @@ def test_aggiorna_bando_non_tocca_gli_altri_bandi(db, client_finto):
     assert presenti == {"s1": 1, "s2": 1}
     assert {r[0] for r in db.execute("SELECT d.protocollo FROM documento d JOIN scheda s ON s.id = d.scheda_id WHERE s.id_esterno = 's1' AND d.presente = 1")} == {"99"}
     assert {r[0] for r in db.execute("SELECT d.protocollo FROM documento d JOIN scheda s ON s.id = d.scheda_id WHERE s.id_esterno = 's2' AND d.presente = 1")} == {"2"}
+
+
+# --- comunicazioni, email e attività (specifiche grafiche)
+
+def _mese_con_rdp(ambiente, db, email="rdp@cnr.it"):
+    admin, mese = _mese_con_dati(ambiente, db)
+    sid = db.execute("SELECT id FROM scheda WHERE id_esterno = 's1'").fetchone()[0]
+    db.execute("INSERT INTO referente (scheda_id, chiave, nome, cognome, email, username, attivo, prima_rilevazione, "
+               "ultima_rilevazione) VALUES (?, 'a', 'Anna', 'Bianchi', ?, 'a', 1, 'x', 'x')", (sid, email))
+    return admin, mese, f"/api/monitoraggi/{mese}/comunicazioni/367.479 CTER"
+
+
+def test_crea_dal_mese_di_riferimento_con_tipologie(ambiente):
+    admin = ambiente()
+    r = admin.post("/api/monitoraggi", json={"mese_riferimento": "2026-10", "tipologie": ["MOB"]}).get_json()
+    assert r["mese"] == "2026-11" and r["creato"] is True
+    d = admin.get("/api/monitoraggi/2026-11").get_json()
+    assert d["id"] == "MON-10.2026" and d["titolo"] == "ottobre 2026" and d["mese_dati"] == "2026-10" and d["tipologie"] == ["MOB"]
+    assert d["file_scorrimenti"] == "MODELLO-scorrimenti-novembre-26.xlsx"
+    doppio = admin.post("/api/monitoraggi", json={"mese_riferimento": "2026-10"}).get_json()
+    assert doppio["creato"] is False and doppio["mese"] == "2026-11"
+    assert admin.post("/api/monitoraggi", json={"mese_riferimento": "2026-12", "tipologie": []}).status_code == 400
+    assert admin.post("/api/monitoraggi", json={"mese_riferimento": "2026-12", "tipologie": ["TD"]}).status_code == 400
+
+
+def test_anteprima_e_allineamento(ambiente, db):
+    from monitoraggio import raccolta
+    salva(db, "sol", [scheda("sol", "s1", "367.479 CTER", "367.479", documenti=[doc("g1", "graduatoria", "1001", "2026-10-12")])])
+    salva(db, "urp", [scheda("urp", "/node/1", "367.479 CTER", "367.479", documenti=[doc("g2", "graduatoria", "1002", "2026-10-12")])])
+    from monitoraggio import collegamento
+    collegamento.collega(db)
+    rid = raccolta.avvia(db, "sol", "manuale", "t")
+    raccolta.chiudi(db, rid, "completata", {})
+    d = ambiente().get("/api/monitoraggi/anteprima?mese=2020-01").get_json()
+    assert d["id"] == "MON-01.2020" and d["esistente"] is None
+    voce = {f["fonte"]: f for f in d["allineamento"]}
+    assert voce["sol"]["allineata"] is True and voce["urp"]["allineata"] is False and voce["segreteria"]["allineata"] is False
+    assert ambiente().get("/api/monitoraggi/anteprima?mese=xx").status_code == 400
+    d = ambiente().get("/api/monitoraggi/anteprima?mese=2026-10").get_json()
+    assert d["per_tipologia"]["TI"]["atti"] == 1 and d["per_tipologia"]["TI"]["da_inviare"] == 1 and d["per_tipologia"]["MOB"]["atti"] == 0
+
+
+def test_tipologie_del_monitoraggio_filtrano_gli_atti(ambiente, db):
+    admin, mese = _mese_con_dati(ambiente, db)
+    assert admin.get(f"/api/monitoraggi/{mese}/atti").get_json()["conteggi"]["atti"] == 1
+    admin.put(f"/api/monitoraggi/{mese}", json={"tipologie": ["MOB"]})
+    assert admin.get(f"/api/monitoraggi/{mese}/atti").get_json()["conteggi"]["atti"] == 0
+    assert admin.put(f"/api/monitoraggi/{mese}", json={"tipologie": []}).status_code == 400
+
+
+def test_messaggio_standard_per_codice(ambiente, db):
+    admin, mese, url = _mese_con_rdp(ambiente, db)
+    m = admin.get(url + "/messaggio").get_json()
+    assert m["destinatari"] == ["rdp@cnr.it"] and m["referenti"][0]["nome"] == "Anna Bianchi"
+    assert m["oggetto"] == "[MON-04.2026] Monitoraggio aprile 2026 – bando 367.479 CTER: 1 difformità"
+    assert m["corpo"].startswith("Gentile Anna Bianchi,") and "(rif. MON-04.2026)" in m["corpo"]
+    assert "1) Graduatoria del 12/04/2026" in m["corpo"] and "protocollo diverso: SOL 1001, URP 1002" in m["corpo"]
+    assert "Cordiali saluti," in m["corpo"] and m["stato"] == "da_inviare"
+    assert admin.get(f"/api/monitoraggi/{mese}/comunicazioni/inesistente/messaggio").status_code == 404
+
+
+def test_prova_e_ufficiale_sono_separate(ambiente, db, monkeypatch):
+    inviati = []
+    _configura_posta(monkeypatch, inviati, MAIL_PROVA="prova@cnr.it")
+    admin, mese, url = _mese_con_rdp(ambiente, db)
+    posta.salva_email({"prova_attiva": True, "ufficiali_attive": False}, "t")
+    r = admin.post(url + "/invia", json={"modo": "ufficiale"})
+    assert r.status_code == 502 and "disattivate" in r.get_json()["error"] and inviati == []
+    r = admin.post(url + "/invia", json={"modo": "prova"}).get_json()
+    assert r["prova"] is True and inviati[0]["To"] == "prova@cnr.it" and inviati[0]["Subject"].startswith("[PROVA] [MON-04.2026]")
+    a = admin.get(f"/api/monitoraggi/{mese}/atti").get_json()
+    assert a["righe"][0]["comunicazione"]["stato"] == "da_inviare"  # la prova non cambia lo stato
+    registro = admin.get(f"/api/comunicazioni?mese={mese}").get_json()["comunicazioni"]
+    assert registro[0]["stato"] == "prova" and registro[0]["canale"] == "Email di prova"
+    posta.salva_email({"prova_attiva": False, "ufficiali_attive": True, "cc": "cc@cnr.it"}, "t")
+    assert admin.post(url + "/invia", json={"modo": "prova"}).status_code == 502
+    r = admin.post(url + "/invia", json={"modo": "ufficiale", "oggetto": "Oggetto mio"}).get_json()
+    assert r["prova"] is False and inviati[-1]["To"] == "rdp@cnr.it" and inviati[-1]["Subject"] == "Oggetto mio" and inviati[-1]["Cc"] == "cc@cnr.it"
+    a = admin.get(f"/api/monitoraggi/{mese}/atti").get_json()
+    assert a["righe"][0]["comunicazione"]["stato"] == "inviata" and a["conteggi"]["inviate"] == 1
+    assert admin.post(url + "/invia", json={"modo": "ufficiale"}).status_code == 409
+    assert admin.post(url + "/invia", json={"modo": "ufficiale", "conferma": True}).status_code == 200
+    ids = [c["id"] for c in admin.get(f"/api/comunicazioni?mese={mese}").get_json()["comunicazioni"]]
+    assert len(ids) == len(set(ids)) and any(i.endswith("-2") for i in ids)
+    assert admin.post(url + "/invia", json={"modo": "altro"}).status_code == 400
+
+
+def test_copia_da_confermare_e_spunta(ambiente, db):
+    admin, mese, url = _mese_con_rdp(ambiente, db)
+    assert admin.post(url + "/traccia", json={"canale": "Copia manuale"}).status_code == 200
+    assert admin.post(url + "/traccia", json={"canale": "Boh"}).status_code == 400
+    stato_ora = lambda: admin.get(f"/api/monitoraggi/{mese}/atti").get_json()["righe"][0]["comunicazione"]["stato"]  # noqa: E731
+    assert stato_ora() == "da_confermare"
+    spunta = f"/api/monitoraggi/{mese}/solleciti/367.479 CTER"
+    admin.put(spunta, json={"inviata": True})
+    assert stato_ora() == "inviata"
+    registro = admin.get(f"/api/comunicazioni?mese={mese}").get_json()["comunicazioni"]
+    assert len(registro) == 1 and registro[0]["stato"] == "inviata"  # ha confermato la voce esistente
+    admin.put(spunta, json={"inviata": False})
+    assert stato_ora() == "da_inviare"
+    admin.put(spunta, json={"inviata": True})
+    assert stato_ora() == "inviata_a_mano"
+    assert [c["stato"] for c in admin.get(f"/api/comunicazioni?mese={mese}").get_json()["comunicazioni"]] == ["inviata", "annullata", "inviata"]
+
+
+def test_controlli_sul_messaggio_e_mese_chiuso(ambiente, db, monkeypatch):
+    inviati = []
+    _configura_posta(monkeypatch, inviati)
+    admin, mese, url = _mese_con_rdp(ambiente, db)
+    r = admin.post(url + "/invia", json={"modo": "ufficiale", "corpo": "Candidato RSSMRA80A01H501U"})
+    assert r.status_code == 400 and "codice fiscale" in r.get_json()["error"] and inviati == []
+    admin.post(f"/api/monitoraggi/{mese}/chiudi")
+    assert admin.post(url + "/invia", json={"modo": "ufficiale"}).status_code == 409
+    assert admin.post(url + "/traccia", json={"canale": "Copia manuale"}).status_code == 409
+    assert admin.post(f"/api/monitoraggi/{mese}/comunicazioni-invia-tutti").status_code == 409
+    assert inviati == []
+
+
+def test_invia_tutti_solo_con_ufficiali_e_salta_le_inviate(ambiente, db, monkeypatch):
+    inviati = []
+    _configura_posta(monkeypatch, inviati, MAIL_PROVA="prova@cnr.it")
+    admin, mese, _ = _mese_con_rdp(ambiente, db)
+    posta.salva_email({"prova_attiva": True, "ufficiali_attive": False}, "t")
+    tutti = f"/api/monitoraggi/{mese}/comunicazioni-invia-tutti"
+    assert admin.post(tutti).status_code == 409 and inviati == []
+    posta.salva_email({"prova_attiva": False, "ufficiali_attive": True}, "t")
+    assert admin.post(tutti).get_json() == {"ok": True, "inviate": 1, "errori": []}
+    assert admin.post(tutti).get_json()["inviate"] == 0 and len(inviati) == 1
+
+
+def test_lettura_non_tocca_comunicazioni_e_impostazioni(ambiente, db):
+    admin, mese, url = _mese_con_rdp(ambiente, db)
+    admin.post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"})
+    c = ambiente("lettore.uno")
+    assert c.get(url + "/messaggio").status_code == 200 and c.get("/api/comunicazioni").status_code == 200
+    for metodo, u, dati in [("post", url + "/invia", {"modo": "prova"}), ("post", url + "/traccia", {"canale": "Copia manuale"}),
+                            ("post", f"/api/monitoraggi/{mese}/comunicazioni-invia-tutti", {}), ("post", f"/api/monitoraggi/{mese}/verifica-fonti", {}),
+                            ("get", "/api/monitoraggi/anteprima?mese=2026-01", None), ("get", "/api/impostazioni/attivita", None),
+                            ("put", "/api/impostazioni/attivita/sol", {"attiva": False}), ("post", "/api/impostazioni/attivita/sol/esegui", {}),
+                            ("put", "/api/impostazioni/posta", {"ufficiali_attive": True})]:
+        assert getattr(c, metodo)(u, json=dati).status_code == 403, u
+
+
+def test_impostazioni_email_due_interruttori(ambiente, monkeypatch):
+    _configura_posta(monkeypatch, [])
+    admin = ambiente()
+    d = admin.put("/api/impostazioni/posta", json={"prova_attiva": True, "indirizzo_prova": "Me@cnr.it", "ufficiali_attive": False,
+                                                   "mittente": "ufficio@cnr.it", "cc": "", "firma": "Ufficio concorsi"}).get_json()
+    assert d["prova_attiva"] and not d["ufficiali_attive"] and d["indirizzo_prova"] == "me@cnr.it" and d["firma"] == "Ufficio concorsi" and d["mittente"] == "ufficio@cnr.it"
+    assert admin.put("/api/impostazioni/posta", json={"indirizzo_prova": "sbagliato"}).status_code == 400
+    assert admin.put("/api/impostazioni/posta", json={"prova_attiva": True, "indirizzo_prova": ""}).status_code == 400
+    assert admin.put("/api/impostazioni/posta", json={"ufficiali_attive": True, "mittente": ""}).status_code == 400
+    assert admin.put("/api/impostazioni/posta", json={"prova_attiva": "si"}).status_code == 400
+
+
+def test_nuova_installazione_nessuna_email_ai_referenti(ambiente, monkeypatch):
+    monkeypatch.setenv("SMTP_SERVER", "x")
+    monkeypatch.setenv("MAIL_SENDER", "a@b.it")
+    monkeypatch.setenv("MAIL_REPLY_TO", "me@cnr.it")
+    e = posta.impostazioni_email()
+    assert e["prova_attiva"] is True and e["ufficiali_attive"] is False
+
+
+def test_attivita_orari_stato_e_storico(ambiente):
+    from datetime import datetime, timezone
+    from monitoraggio import attivita
+    admin = ambiente()
+    d = admin.get("/api/impostazioni/attivita").get_json()
+    assert [a["chiave"] for a in d["attivita"]] == ["sol", "urp", "referenti", "confronto", "riepilogo"]
+    assert d["attivita"][0]["attiva"] is True and d["attivita"][2]["attiva"] is False
+    assert admin.put("/api/impostazioni/attivita/urp", json={"orario": "25:00"}).status_code == 400
+    assert admin.put("/api/impostazioni/attivita/xx", json={"attiva": True}).status_code == 400
+    r = admin.put("/api/impostazioni/attivita/urp", json={"orario": "04:10", "attiva": False}).get_json()
+    voce = next(a for a in r["attivita"] if a["chiave"] == "urp")
+    assert voce["orario"] == "04:10" and voce["attiva"] is False
+    attese = {}
+    ora = datetime(2026, 11, 5, 4, 9, tzinfo=timezone.utc)
+    assert attivita.dovute(ora, attese) == []  # la prima volta segna solo gli orari
+    admin.put("/api/impostazioni/attivita/urp", json={"attiva": True})
+    assert "urp" in attivita.dovute(datetime(2026, 11, 5, 4, 11, tzinfo=timezone.utc), attese)
+    assert admin.post("/api/impostazioni/attivita/xx/esegui").status_code == 404
+
+
+def test_esegui_attivita_registra_esito(ambiente, monkeypatch, db):
+    from monitoraggio import attivita
+    avvisi = []
+    monkeypatch.setattr(attivita, "raccogli", lambda conn, f, **k: {"esito": "completata", "bandi_trovati": 3, "documenti_trovati": 7, "errori": 0})
+    monkeypatch.setattr(attivita.notifiche, "dopo_aggiornamento", lambda e, m: avvisi.append((sorted(e), m)))
+    admin = ambiente()
+    assert admin.post("/api/impostazioni/attivita/urp/esegui").status_code == 202
+    for _ in range(200):
+        d = admin.get("/api/impostazioni/attivita").get_json()
+        if d["storico"]:
+            break
+        time.sleep(0.02)
+    assert d["storico"][0]["esito"] == "ok" and d["storico"][0]["dettaglio"] == "3 bandi, 7 documenti"
+    assert avvisi == [(["urp"], "manuale")]
+    assert admin.get("/api/impostazioni/attivita?problemi=1").get_json()["storico"] == []
+
+
+def test_referenti_di_notte_non_partono_senza_accesso(ambiente, monkeypatch):
+    from monitoraggio import attivita
+    monkeypatch.delenv("RDP_SENZA_TOKEN", raising=False)
+    esito, dettaglio = attivita._esegui_referenti(None)
+    assert esito == "avviso" and "Collega-SOL" in dettaglio
+
+
+def test_badge_del_menu_e_ultimo_accesso(ambiente, db):
+    admin, mese, _ = _mese_con_rdp(ambiente, db)
+    from monitoraggio import difformita
+    difformita.sincronizza(db, mese)
+    assert admin.get("/api/menu").get_json()["da_comunicare"] == 1
+    admin.put(f"/api/monitoraggi/{mese}/solleciti/367.479 CTER", json={"inviata": True})
+    assert admin.get("/api/menu").get_json()["da_comunicare"] == 0
+    utenti.segna_ultimo_accesso("capo.ufficio")
+    voce = next(u for u in admin.get("/api/utenti").get_json()["utenti"] if u["username"] == "capo.ufficio")
+    assert voce["ultimo_accesso"]
+
+
+def test_solleciti_gia_segnati_entrano_nel_registro(db):
+    mensile.crea(db, "2026-05", None, "x")
+    db.execute("INSERT INTO sollecito (mese, numero_bando, stato, autore, quando, destinatari, oggetto) VALUES "
+               "('2026-05', '367.1 CTER', 'inviata', 'a', '2026-05-02T00:00:00Z', 'x@cnr.it', 'O')")
+    from monitoraggio import db as dbmod
+    dbmod.inizializza(db)
+    dbmod.inizializza(db)
+    assert db.execute("SELECT COUNT(*) FROM comunicazione").fetchone()[0] == 1
+    assert mensile.solleciti(db, "2026-05")["367.1 CTER"]["stato"] == "inviata"

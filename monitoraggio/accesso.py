@@ -130,6 +130,7 @@ def _apri_sessione(chi: dict, solo_lettura: bool = False) -> None:
     session["user"] = chi["username"]
     session["user_email"] = chi["email"] or chi["username"]
     session["solo_lettura"] = solo_lettura
+    utenti.segna_ultimo_accesso(chi["username"])
     session["accesso_fino"] = (_adesso() + DURATA_ACCESSO).isoformat()
 
 

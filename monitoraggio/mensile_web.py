@@ -4,7 +4,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, redirect, request, send_file, send_from_directory
 
-from . import db, difformita, excel_mese, impostazioni, mensile, posta, sol_sessione, utenti
+from . import attivita, comunicazioni, db, difformita, excel_mese, impostazioni, mensile, posta, sol_sessione, utenti
 
 STATIC = Path(__file__).resolve().parent / "static"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -29,16 +29,27 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
                 "graduatorie_senza_elenco": excel_mese.graduatorie_senza_elenco(conn, dal, al),
                 "email": mensile.email_compilazione(conn, m), "posta": posta.stato(),
                 "solleciti": list(mensile.solleciti(conn, m["mese"]).values()), "invii": mensile.invii(conn, m["mese"]),
-                "fotografia": mensile.fotografia(conn, m["mese"], versione)}
+                "fotografia": mensile.fotografia(conn, m["mese"], versione), "id": mensile.id_monitoraggio(m),
+                "titolo": comunicazioni.titolo_mese(m["mese_dati"]), "tipologie": mensile.tipologie_di(m),
+                "allineamento": comunicazioni.allineamento(conn, m["mese_dati"])}
 
     def _trova(conn, mese: str):
         return mensile.leggi(conn, mese) if mensile.mese_valido(mese) else None
 
     # --- pagine
-    @bp.get("/monitoraggio/mensile.css")
-    @protezione
+    @bp.get("/monitoraggio/app.css")
     def foglio_stile():
-        return send_from_directory(STATIC, "mensile.css")
+        return send_from_directory(STATIC, "app.css")
+
+    @bp.get("/monitoraggio/app.js")
+    @protezione
+    def script_comune():
+        return send_from_directory(STATIC, "app.js")
+
+    @bp.get("/monitoraggio/comunicazioni")
+    @protezione
+    def pagina_comunicazioni():
+        return send_from_directory(STATIC, "comunicazioni.html")
 
     @bp.get("/monitoraggio/mensili")
     @bp.get("/monitoraggio/mensili/<mese>")
@@ -63,10 +74,13 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
     @solo_admin
     def api_impostazioni_posta_salva():
         corpo = request.get_json(silent=True) or {}
-        if not isinstance(corpo.get("attiva"), bool):
+        if "attiva" in corpo and not isinstance(corpo["attiva"], bool):
             return jsonify({"error": "Indica se la modalità di prova è attiva"}), 400
         try:
-            posta.salva_prova(corpo["attiva"], corpo.get("indirizzo"), utente_corrente())
+            if "attiva" in corpo:
+                posta.salva_prova(corpo["attiva"], corpo.get("indirizzo"), utente_corrente())
+            else:
+                posta.salva_email(corpo, utente_corrente())
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
         return jsonify({**posta.stato(), "prova_impostazioni": posta.impostazioni_prova()})
@@ -140,7 +154,26 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
     def api_monitoraggi():
         conn = _conn()
         try:
-            return jsonify({"monitoraggi": mensile.elenco(conn)})
+            voci = []
+            for m in mensile.elenco(conn):
+                completo = mensile.leggi(conn, m["mese"])
+                voci.append({**m, "id": mensile.id_monitoraggio(m), "titolo": comunicazioni.titolo_mese(m["mese_dati"]),
+                             "tipologie": mensile.tipologie_di(m), "conteggi": comunicazioni.conteggi(comunicazioni.righe_mese(conn, completo)),
+                             "fonti_allineate": sum(f["allineata"] for f in comunicazioni.allineamento(conn, m["mese_dati"]))})
+            return jsonify({"monitoraggi": voci})
+        finally:
+            conn.close()
+
+    @bp.get("/api/monitoraggi/anteprima")
+    @protezione
+    @solo_admin
+    def api_monitoraggi_anteprima():
+        mese = request.args.get("mese")
+        if not mensile.mese_valido(mese):
+            return jsonify({"error": "Mese non valido"}), 400
+        conn = _conn()
+        try:
+            return jsonify(comunicazioni.anteprima(conn, mese))
         finally:
             conn.close()
 
@@ -152,8 +185,18 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         conn = _conn()
         mese = None
         try:
-            mese = mensile.mese_anno_corrente(corpo.get("numero_mese"))
-            m = mensile.crea(conn, mese, corpo.get("mese_dati"), utente_corrente())
+            riferimento = corpo.get("mese_riferimento")
+            if riferimento:
+                if not mensile.mese_valido(riferimento):
+                    raise ValueError("Mese non valido")
+                esistente = conn.execute("SELECT mese FROM monitoraggio_mese WHERE mese_dati = ?", (riferimento,)).fetchone()
+                if esistente:
+                    return jsonify({"ok": True, "mese": esistente["mese"], "creato": False})
+                mese = mensile.mese_successivo(riferimento)
+                m = mensile.crea(conn, mese, riferimento, utente_corrente(), corpo.get("tipologie"))
+            else:
+                mese = mensile.mese_anno_corrente(corpo.get("numero_mese"))
+                m = mensile.crea(conn, mese, corpo.get("mese_dati"), utente_corrente())
             difformita.sincronizza(conn, mese, "creazione del monitoraggio", utente_corrente())
             return jsonify({"ok": True, "mese": m["mese"], "creato": True}), 201
         except mensile.MeseEsistente:
@@ -237,6 +280,185 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             return jsonify(_dati_mese(conn, mensile.riapri(conn, mese, utente_corrente())))
         finally:
             conn.close()
+
+    # --- atti e comunicazioni del mese
+    @bp.get("/api/monitoraggi/<mese>/atti")
+    @protezione
+    def api_monitoraggio_atti(mese: str):
+        conn = _conn()
+        try:
+            m = _trova(conn, mese)
+            if not m:
+                return jsonify({"error": "Monitoraggio non trovato"}), 404
+            righe = comunicazioni.righe_mese(conn, m)
+            return jsonify({"righe": righe, "conteggi": comunicazioni.conteggi(righe)})
+        finally:
+            conn.close()
+
+    @bp.post("/api/monitoraggi/<mese>/verifica-fonti")
+    @protezione
+    @solo_admin
+    def api_verifica_fonti(mese: str):
+        conn = _conn()
+        try:
+            m = _trova(conn, mese)
+            if not m:
+                return jsonify({"error": "Monitoraggio non trovato"}), 404
+            conn.execute("UPDATE monitoraggio_mese SET verifica_fonti_il = ? WHERE mese = ?", (mensile._adesso(), mese))
+            return jsonify(_dati_mese(conn, mensile.leggi(conn, mese)))
+        finally:
+            conn.close()
+
+    @bp.get("/api/monitoraggi/<mese>/comunicazioni/<path:codice>/messaggio")
+    @protezione
+    def api_messaggio(mese: str, codice: str):
+        conn = _conn()
+        try:
+            m = _trova(conn, mese)
+            messaggio = comunicazioni.messaggio(conn, m, codice) if m else None
+            return jsonify({**messaggio, "id_monitoraggio": mensile.id_monitoraggio(m), "chiuso": m["stato"] == "chiuso"}) if messaggio \
+                else (jsonify({"error": "Comunicazione non trovata"}), 404)
+        finally:
+            conn.close()
+
+    def _invia_messaggio(conn, m: dict, codice: str, modo: str, oggetto: str | None = None, corpo: str | None = None, conferma: bool = False):
+        messaggio = comunicazioni.messaggio(conn, m, codice)
+        if not messaggio:
+            return {"error": "Comunicazione non trovata"}, 404
+        if not messaggio["n_difformita"]:
+            return {"error": "Nessuna difformità da comunicare per questo bando"}, 400
+        oggetto, testo = (oggetto or messaggio["oggetto"]).strip(), corpo or messaggio["corpo"]
+        if comunicazioni.contiene_dati_candidati(oggetto, testo):
+            return {"error": "Il testo sembra contenere un codice fiscale: invio bloccato"}, 400
+        if not messaggio["destinatari"]:
+            return {"error": "Nessuna email RdP disponibile per questo bando"}, 400
+        if modo == "ufficiale" and messaggio["stato"] in ("inviata", "inviata_a_mano") and not conferma:
+            return {"error": "Comunicazione già inviata", "gia_inviata": True}, 409
+        try:
+            prova = posta.invia(messaggio["destinatari"], oggetto, testo, modo=modo)
+        except posta.PostaErrore as e:
+            mensile.registra_invio(conn, "sollecito", m["mese"], codice, utente_corrente(), messaggio["destinatari"], oggetto, "errore", str(e))
+            return {"error": str(e)}, 502
+        mensile.registra_invio(conn, "sollecito", m["mese"], codice, utente_corrente(), messaggio["destinatari"], oggetto, "prova" if prova else "inviata")
+        id_c = mensile.registra_comunicazione(conn, m["mese"], codice, messaggio["numero_bando"], "Email di prova" if prova else "Casella ufficio",
+                                              "prova" if prova else "inviata", utente_corrente(), messaggio["destinatari"],
+                                              f"[PROVA] {oggetto}" if prova else oggetto, testo, messaggio["n_difformita"])
+        return {"ok": True, "prova": prova, "id": id_c}, 200
+
+    @bp.post("/api/monitoraggi/<mese>/comunicazioni/<path:codice>/invia")
+    @protezione
+    @solo_admin
+    def api_messaggio_invia(mese: str, codice: str):
+        corpo = request.get_json(silent=True) or {}
+        modo = corpo.get("modo")
+        if modo not in ("prova", "ufficiale"):
+            return jsonify({"error": "Indica se è una prova o un invio ufficiale"}), 400
+        conn = _conn()
+        try:
+            m = _trova(conn, mese)
+            if not m:
+                return jsonify({"error": "Monitoraggio non trovato"}), 404
+            mensile.verifica_aperto(conn, mese)
+            esito, codice_http = _invia_messaggio(conn, m, codice, modo, corpo.get("oggetto"), corpo.get("corpo"), bool(corpo.get("conferma")))
+            return jsonify(esito), codice_http
+        except mensile.MeseChiuso as e:
+            return jsonify({"error": str(e)}), 409
+        finally:
+            conn.close()
+
+    @bp.post("/api/monitoraggi/<mese>/comunicazioni/<path:codice>/traccia")
+    @protezione
+    @solo_admin
+    def api_messaggio_traccia(mese: str, codice: str):
+        corpo = request.get_json(silent=True) or {}
+        if corpo.get("canale") not in ("Copia manuale", "Client email"):
+            return jsonify({"error": "Canale non valido"}), 400
+        conn = _conn()
+        try:
+            m = _trova(conn, mese)
+            messaggio = comunicazioni.messaggio(conn, m, codice) if m else None
+            if not messaggio:
+                return jsonify({"error": "Comunicazione non trovata"}), 404
+            mensile.verifica_aperto(conn, mese)
+            id_c = mensile.registra_comunicazione(conn, mese, codice, messaggio["numero_bando"], corpo["canale"], "da confermare", utente_corrente(),
+                                                  messaggio["destinatari"], corpo.get("oggetto") or messaggio["oggetto"],
+                                                  corpo.get("corpo") or messaggio["corpo"], messaggio["n_difformita"])
+            return jsonify({"ok": True, "id": id_c})
+        except mensile.MeseChiuso as e:
+            return jsonify({"error": str(e)}), 409
+        finally:
+            conn.close()
+
+    @bp.post("/api/monitoraggi/<mese>/comunicazioni-invia-tutti")
+    @protezione
+    @solo_admin
+    def api_messaggi_invia_tutti(mese: str):
+        conn = _conn()
+        try:
+            m = _trova(conn, mese)
+            if not m:
+                return jsonify({"error": "Monitoraggio non trovato"}), 404
+            mensile.verifica_aperto(conn, mese)
+            if not posta.impostazioni_email()["ufficiali_attive"]:
+                return jsonify({"error": "Le email ufficiali sono disattivate"}), 409
+            righe = comunicazioni.righe_mese(conn, m)
+            codici = list(dict.fromkeys(r["chiave"] for r in righe if r["con_difformita"] and r["comunicazione"]["stato"] == "da_inviare"))
+            inviate, errori = 0, []
+            for codice in codici:
+                esito, codice_http = _invia_messaggio(conn, m, codice, "ufficiale")
+                if codice_http == 200:
+                    inviate += 1
+                else:
+                    errori.append({"codice": codice, "errore": esito.get("error")})
+            return jsonify({"ok": not errori, "inviate": inviate, "errori": errori})
+        except mensile.MeseChiuso as e:
+            return jsonify({"error": str(e)}), 409
+        finally:
+            conn.close()
+
+    @bp.get("/api/comunicazioni")
+    @protezione
+    def api_registro_comunicazioni():
+        conn = _conn()
+        try:
+            mese = request.args.get("mese") or None
+            return jsonify({"comunicazioni": mensile.registro_comunicazioni(conn, mese), "posta": posta.stato(),
+                            "monitoraggi": [{"mese": x["mese"], "id": mensile.id_monitoraggio(x)} for x in mensile.elenco(conn)]})
+        finally:
+            conn.close()
+
+    # --- attività notturne
+    @bp.get("/api/impostazioni/attivita")
+    @protezione
+    @solo_admin
+    def api_attivita():
+        solo_problemi = request.args.get("problemi") == "1"
+        return jsonify({"attivita": attivita.elenco(), "prossima": attivita.prossima_esecuzione(),
+                        "storico": attivita.storico(request.args.get("attivita") or None, solo_problemi),
+                        **{k: v for k, v in impostazioni.stato_aggiornamenti().items()
+                           if k in ("giorno_completa", "giorni", "avviso_modo", "avviso_indirizzo", "ultimo_completo", "pdf_da_controllare")}})
+
+    @bp.put("/api/impostazioni/attivita/<chiave>")
+    @protezione
+    @solo_admin
+    def api_attivita_salva(chiave: str):
+        corpo = request.get_json(silent=True) or {}
+        try:
+            attivita.salva(chiave, corpo.get("orario"), corpo.get("attiva"))
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify({"ok": True, "attivita": attivita.elenco(), "prossima": attivita.prossima_esecuzione()})
+
+    @bp.post("/api/impostazioni/attivita/<chiave>/esegui")
+    @protezione
+    @solo_admin
+    def api_attivita_esegui(chiave: str):
+        if chiave not in attivita.ATTIVITA:
+            return jsonify({"error": "Attività sconosciuta"}), 404
+        token = intestazioni_sol() or None if chiave == "referenti" else None
+        if not attivita.esegui(chiave, utente_corrente() or "manuale", token, "manuale" if chiave in ("sol", "urp") else None):
+            return jsonify({"error": "Attività già in corso"}), 409
+        return jsonify({"ok": True}), 202
 
     # --- registro delle difformità
     @bp.get("/api/monitoraggi/<mese>/difformita")
