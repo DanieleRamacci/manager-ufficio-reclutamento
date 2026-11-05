@@ -40,7 +40,8 @@ def _cerca(client, query: str) -> tuple[list[dict], int]:
             totale = dati.get("totalNumItems")
         for item in pagina:
             items.setdefault(item.get("cmis:objectId"), item)
-        if not dati.get("hasMoreItems") or not pagina:
+        # hasMoreItems non basta: SOL risponde false anche quando a fine pagina manca ancora qualcosa (es. 100 su 101)
+        if not pagina or (len(items) >= totale if totale is not None else not dati.get("hasMoreItems")):
             break
         skip += len(pagina)
     if totale is not None and len(items) != totale:

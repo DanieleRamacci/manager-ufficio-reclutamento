@@ -73,7 +73,7 @@ def conta(client, query: str, intestazioni: dict) -> int:
 
 def _cerca(client, query: str, intestazioni: dict) -> list[dict]:
     """Tutte le pagine di una ricerca autenticata, con gli oggetti completi (fetchCmisObject)."""
-    items, skip = [], 0
+    items, skip, totale = [], 0, None
     while True:
         dati = _risposta(client.get_json(config.sol_search_url(), {
             "ajax": "true", "maxItems": PAGINA, "skipCount": skip, "fetchCmisObject": "true",
@@ -81,7 +81,11 @@ def _cerca(client, query: str, intestazioni: dict) -> list[dict]:
         }, intestazioni))
         pagina = dati.get("items") or []
         items.extend(pagina)
-        if not dati.get("hasMoreItems") or not pagina:
+        totale = totale if totale is not None else dati.get("totalNumItems")
+        # hasMoreItems non basta: SOL risponde false anche quando a fine pagina manca ancora qualcosa (es. 100 su 101)
+        if not pagina or (len(items) >= totale if totale is not None else not dati.get("hasMoreItems")):
+            if totale is not None and len(items) != totale:
+                raise FonteErrore(f"Selezioni Online: trovati {len(items)} elementi su {totale} dichiarati")
             return items
         skip += len(pagina)
 

@@ -184,3 +184,36 @@ def test_scorrimenti_candidati_s(db, client_finto):
     assert righe[("scorrimento", "500")]["url_punteggi"].endswith("callId=k")
     dump = "\n".join(db.iterdump())
     assert "Verdi" not in dump and "XXXXXX00X00X000X" not in dump
+
+
+def test_candidati_non_troncati_se_sol_dice_che_non_ce_ne_sono_altri(client_finto):
+    from monitoraggio.fonti import sol_auth
+    lista = [{"jconon_application:cognome": f"Cognome{i}", "cmis:objectId": str(i)} for i in range(sol_auth.PAGINA + 1)]
+
+    def pagina(url, params):
+        return {"items": lista[params["skipCount"]:params["skipCount"] + params["maxItems"]], "totalNumItems": len(lista), "hasMoreItems": False}
+    assert len(sol_auth._cerca(client_finto(json_per_chiave=pagina), "q", {})) == len(lista)
+
+
+def test_candidati_incompleti_danno_errore(client_finto):
+    from monitoraggio.fonti import sol_auth
+    with pytest.raises(FonteErrore, match="trovati 1 elementi su 2"):
+        sol_auth._cerca(client_finto(json_per_chiave=lambda url, params: {"items": [{"a": 1}] if params["skipCount"] == 0 else [], "totalNumItems": 2}), "q", {})
+
+
+def test_senza_v_e_i_si_segnala_e_senza_verifica_si_dice_da_verificare(db, monkeypatch):
+    from monitoraggio import atti as atti_mod, collegamento
+    from monitoraggio.fonti import sol_auth
+    from tests.test_collegamento import doc, salva, scheda
+    salva(db, "sol", [scheda("sol", "o1", "367.562 RIC ISSMC", "367.562", documenti=[doc("g1", "graduatoria", "9001", "2026-10-10")])])
+    salva(db, "urp", [scheda("urp", "/n/1", "367.562 RIC ISSMC", "367.562", documenti=[doc("g2", "graduatoria", "9001", "2026-10-10")])])
+    collegamento.collega(db)
+    riga = lambda: next(r for r in atti_mod.elenco_atti(db, "2026-10-01", "2026-10-31") if r["atto"] == "graduatoria")  # noqa: E731
+    assert riga()["punteggi_da_verificare"] is True and not any("esito" in n for n in riga()["note"])
+    monkeypatch.setattr(sol_auth, "punteggi_bando", lambda c, i, h: {"domande": 2, "con_punteggi": 2, "candidati": [
+        {"cognome": "A", "esito": None, "numero_protocollo_graduatoria": "9001"}, {"cognome": "B", "esito": " ", "numero_protocollo_graduatoria": "9001"}]})
+    punteggi.verifica_schede(db, db.execute("SELECT * FROM scheda WHERE id_esterno = 'o1'").fetchall(), "2026-10-01", "2026-10-31", {"Cookie": "x"}, client=object())
+    r = riga()
+    assert r["punteggi_da_verificare"] is False and r["difforme"] is True and "esito (V/I/S) mancante su SOL (2 candidati)" in r["note"]
+    assert r["punteggi"]["candidati"] is True
+

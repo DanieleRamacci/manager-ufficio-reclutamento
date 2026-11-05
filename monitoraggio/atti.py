@@ -290,6 +290,7 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
             if r["atto"] in ("graduatoria", "scorrimento") and s is not None:
                 r["punteggi"] = punteggi_riga(s)
                 r["scheda_sol_id"] = s["id"]
+                r["punteggi_da_verificare"] = r["punteggi"] is None
                 r["url_punteggi"] = url_punteggi(s["id_esterno"])
                 r["note"] += difformita_sol(r, s)
             else:

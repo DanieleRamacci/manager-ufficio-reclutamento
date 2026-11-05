@@ -33,7 +33,7 @@ def test_cerca_bandi_totale_diverso_e_errore(fixture_path, client_finto, monkeyp
     monkeypatch.setattr(sol.config, "SOL_PAGE_SIZE", 5)
     ultima = carica(fixture_path, "comandi_p1.json")
     ultima["items"] = ultima["items"][:1]
-    client = client_pagine(client_finto, {0: carica(fixture_path, "comandi_p0.json"), 5: ultima})
+    client = client_pagine(client_finto, {0: carica(fixture_path, "comandi_p0.json"), 5: ultima, 6: {"items": []}})
     with pytest.raises(FonteErrore, match="dichiarati"):
         sol.cerca_bandi(client, COMANDI)
 
@@ -97,3 +97,14 @@ def test_padre_senza_i_documenti_dei_codici():
     togli_documenti_dei_figli([padre, letto, non_letto], {"C2": {"del-non-letto"}})
     assert [d["id_esterno"] for d in padre["documenti"]] == ["bando"]
     assert [d["id_esterno"] for d in letto["documenti"]] == ["del-letto"]
+
+
+def test_ha_piu_elementi_anche_se_sol_dice_di_no(client_finto):
+    """Il 367.501 aveva 101 allegati: a skip 0 SOL dichiarava 101 ma con hasMoreItems false."""
+    lista = [{"cmis:objectId": f"d{i}"} for i in range(101)]
+
+    def pagina(url, params):
+        return {"items": lista[params["skipCount"]:params["skipCount"] + params["maxItems"]], "totalNumItems": 101, "hasMoreItems": False}
+    trovati, totale = sol._cerca(client_finto(json_per_chiave=pagina), "q")
+    assert len(trovati) == 101 and totale == 101
+
