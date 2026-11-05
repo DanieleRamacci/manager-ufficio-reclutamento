@@ -108,6 +108,7 @@
       const [m, atti] = await Promise.all([chiama(`/api/monitoraggi/${meseScelto}${stato.ver ? `?versione=${stato.ver}` : ""}`), chiama(`/api/monitoraggi/${meseScelto}/atti`)]);
       stato.m = m; stato.atti = atti;
       disegna();
+      statoCandidati(true);
     }
     function disegna() {
       const m = stato.m, c = stato.atti.conteggi, chiuso = m.stato === "chiuso";
@@ -191,6 +192,33 @@
         ${chiuso ? "" : `<label class="spunta solo-admin" style="font-size:12px"><input type="checkbox" class="spunta-inviata" data-c="${esc(r.chiave)}"${inviata ? " checked" : ""}> inviata</label>`}</div>
         ${c.id ? `<div class="mono muted2" style="font-size:10.5px;margin-top:3px">${esc(c.id)}</div>` : ""}</td>`;
     }
+    // Elenco dei candidati: è solo in memoria, quindi dopo un riavvio del server va riletto da Selezioni Online.
+    async function statoCandidati(avvia) {
+      clearTimeout(stato.attesaCandidati);
+      const url = `/api/monitoraggi/${stato.m.mese}/candidati`;
+      let d = null;
+      stato.avvisoCandidati = "";
+      if (avvia) {
+        try { d = await chiama(url, { method: "POST" }); }
+        catch (err) { if (err.status === 401) stato.avvisoCandidati = err.message; }
+      }
+      try { d = d || await chiama(url); } catch { return; }
+      const eraInCorso = stato.candidati?.in_corso || stato.candidati?.avviata;
+      stato.candidati = d;
+      mostraCandidati();
+      if (d.in_corso || d.avviata) { stato.attesaCandidati = setTimeout(() => statoCandidati(false), 3000); return; }
+      if (eraInCorso) { stato.atti = await chiama(`/api/monitoraggi/${stato.m.mese}/atti`); disegna(); }
+    }
+    function mostraCandidati() {
+      const box = $("stato-candidati"), d = stato.candidati;
+      if (!box || !d || !d.atti) { if (box) box.innerHTML = ""; return; }
+      if (d.in_corso || d.avviata) { box.textContent = `Caricamento dei candidati da Selezioni Online${d.in_corso && d.totale ? `: ${d.fatti} di ${d.totale}` : ""}…`; return; }
+      const mancano = d.atti - d.con_elenco, ultimo = d.ultimo || {};
+      const motivo = stato.avvisoCandidati || (ultimo.esito === "fallita" ? ultimo.messaggio : ultimo.errore ? `${ultimo.errore} bandi non letti da Selezioni Online.` : "");
+      box.innerHTML = `Elenco dei candidati disponibile per ${d.con_elenco} atti su ${d.atti}. ${motivo ? `<span class="etichetta">${esc(motivo)}</span>` : ""}
+        ${mancano ? `<button type="button" class="piccolo solo-admin" id="carica-candidati">Carica i candidati</button>` : ""}`;
+      if ($("carica-candidati")) $("carica-candidati").onclick = () => statoCandidati(true);
+    }
     function schedaAtti() {
       const f = stato.filtri, m = stato.m, righe = righeScheda();
       const daInviare = [...new Set(stato.atti.righe.filter(r => r.con_difformita && r.comunicazione.stato === "da_inviare").map(r => r.chiave))];
@@ -200,6 +228,7 @@
         <label class="spunta"><input type="checkbox" id="f-solo"${f.solo ? " checked" : ""}> solo con difformità</label>
         <input type="search" id="f-q" placeholder="Bando, protocollo, RdP" value="${esc(f.q)}" aria-label="Cerca"></div>`;
       $("corpo-scheda").innerHTML = `
+        ${stato.scheda === "bando" ? "" : `<div class="small muted" id="stato-candidati" style="margin-bottom:8px"></div>`}
         ${daInviare.length && m.stato !== "chiuso" ? `<div class="banda solo-admin"><span><b>${daInviare.length}</b> bandi con difformità ancora da comunicare</span>
           <button class="primario" type="button" id="invia-tutti">Invia tutti dalla casella dell'ufficio…</button></div>` : ""}
         <section style="padding:0"><div class="scroll"><table style="min-width:1250px"><thead><tr><th>Data</th><th>Bando</th><th>Tipologia</th><th>N. gest.</th><th>Atto</th><th>Prot.</th><th>SOL</th><th>URP</th><th>Segreteria</th><th>Difformità rilevate</th><th>RdP</th><th>Comunicazione</th></tr></thead><tbody id="righe-atti">
@@ -214,7 +243,7 @@
       ["f-tip", "f-com", "f-solo"].forEach(id => $(id).onchange = () => { f.tipologia = $("f-tip").value; f.comunicazione = $("f-com").value; f.solo = $("f-solo").checked; schedaAtti(); });
       $("f-q").oninput = aggiorna;
       const corpo = $("corpo-scheda");
-      collegaRdp(corpo); collegaCandidati(corpo, 12);
+      collegaRdp(corpo); collegaCandidati(corpo, 12); mostraCandidati();
       corpo.querySelectorAll(".apri-messaggio").forEach(b => b.onclick = () => apriMessaggio(b.dataset.c));
       corpo.querySelectorAll(".spunta-inviata").forEach(c => c.onchange = async () => {
         try { await chiama(`/api/monitoraggi/${m.mese}/solleciti/${encodeURIComponent(c.dataset.c)}`, corpoJson("PUT", { inviata: c.checked })); await dettaglio(); }

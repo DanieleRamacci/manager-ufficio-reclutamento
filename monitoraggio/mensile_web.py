@@ -1,10 +1,12 @@
 """Pagine e API del monitoraggio mensile e degli utenti (spec 006)."""
 import io
+import logging
+import threading
 from pathlib import Path
 
 from flask import Blueprint, jsonify, redirect, request, send_file, send_from_directory
 
-from . import atti, attivita, comunicazioni, db, difformita, excel_mese, impostazioni, mensile, posta, referenti, sol_sessione, utenti
+from . import atti, attivita, comunicazioni, db, difformita, excel_mese, impostazioni, mensile, posta, punteggi, referenti, sol_sessione, utenti
 
 STATIC = Path(__file__).resolve().parent / "static"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -20,6 +22,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
                            intestazioni_sol=sol_sessione.intestazioni) -> Blueprint:
     """`intestazioni_sol()`: header per leggere i punteggi su SOL con l'accesso dell'utente, o vuoto se non è collegato."""
     bp = Blueprint("mensile", __name__)
+    ultimo_candidati: dict[str, dict] = {}
 
     def _dati_mese(conn, m: dict, versione: int | None = None) -> dict:
         dal, al = mensile.periodo_dati(m)
@@ -317,6 +320,64 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
             conn.execute("UPDATE monitoraggio_mese SET verifica_fonti_il = ? WHERE mese = ?", (mensile._adesso(), mese))
             return jsonify(_dati_mese(conn, mensile.leggi(conn, mese)))
+        finally:
+            conn.close()
+
+    def _schede_atti(conn, m: dict) -> list[int]:
+        return [r["scheda_sol_id"] for r in comunicazioni.righe_mese(conn, m) if r.get("scheda_sol_id")]
+
+    def _stato_candidati(conn, m: dict, **extra) -> dict:
+        schede = _schede_atti(conn, m)
+        return {"in_corso": punteggi.in_corso(), **punteggi.avanzamento(), "atti": len(schede),
+                "con_elenco": sum(1 for s in schede if punteggi.candidati(s) is not None),
+                "ultimo": ultimo_candidati.get(m["mese"]), **extra}
+
+    @bp.get("/api/monitoraggi/<mese>/candidati")
+    @protezione
+    def api_candidati_stato(mese: str):
+        conn = _conn()
+        try:
+            m = _trova(conn, mese)
+            return jsonify(_stato_candidati(conn, m)) if m else (jsonify({"error": "Monitoraggio non trovato"}), 404)
+        finally:
+            conn.close()
+
+    @bp.post("/api/monitoraggi/<mese>/candidati")
+    @protezione
+    @solo_admin
+    def api_candidati_carica(mese: str):
+        """Legge da SOL gli elenchi che mancano per gli atti del mese. Restano solo in memoria (constitution, Principio II)."""
+        conn = _conn()
+        try:
+            m = _trova(conn, mese)
+            if not m:
+                return jsonify({"error": "Monitoraggio non trovato"}), 404
+            dal, al = mensile.periodo_dati(m)
+            ids = {*_schede_atti(conn, m), *(s["id"] for s in excel_mese.graduatorie_periodo(conn, dal, al))}
+            mancanti = [i for i in ids if punteggi.candidati(i) is None]
+            if punteggi.in_corso() or not mancanti:
+                return jsonify(_stato_candidati(conn, m))
+            intestazioni = intestazioni_sol() or None
+            if not intestazioni:
+                return jsonify({"error": "Per vedere i candidati collega prima Selezioni Online con Collega-SOL"}), 401
+            segnaposti = ", ".join("?" * len(mancanti))
+            schede = conn.execute(f"SELECT * FROM scheda WHERE id IN ({segnaposti})", mancanti).fetchall()
+
+            def lavoro():
+                c = _conn()
+                try:
+                    r = punteggi.verifica_schede(c, schede, dal, al, intestazioni)
+                    ultimo_candidati[mese] = {k: r.get(k) for k in ("esito", "messaggio", "errore")}
+                except punteggi.VerificaInCorso:
+                    pass
+                except Exception as e:
+                    logging.getLogger(__name__).exception("Caricamento dei candidati non riuscito")
+                    ultimo_candidati[mese] = {"esito": "fallita", "messaggio": f"Caricamento non riuscito ({type(e).__name__})"}
+                finally:
+                    c.close()
+                difformita.sincronizza_tutti("verifica dei punteggi")
+            threading.Thread(target=lavoro, daemon=True, name="candidati-mese").start()
+            return jsonify(_stato_candidati(conn, m, avviata=True)), 202
         finally:
             conn.close()
 

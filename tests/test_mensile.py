@@ -1329,3 +1329,40 @@ def test_aggiornamento_toglie_le_categorie_protette_dal_registro(ambiente, db):
     assert {r[0] for r in db.execute("SELECT numero_bando FROM difformita")} == {"301.66", "367.479"}
     assert db.execute("SELECT COUNT(*) FROM difformita_evento").fetchone()[0] == 2
 
+
+def test_carica_i_candidati_di_tutti_gli_atti_del_mese(ambiente, db, monkeypatch):
+    from monitoraggio import collegamento
+    from monitoraggio.fonti import sol_auth
+    admin, mese = _mese_con_dati(ambiente, db)
+    # bando con più codici e atto senza codice: il pannello usa la scheda principale, che deve essere letta anche lei
+    salva(db, "sol", [scheda("sol", "m1", "367.500 RIC", "367.500"),
+                      scheda("sol", "m2", "367.500 RIC Codice 02", "367.500", sotto="02")])
+    salva(db, "urp", [scheda("urp", "/node/5", "367.500 RIC", "367.500", documenti=[doc("g5", "scorrimento", "2002", "2026-04-20")])])
+    collegamento.collega(db)
+    letti = []
+
+    def punteggi_finti(client, id_esterno, intestazioni):
+        assert intestazioni == {"Cookie": "ticket=x"}
+        letti.append(id_esterno)
+        return {"domande": 1, "con_punteggi": 1, "candidati": [{"cognome": "Prova", "esito": "V", "numero_protocollo_graduatoria": "1"}]}
+    monkeypatch.setattr(sol_auth, "punteggi_bando", punteggi_finti)
+    monkeypatch.setattr(punteggi, "_candidati", {})
+
+    app = Flask(__name__)
+    app.register_blueprint(crea_blueprint_mensile(intestazioni_sol=lambda: {"Cookie": "ticket=x"}))
+    c = app.test_client()
+    url = f"/api/monitoraggi/{mese}/candidati"
+    prima = c.get(url).get_json()
+    assert prima["atti"] >= 2 and prima["con_elenco"] == 0
+    assert admin.post(url).status_code == 401  # senza Selezioni Online collegato lo dice
+    assert c.post(url).status_code == 202
+    while c.get(url).get_json()["in_corso"] or len(letti) < 2:
+        time.sleep(.01)
+    dopo = c.get(url).get_json()
+    assert dopo["con_elenco"] == dopo["atti"] and dopo["fatti"] == dopo["totale"]
+    righe = c.get(f"/api/monitoraggi/{mese}/atti").get_json()["righe"]
+    assert all(r["punteggi"]["candidati"] for r in righe if r["atto"] in ("graduatoria", "scorrimento"))
+    numero_letti = len(letti)
+    assert c.post(url).status_code == 200 and len(letti) == numero_letti  # rilegge solo quelli che mancano
+    assert not db.execute("SELECT 1 FROM sqlite_master WHERE sql LIKE '%cognome%' AND name LIKE 'candidat%'").fetchone()
+

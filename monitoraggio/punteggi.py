@@ -20,6 +20,7 @@ from .normalizza import data_iso, protocollo
 
 log = logging.getLogger(__name__)
 _in_corso = threading.Lock()
+_avanzamento = {"fatti": 0, "totale": 0}
 _candidati: dict[int, dict] = {}   # scheda_id -> {"verificato_il", "candidati"} (solo in memoria)
 
 ESITI_CANDIDATO = {"V": "vincitori", "I": "idonei", "S": "scorrimento"}
@@ -276,6 +277,7 @@ def verifica_schede(conn, schede: list, dal: str, al: str, intestazioni: dict, c
         client = client or Client(config.pausa_sol())
         totali = {"graduatorie": len(schede), "completi": 0, "parziali": 0, "mancanti": 0, "protocollo_mancante": 0,
                   "nessuna_domanda": 0, "errore": 0}
+        _avanzamento.update(fatti=0, totale=len(schede))
         for s in schede:
             ora = _adesso()
             rif = riferimento(conn, s, dal, al)
@@ -301,10 +303,15 @@ def verifica_schede(conn, schede: list, dal: str, al: str, intestazioni: dict, c
                 (s["id"], ora, n["domande"], n["con_punteggi"], c["vincitori"], c["idonei"], c["scorrimento"],
                  c["senza_protocollo"], c["senza_esito"], c["protocollo_diverso"], c["data_diversa"],
                  json.dumps(scorr) if scorr is not None else None, e, msg))
+            _avanzamento["fatti"] += 1
         log.info("Verifica punteggi %s-%s: %s", dal, al, totali)
         return {**totali, "esito": "completata", "messaggio": None}
     finally:
         _in_corso.release()
+
+
+def avanzamento() -> dict:
+    return dict(_avanzamento)
 
 
 def in_corso() -> bool:
