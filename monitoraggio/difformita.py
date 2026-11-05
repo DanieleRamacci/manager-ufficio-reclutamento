@@ -190,6 +190,7 @@ def _voce(conn, e: dict, solleciti: dict) -> dict:
     sollecito = solleciti.get(e["codice"] or "") or solleciti.get(e["numero_bando"] or "")
     return {**{k: e[k] for k in ("id", "numero_bando", "codice", "titolo_bando", "tipologia", "atto", "data", "protocollo",
                                  "stato", "prima_rilevata_il", "corretta_il", "ultimo_controllo_il")},
+            "n_gestione": mensile.numero_gestione(conn, e["codice"] or e["numero_bando"] or str(e["id"])),
             "badge": badge, "rilievi": voci_rilievo,
             "sollecito": {k: sollecito[k] for k in ("stato", "autore", "quando")} if sollecito else None,
             "storico": [dict(x) for x in conn.execute(

@@ -35,7 +35,8 @@ def righe_mese(conn, monitoraggio: dict, tipologie: list[str] | None = None) -> 
             continue
         testi = difformita.rilievi(r) if r["atto"] in difformita.ATTI_SEGUITI and r.get("difforme") else []
         c = inviate.get(chiave(r)) or inviate.get(r.get("numero_bando") or "")
-        righe.append({**r, "chiave": chiave(r), "gruppo_tipologia": gruppo, "rilievi": testi, "con_difformita": bool(testi),
+        righe.append({**r, "chiave": chiave(r), "n_gestione": mensile.numero_gestione(conn, chiave(r)) if chiave(r) else None,
+                      "gruppo_tipologia": gruppo, "rilievi": testi, "con_difformita": bool(testi),
                       "comunicazione": {"stato": "in_regola"} if not testi else (
                           {k: c.get(k) for k in ("stato", "quando", "id", "canale")} if c else {"stato": "da_inviare"})})
     righe.sort(key=lambda r: (not r["con_difformita"], tuple(-ord(x) for x in (r.get("data") or ""))))
@@ -108,7 +109,7 @@ def messaggio(conn, monitoraggio: dict, codice: str) -> dict | None:
              f"{posta.impostazioni_email()['firma']}\n")
     if r0.get("link_codice"):
         corpo += f"\nScheda su Selezioni Online: {r0['link_codice']}\n"
-    return {"chiave": codice, "numero_bando": r0.get("numero_bando"), "titolo_bando": r0.get("titolo_bando"), "referenti": referenti,
+    return {"chiave": codice, "n_gestione": r0.get("n_gestione"), "numero_bando": r0.get("numero_bando"), "titolo_bando": r0.get("titolo_bando"), "referenti": referenti,
             "destinatari": [p["email"] for p in referenti], "oggetto": f"[{id_m}] Monitoraggio {mese_testo} – bando {codice}: {n} difformità",
             "corpo": corpo, "n_difformita": n, "stato": (righe or tutte)[0]["comunicazione"]["stato"],
             "storico": mensile.registro_comunicazioni(conn, monitoraggio["mese"], codice), "posta": posta.stato()}

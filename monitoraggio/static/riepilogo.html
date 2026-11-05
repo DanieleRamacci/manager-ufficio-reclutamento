@@ -517,7 +517,7 @@ async function caricaInvii() {
   const { corpo } = await json(`/api/monitoraggi/${monitoraggio}/solleciti`);
   datiInvii = corpo;
   $("barra-monitoraggio").hidden = false;
-  $("barra-monitoraggio").innerHTML = `Monitoraggio di <b>${esc(corpo.etichetta)}</b>, dati di ${esc(corpo.etichetta_dati)} ·
+  $("barra-monitoraggio").innerHTML = `Monitoraggio di <b>${esc(corpo.etichetta)}</b> ·
     <a href="/monitoraggio/mensili/${esc(monitoraggio)}">torna al monitoraggio</a>${corpo.stato === "chiuso" ? ` · <span class="chip warn">Monitoraggio chiuso: qui vedi i dati aggiornati, quelli della chiusura sono nella sua pagina</span>` : ""}${corpo.posta.prova ? ` · <span class="chip warn">Modalità di prova: ${esc(corpo.posta.prova)}</span>` : ""}`;
 }
 

@@ -196,19 +196,19 @@
       $("corpo-scheda").innerHTML = `
         ${daInviare.length && m.stato !== "chiuso" ? `<div class="banda solo-admin"><span><b>${daInviare.length}</b> bandi con difformità ancora da comunicare</span>
           <button class="primario" type="button" id="invia-tutti">Invia tutti dalla casella dell'ufficio…</button></div>` : ""}
-        <section style="padding:0"><div class="scroll"><table style="min-width:1250px"><thead><tr><th>Data</th><th>Bando</th><th>Tipologia</th><th>Atto</th><th>Prot.</th><th>SOL</th><th>URP</th><th>Segreteria</th><th>Difformità rilevate</th><th>RdP</th><th>Comunicazione</th></tr></thead><tbody id="righe-atti">
+        <section style="padding:0"><div class="scroll"><table style="min-width:1250px"><thead><tr><th>Data</th><th>Bando</th><th>Tipologia</th><th>N. gest.</th><th>Atto</th><th>Prot.</th><th>SOL</th><th>URP</th><th>Segreteria</th><th>Difformità rilevate</th><th>RdP</th><th>Comunicazione</th></tr></thead><tbody id="righe-atti">
         ${righe.map(r => `<tr class="${r.con_difformita ? "difforme" : "in-regola"}"><td style="white-space:nowrap">${esc(dataIt(r.data))}</td>
-          <td style="min-width:170px"><b>${esc(r.codice || r.numero_bando)}</b><div class="muted2 small" style="max-width:240px">${esc(r.titolo_bando)}</div></td><td>${chipTipologia(r.tipologia)}</td>
+          <td style="min-width:170px"><b>${esc(r.codice || r.numero_bando)}</b><div class="muted2 small" style="max-width:240px">${esc(r.titolo_bando)}</div></td><td>${chipTipologia(r.tipologia)}</td><td class="mono small">${esc(r.n_gestione)}</td>
           <td>${esc(ATTI[r.atto] || r.atto)}${r.sottotipo && r.sottotipo !== "non_specificato" ? ` <span class="chip t-altro">${esc(r.sottotipo)}</span>` : ""}${r.persone ? `<div class="muted2 small">${r.persone} persone nel file segreteria</div>` : ""}${celleCandidati(r)}</td>
           <td class="mono small">${esc(r.protocollo)}</td>${cellaFonte(r, "sol")}${cellaFonte(r, "urp")}${cellaFonte(r, "segreteria")}
           <td style="min-width:240px">${r.rilievi.length ? `<ul class="rilievi">${r.rilievi.map(t => `<li class="${t.startsWith("protocollo diverso") ? "diverso" : ""}">${esc(t)}</li>`).join("")}</ul>` : `<span style="color:var(--ok)" class="small">Nessuna difformità</span>`}</td>
-          ${cellaRdp(r)}${cellaComunicazione(r)}</tr>`).join("") || `<tr><td colspan="11" class="muted">Nessun atto con questi filtri.</td></tr>`}
+          ${cellaRdp(r)}${cellaComunicazione(r)}</tr>`).join("") || `<tr><td colspan="12" class="muted">Nessun atto con questi filtri.</td></tr>`}
         </tbody></table></div></section>`;
       const aggiorna = () => { f.tipologia = $("f-tip").value; f.comunicazione = $("f-com").value; f.solo = $("f-solo").checked; f.q = $("f-q").value; const pos = $("f-q").selectionStart; schedaAtti(); $("f-q").focus(); $("f-q").setSelectionRange(pos, pos); };
       ["f-tip", "f-com", "f-solo"].forEach(id => $(id).onchange = () => { f.tipologia = $("f-tip").value; f.comunicazione = $("f-com").value; f.solo = $("f-solo").checked; schedaAtti(); });
       $("f-q").oninput = aggiorna;
       const corpo = $("corpo-scheda");
-      collegaRdp(corpo); collegaCandidati(corpo, 11);
+      collegaRdp(corpo); collegaCandidati(corpo, 12);
       corpo.querySelectorAll(".apri-messaggio").forEach(b => b.onclick = () => apriMessaggio(b.dataset.c));
       corpo.querySelectorAll(".spunta-inviata").forEach(c => c.onchange = async () => {
         try { await chiama(`/api/monitoraggi/${m.mese}/solleciti/${encodeURIComponent(c.dataset.c)}`, corpoJson("PUT", { inviata: c.checked })); await dettaglio(); }
@@ -239,7 +239,7 @@
       const lavoro = { oggetto: d.oggetto, corpo: d.corpo, modifica: false };
       const p = d.posta, chiuso = d.chiuso, inviata = ["inviata", "inviata_a_mano"].includes(d.stato);
       const PILL = { da_inviare: ["p-ko", "da inviare"], da_confermare: ["p-warn", "da confermare"], inviata: ["p-ok", "inviata"], inviata_a_mano: ["p-ok", "inviata"], in_regola: ["p-na", "in regola"] }[d.stato];
-      const o = apriFinestra(`<header><div><b>Comunicazione difformità · bando ${esc(codice)}</b><div class="mono small muted">${esc(d.id_monitoraggio)}</div></div><span class="pillola ${PILL[0]}">${PILL[1]}</span></header>
+      const o = apriFinestra(`<header><div><b>Comunicazione difformità · bando ${esc(codice)}</b><div class="mono small muted">${esc(d.id_monitoraggio)}/${esc(d.numero_bando || codice)}/${esc(d.n_gestione)}</div></div><span class="pillola ${PILL[0]}">${PILL[1]}</span></header>
         <div class="corpo">
           <div class="small"><b>Da:</b> Ufficio Reclutamento &lt;${esc(p.mittente || "non impostata")}&gt; · casella dell'ufficio${p.cc ? `<br><b>Cc:</b> ${esc(p.cc)}` : ""}</div>
           <div class="small"><b>A:</b> ${d.referenti.map(r => `<span class="chip t-altro">${esc(r.nome)} &lt;${esc(r.email)}&gt;</span>`).join(" ") || `<span class="etichetta">nessuna email RdP disponibile</span>`}</div>
@@ -317,7 +317,7 @@
         <div class="errore" id="errore-registro" role="alert" hidden></div>
         <div class="scroll"><table style="min-width:760px"><thead><tr><th>Stato</th><th>Atto</th><th>Rilievi</th><th>Sollecito</th><th></th></tr></thead><tbody>
         ${visibili.map(x => `<tr><td><span class="badge ${x.badge}">${BADGE[x.badge]}</span>${x.corretta_il ? `<div class="muted small">il ${ora(x.corretta_il)}</div>` : ""}</td>
-          <td><b>${esc(x.codice || x.numero_bando)}</b><div class="small">${esc(x.atto)} del ${esc(dataIt(x.data))}</div>${x.protocollo ? `<div class="muted small mono">prot. ${esc(x.protocollo)}</div>` : ""}</td>
+          <td><b>${esc(x.codice || x.numero_bando)}</b> <span class="mono small muted2">${esc(x.n_gestione)}</span><div class="small">${esc(x.atto)} del ${esc(dataIt(x.data))}</div>${x.protocollo ? `<div class="muted small mono">prot. ${esc(x.protocollo)}</div>` : ""}</td>
           <td><ul class="rilievi">${x.rilievi.map(r => `<li${r.risolto ? ' class="risolto"' : ""}>${esc(r.testo)}${r.nuovo ? " (nuovo)" : ""}</li>`).join("")}</ul>
             <details><summary>Storico</summary>${x.storico.map(e => `<div class="small">${ora(e.quando)}: ${esc(EVENTI[e.tipo] || e.tipo)} (${esc(e.origine)}${e.utente ? `, ${esc(e.utente)}` : ""})</div>`).join("")}</details></td>
           <td class="small">${x.sollecito ? `${x.sollecito.stato === "da_confermare" ? "Da confermare" : x.sollecito.stato === "inviata" ? "Inviata" : "Inviata a mano"}<div class="muted">${ora(x.sollecito.quando)}</div>` : `<span class="muted">Non inviata</span>`}</td>
@@ -338,9 +338,9 @@
       const P = { inviata: "p-ok", "da confermare": "p-warn", prova: "p-test", annullata: "p-na" };
       $("corpo-scheda").innerHTML = `<section><p class="muted">Caricamento…</p></section>`;
       const d = await chiama(`/api/comunicazioni?mese=${stato.m.mese}`);
-      $("corpo-scheda").innerHTML = `<section><div class="scroll"><table style="min-width:900px"><thead><tr><th>ID comunicazione</th><th>Data</th><th>Codice</th><th>Destinatari</th><th>Oggetto</th><th>Difformità</th><th>Canale</th><th>Stato</th></tr></thead><tbody>
-        ${d.comunicazioni.map(c => `<tr><td class="mono small">${esc(c.id)}</td><td>${ora(c.data)}</td><td>${esc(c.chiave)}</td><td class="small" title="${esc(c.destinatari.join(", "))}">${esc(c.destinatari[0] || "–")}${c.destinatari.length > 1 ? ` +${c.destinatari.length - 1}` : ""}</td>
-          <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.oggetto)}">${esc(c.oggetto)}</td><td>${c.n_difformita ?? ""}</td><td>${esc(c.canale)}</td><td><span class="pillola ${P[c.stato]}">${esc(c.stato)}</span></td></tr>`).join("") || `<tr><td colspan="8" class="muted">Nessuna comunicazione per questo monitoraggio.</td></tr>`}
+      $("corpo-scheda").innerHTML = `<section><div class="scroll"><table style="min-width:900px"><thead><tr><th>ID comunicazione</th><th>Data</th><th>Codice</th><th>N. gest.</th><th>Destinatari</th><th>Oggetto</th><th>Difformità</th><th>Canale</th><th>Stato</th></tr></thead><tbody>
+        ${d.comunicazioni.map(c => `<tr><td class="mono small">${esc(c.id)}</td><td>${ora(c.data)}</td><td>${esc(c.chiave)}</td><td class="mono small">${esc(c.n_gestione)}</td><td class="small" title="${esc(c.destinatari.join(", "))}">${esc(c.destinatari[0] || "–")}${c.destinatari.length > 1 ? ` +${c.destinatari.length - 1}` : ""}</td>
+          <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.oggetto)}">${esc(c.oggetto)}</td><td>${c.n_difformita ?? ""}</td><td>${esc(c.canale)}</td><td><span class="pillola ${P[c.stato]}">${esc(c.stato)}</span></td></tr>`).join("") || `<tr><td colspan="9" class="muted">Nessuna comunicazione per questo monitoraggio.</td></tr>`}
       </tbody></table></div></section>`;
     }
 

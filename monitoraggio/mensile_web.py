@@ -23,9 +23,9 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
 
     def _dati_mese(conn, m: dict, versione: int | None = None) -> dict:
         dal, al = mensile.periodo_dati(m)
-        return {**m, "etichetta": mensile.etichetta(m["mese"]), "etichetta_dati": mensile.etichetta(m["mese_dati"]),
+        return {**m, "etichetta": mensile.etichetta(m["mese_dati"]), "etichetta_dati": mensile.etichetta(m["mese_dati"]),
                 "dal": dal, "al": al, "link_vista": mensile.link_vista(m),
-                "file_scorrimenti": excel_mese.nome_scorrimenti(m["mese"]), "file_graduatorie": excel_mese.nome_graduatorie(m["mese"]),
+                "file_scorrimenti": excel_mese.nome_scorrimenti(m["mese_dati"]), "file_graduatorie": excel_mese.nome_graduatorie(m["mese_dati"]),
                 "graduatorie_senza_elenco": excel_mese.graduatorie_senza_elenco(conn, dal, al),
                 "email": mensile.email_compilazione(conn, m), "posta": posta.stato(),
                 "solleciti": list(mensile.solleciti(conn, m["mese"]).values()), "invii": mensile.invii(conn, m["mese"]),
@@ -500,11 +500,11 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             if not m or tipo not in ("scorrimenti", "graduatorie", "graduatorie-con-dati"):
                 return jsonify({"error": "File non trovato"}), 404
             if tipo == "scorrimenti":
-                contenuto, nome = excel_mese.excel_scorrimenti(), excel_mese.nome_scorrimenti(mese)
+                contenuto, nome = excel_mese.excel_scorrimenti(), excel_mese.nome_scorrimenti(m["mese_dati"])
             elif tipo == "graduatorie":
-                contenuto, nome = excel_mese.excel_graduatorie_vuoto(), excel_mese.nome_graduatorie(mese)
+                contenuto, nome = excel_mese.excel_graduatorie_vuoto(), excel_mese.nome_graduatorie(m["mese_dati"])
             else:
-                contenuto, nome = excel_mese.excel_graduatorie(conn, *mensile.periodo_dati(m)), excel_mese.nome_graduatorie(mese)
+                contenuto, nome = excel_mese.excel_graduatorie(conn, *mensile.periodo_dati(m)), excel_mese.nome_graduatorie(m["mese_dati"])
         finally:
             conn.close()
         risposta = send_file(io.BytesIO(contenuto), mimetype=XLSX, as_attachment=True, download_name=nome)
@@ -573,7 +573,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             m = _trova(conn, mese)
             if not m:
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
-            return jsonify({"etichetta": mensile.etichetta(mese), "etichetta_dati": mensile.etichetta(m["mese_dati"]),
+            return jsonify({"etichetta": mensile.etichetta(m["mese_dati"]), "etichetta_dati": mensile.etichetta(m["mese_dati"]),
                             "stato": m["stato"], "mese_dati": m["mese_dati"], "solleciti": mensile.solleciti(conn, mese), "posta": posta.stato()})
         finally:
             conn.close()

@@ -4,7 +4,7 @@ import sqlite3
 
 from . import config
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -239,6 +239,13 @@ CREATE TABLE IF NOT EXISTS monitoraggio_mese (
     difformita_aggiornate_il TEXT,
     tipologie TEXT,
     verifica_fonti_il TEXT
+);
+
+-- Numero di gestione: identificativo interno e stabile di ogni codice, usato negli ID dei messaggi.
+CREATE TABLE IF NOT EXISTS gestione (
+    numero INTEGER PRIMARY KEY AUTOINCREMENT,
+    chiave TEXT NOT NULL UNIQUE,
+    creato_il TEXT NOT NULL
 );
 
 -- Registro di ogni messaggio ai referenti: inviato, copiato, segnato a mano o di prova.

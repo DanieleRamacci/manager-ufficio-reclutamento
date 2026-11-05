@@ -9,6 +9,6 @@
 - [X] T007 Registro delle comunicazioni (tabella comunicazione, pagina Comunicazioni)
 - [X] T008 Impostazioni: Utenti, Email con due interruttori, Aggiornamenti notturni con storico
 - [X] T009 File segreteria e pagina di accesso con la nuova grafica di base
-- [ ] T010 Numero di gestione: nelle fonti raccolte non esiste, va chiarito da dove arriva
-- [ ] T011 Vista Excel e riquadri di File segreteria come nelle specifiche 3.6: oggi solo colori e forme
+- [X] T010 Numero di gestione interno, stabile per codice, negli ID delle comunicazioni
+- [X] T011 File segreteria come nelle specifiche 3.6: riquadri, problemi per riga, storico (la vista Excel, opzionale, non serve: tolta su richiesta)
 - [ ] T012 Verifica con dati reali su Coolify

@@ -50,7 +50,7 @@ def _periodo_segreteria(atti_seg: list[dict]) -> dict[str, str]:
 
 
 def url_file_segreteria(atto: int | None = None, foglio: str | None = None) -> str:
-    return f"/monitoraggio/segreteria/file?atto={atto}" if atto else f"/monitoraggio/segreteria/file?foglio={foglio or 'bandi'}"
+    return f"/monitoraggio/segreteria?atto={atto}" if atto else f"/monitoraggio/segreteria?foglio={foglio or 'bandi'}"
 
 
 FOGLIO_SEGRETERIA = {"bando": "bandi", "graduatoria": "graduatorie", "scorrimento": "scorrimento"}

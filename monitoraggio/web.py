@@ -11,7 +11,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from flask import Blueprint, jsonify, request, send_from_directory
+from flask import Blueprint, jsonify, redirect, request, send_from_directory
 from werkzeug.utils import secure_filename
 
 from . import accessibilita, atti, collegamento, comunicazioni, compat, config, db, difformita, impostazioni, notifiche, punteggi, referenti, segreteria, sol_sessione
@@ -32,7 +32,6 @@ MENU = [
         {"titolo": "Monitoraggi mensili", "url": "/monitoraggio/mensili", "route": True},
         {"titolo": "Riepilogo atti", "url": "/monitoraggio", "route": True},
         {"titolo": "File segreteria", "url": "/monitoraggio/segreteria", "route": True},
-        {"titolo": "File segreteria: vista del file", "url": "/monitoraggio/segreteria/file", "route": True},
         {"titolo": "Comunicazioni", "url": "/monitoraggio/comunicazioni", "route": True},
         {"titolo": "Report del mese", "url": "/report-mese.html", "pagina": "report-mese.html"},
         {"titolo": "Impostazioni", "url": "/monitoraggio/impostazioni", "route": True, "solo_admin": True},
@@ -556,7 +555,16 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
     def api_segreteria_versioni():
         conn = _conn()
         try:
-            return jsonify({"versioni": segreteria.versioni(conn)})
+            return jsonify({"versioni": segreteria.storico_versioni(conn)})
+        finally:
+            conn.close()
+
+    @bp.get("/api/segreteria/versioni/<int:versione_id>/problemi")
+    @protezione
+    def api_segreteria_problemi(versione_id: int):
+        conn = _conn()
+        try:
+            return jsonify(segreteria.problemi_righe(conn, versione_id))
         finally:
             conn.close()
 
@@ -593,36 +601,8 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
     @bp.get("/monitoraggio/segreteria/file")
     @protezione
     def pagina_file_segreteria():
-        return send_from_directory(STATIC, "segreteria-file.html")
-
-    @bp.get("/api/segreteria/foglio")
-    @protezione
-    def api_segreteria_foglio():
-        conn = _conn()
-        try:
-            atto_id = request.args.get("atto", type=int)
-            evidenzia = []
-            if atto_id:
-                a = segreteria.atto(conn, atto_id)
-                if not a:
-                    return jsonify({"error": "Atto non trovato"}), 404
-                versione_id, nome = a["versione_id"], segreteria.FOGLIO_DI[a["categoria"]]
-                evidenzia = [r["numero_riga"] for r in segreteria.righe_atto(conn, atto_id)]
-            else:
-                versione_id = request.args.get("versione", type=int)
-                if not versione_id:
-                    in_uso = segreteria.versione_in_uso(conn)
-                    if not in_uso:
-                        return jsonify({"error": "Nessun file caricato"}), 404
-                    versione_id = in_uso["id"]
-                nome = request.args.get("foglio") or "bandi"
-                if nome not in segreteria.FOGLIO_DI.values():
-                    return jsonify({"error": "Foglio non valido"}), 400
-            v = conn.execute("SELECT nome_file, caricata_il FROM segreteria_versione WHERE id = ?", (versione_id,)).fetchone()
-            return jsonify({**segreteria.foglio(conn, versione_id, nome), "evidenzia": evidenzia,
-                            "nome_file": v["nome_file"] if v else None, "caricata_il": v["caricata_il"] if v else None})
-        finally:
-            conn.close()
+        # indirizzo della vecchia vista del file, ancora nei collegamenti salvati
+        return redirect("/monitoraggio/segreteria" + (f"?{request.query_string.decode()}" if request.query_string else ""))
 
     @bp.get("/api/segreteria/atti/<int:atto_id>/righe")
     @protezione

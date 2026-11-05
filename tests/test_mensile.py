@@ -140,7 +140,7 @@ def test_crea_senza_duplicare(ambiente):
     r = admin.post("/api/monitoraggi", json={"numero_mese": 5})
     assert r.status_code == 201 and r.get_json()["mese"] == f"{anno}-05"
     d = admin.get(f"/api/monitoraggi/{anno}-05").get_json()
-    assert d["mese_dati"] == f"{anno}-04" and d["etichetta"] == f"maggio {str(anno)[2:]}"
+    assert d["mese_dati"] == f"{anno}-04" and d["etichetta"] == f"aprile {str(anno)[2:]}"
     assert d["dal"] == f"{anno}-04-01" and d["al"] == f"{anno}-04-30"
     assert d["link_vista"] == f"/monitoraggio?monitoraggio={anno}-05&mese={anno}-04"
     again = admin.post("/api/monitoraggi", json={"numero_mese": 5})
@@ -181,9 +181,9 @@ def test_download_vuoti_rinominati(ambiente):
     mese = admin.post("/api/monitoraggi", json={"numero_mese": 5}).get_json()["mese"]
     aa = mese[2:4]
     r = admin.get(f"/api/monitoraggi/{mese}/excel/scorrimenti")
-    assert r.status_code == 200 and f"MODELLO-scorrimenti-maggio-{aa}.xlsx" in r.headers["Content-Disposition"]
+    assert r.status_code == 200 and f"MODELLO-scorrimenti-aprile-{aa}.xlsx" in r.headers["Content-Disposition"]
     r = admin.get(f"/api/monitoraggi/{mese}/excel/graduatorie")
-    assert f"MODELLO-Graduatorie-e-bandi-pubblicati-maggio-{aa}.xlsx" in r.headers["Content-Disposition"]
+    assert f"MODELLO-Graduatorie-e-bandi-pubblicati-aprile-{aa}.xlsx" in r.headers["Content-Disposition"]
     wb = openpyxl.load_workbook(io.BytesIO(r.data))
     assert wb.sheetnames == ["Bandi pubblicati", "Graduatorie pubblicate", "Mobilità pubblicate", "Graduatorie mobilità"]
     assert all(c.value is None for ws in wb.worksheets for riga in ws.iter_rows(min_row=2) for c in riga)
@@ -222,9 +222,9 @@ def test_testo_con_segnaposto(db):
     mensile.salva_impostazioni_email(db, {"destinatari": "uno@cnr.it; due@cnr.it\nuno@cnr.it"}, "x")
     e = mensile.email_compilazione(db, mensile.leggi(db, "2026-05"))
     assert e["destinatari"] == ["uno@cnr.it", "due@cnr.it"] and e["mancanti"] == []
-    assert e["oggetto"] == "Monitoraggio maggio 26: predisposizione dei dati"
-    for atteso in ("mese di maggio 26", "scorrimenti del mese di aprile", "MONITORAGGIO -> 2026 -> MAGGIO", "https://drive/a",
-                   "https://drive/b", "MODELLO-scorrimenti-maggio-26.xlsx", "MODELLO-Graduatorie-e-bandi-pubblicati-maggio-26.xlsx"):
+    assert e["oggetto"] == "Monitoraggio aprile 26: predisposizione dei dati"
+    for atteso in ("mese di aprile 26", "scorrimenti del mese di aprile", "MONITORAGGIO -> 2026 -> APRILE", "https://drive/a",
+                   "https://drive/b", "MODELLO-scorrimenti-aprile-26.xlsx", "MODELLO-Graduatorie-e-bandi-pubblicati-aprile-26.xlsx"):
         assert atteso in e["corpo"], atteso
     assert "{" not in e["corpo"] and m["mese_dati"] == "2026-04"
 
@@ -258,7 +258,7 @@ def test_testo_del_mese_e_testo_generale(ambiente):
     admin = ambiente()
     mese = admin.post("/api/monitoraggi", json={"numero_mese": 5}).get_json()["mese"]
     d = admin.put(f"/api/monitoraggi/{mese}", json={"testo": "Solo {mese}"}).get_json()
-    assert d["email"]["corpo"].startswith("Solo maggio") and d["email"]["personalizzato"] is True
+    assert d["email"]["corpo"].startswith("Solo aprile") and d["email"]["personalizzato"] is True
     d = admin.put(f"/api/monitoraggi/{mese}", json={"testo": ""}).get_json()
     assert d["email"]["personalizzato"] is False and "Buongiorno" in d["email"]["corpo"]
     admin.put("/api/impostazioni/email", json={"testo": "Generale {mese_dati}"})
@@ -1009,7 +1009,9 @@ def test_crea_dal_mese_di_riferimento_con_tipologie(ambiente):
     assert r["mese"] == "2026-11" and r["creato"] is True
     d = admin.get("/api/monitoraggi/2026-11").get_json()
     assert d["id"] == "MON-10.2026" and d["titolo"] == "ottobre 2026" and d["mese_dati"] == "2026-10" and d["tipologie"] == ["MOB"]
-    assert d["file_scorrimenti"] == "MODELLO-scorrimenti-novembre-26.xlsx"
+    assert d["file_scorrimenti"] == "MODELLO-scorrimenti-ottobre-26.xlsx"
+    r = admin.get("/api/monitoraggi/2026-11/excel/graduatorie")
+    assert "MODELLO-Graduatorie-e-bandi-pubblicati-ottobre-26.xlsx" in r.headers["Content-Disposition"]
     doppio = admin.post("/api/monitoraggi", json={"mese_riferimento": "2026-10"}).get_json()
     assert doppio["creato"] is False and doppio["mese"] == "2026-11"
     assert admin.post("/api/monitoraggi", json={"mese_riferimento": "2026-12", "tipologie": []}).status_code == 400
@@ -1219,3 +1221,16 @@ def test_solleciti_gia_segnati_entrano_nel_registro(db):
     dbmod.inizializza(db)
     assert db.execute("SELECT COUNT(*) FROM comunicazione").fetchone()[0] == 1
     assert mensile.solleciti(db, "2026-05")["367.1 CTER"]["stato"] == "inviata"
+
+
+def test_numero_di_gestione_stabile_e_nell_id(ambiente, db, monkeypatch):
+    _configura_posta(monkeypatch, [], MAIL_PROVA="prova@cnr.it")
+    admin, mese, url = _mese_con_rdp(ambiente, db)
+    uno = mensile.numero_gestione(db, "367.479 CTER")
+    assert uno == mensile.numero_gestione(db, "367.479 CTER") and len(uno) == 4 and uno != mensile.numero_gestione(db, "altro codice")
+    riga = admin.get(f"/api/monitoraggi/{mese}/atti").get_json()["righe"][0]
+    assert riga["n_gestione"] == uno and admin.get(url + "/messaggio").get_json()["n_gestione"] == uno
+    assert admin.post(url + "/invia", json={"modo": "prova"}).get_json()["id"] == f"MON-04.2026/367.479/{uno}"
+    voce = admin.get(f"/api/comunicazioni?mese={mese}").get_json()["comunicazioni"][0]
+    assert voce["n_gestione"] == uno
+    assert admin.post(url + "/invia", json={"modo": "prova"}).get_json()["id"] == f"MON-04.2026/367.479/{uno}-2"

@@ -67,7 +67,7 @@ def etichetta(mese: str) -> str:
 def elenco(conn) -> list[dict]:
     inviati = {m: sum(c["stato"] != "da_confermare" for c in solleciti(conn, m).values())
                for m in [r["mese"] for r in conn.execute("SELECT mese FROM monitoraggio_mese")]}
-    return [{**dict(r), "etichetta": etichetta(r["mese"]), "etichetta_dati": etichetta(r["mese_dati"]),
+    return [{**dict(r), "etichetta": etichetta(r["mese_dati"]), "etichetta_dati": etichetta(r["mese_dati"]),
              "solleciti_inviati": inviati.get(r["mese"], 0)}
             for r in conn.execute("SELECT mese, mese_dati, creato_da, creato_il, stato, chiuso_da, chiuso_il, tipologie, verifica_fonti_il "
                                   "FROM monitoraggio_mese ORDER BY mese DESC")]
@@ -290,9 +290,10 @@ def dividi_indirizzi(valore) -> list[str]:
 
 
 def valori_segnaposto(monitoraggio: dict) -> dict:
-    mese = monitoraggio["mese"]
+    """Nomi, cartella e testi seguono il mese del monitoraggio: quello di riferimento dei dati."""
+    mese = monitoraggio["mese_dati"]
     anno, numero = mese.split("-")
-    return {"mese": etichetta(mese), "mese_dati": excel_mese.MESI[int(monitoraggio["mese_dati"].split("-")[1]) - 1],
+    return {"mese": etichetta(mese), "mese_dati": excel_mese.MESI[int(numero) - 1],
             "cartella": f"UFFICIO CONCORSI -> MONITORAGGIO -> {anno} -> {excel_mese.MESI[int(numero) - 1].upper()}",
             "file_scorrimenti": excel_mese.nome_scorrimenti(mese), "link_scorrimenti": monitoraggio.get("link_scorrimenti") or "",
             "file_graduatorie": excel_mese.nome_graduatorie(mese), "link_graduatorie": monitoraggio.get("link_graduatorie") or ""}
@@ -359,10 +360,18 @@ def id_monitoraggio(monitoraggio: dict) -> str:
     return f"MON-{numero}.{anno}"
 
 
+def numero_gestione(conn, chiave: str) -> str:
+    """Numero interno del codice, assegnato alla prima occorrenza e sempre uguale: '0430'."""
+    cerca = "SELECT numero FROM gestione WHERE chiave = ?"
+    riga = conn.execute(cerca, (chiave,)).fetchone()
+    if not riga:  # scrive solo la prima volta: le letture non aspettano una raccolta in corso
+        conn.execute("INSERT OR IGNORE INTO gestione (chiave, creato_il) VALUES (?, ?)", (chiave, _adesso()))
+        riga = conn.execute(cerca, (chiave,)).fetchone()
+    return f"{riga[0]:04d}"
+
+
 def nuovo_id_comunicazione(conn, monitoraggio: dict, chiave: str, numero_bando: str | None) -> str:
-    from .normalizza import codice_sotto
-    sotto = codice_sotto(chiave)
-    base = "/".join(x for x in (id_monitoraggio(monitoraggio), numero_bando or chiave, sotto) if x)
+    base = "/".join((id_monitoraggio(monitoraggio), numero_bando or chiave, numero_gestione(conn, chiave)))
     usati = conn.execute("SELECT COUNT(*) FROM comunicazione WHERE id = ? OR id LIKE ?", (base, base + "-%")).fetchone()[0]
     return f"{base}-{usati + 1}" if usati else base
 
@@ -403,10 +412,10 @@ def registro_comunicazioni(conn, mese: str | None = None, chiave: str | None = N
     if chiave:
         condizioni.append("c.chiave = ?")
         argomenti.append(chiave)
-    righe = conn.execute(f"SELECT c.*, m.mese_dati FROM comunicazione c JOIN monitoraggio_mese m ON m.mese = c.mese "
-                         f"WHERE {' AND '.join(condizioni)} ORDER BY c.data DESC, c.rowid DESC", argomenti)
-    return [{**dict(r), "destinatari": json.loads(r["destinatari"] or "[]"), "monitoraggio": id_monitoraggio({"mese_dati": r["mese_dati"]})}
-            for r in righe]
+    righe = conn.execute(f"SELECT c.*, m.mese_dati, g.numero AS gestione FROM comunicazione c JOIN monitoraggio_mese m ON m.mese = c.mese "
+                         f"LEFT JOIN gestione g ON g.chiave = c.chiave WHERE {' AND '.join(condizioni)} ORDER BY c.data DESC, c.rowid DESC", argomenti)
+    return [{**dict(r), "destinatari": json.loads(r["destinatari"] or "[]"), "monitoraggio": id_monitoraggio({"mese_dati": r["mese_dati"]}),
+             "n_gestione": f"{r['gestione']:04d}" if r["gestione"] else None} for r in righe]
 
 
 def email_rdp(conn, bando: str) -> set[str]:

@@ -12,7 +12,7 @@
 <main>
   <div class="tra">
     <div><h1>Comunicazioni</h1>
-      <div class="muted small">Ogni messaggio inviato, copiato o segnato come inviato viene registrato con il suo ID, per esempio <span class="mono">MON-10.2026/367.544/03</span>: monitoraggio, bando e codice.</div></div>
+      <div class="muted small">Ogni messaggio inviato, copiato o segnato come inviato viene registrato con il suo ID, per esempio <span class="mono">MON-10.2026/367.544/0430</span>: monitoraggio, bando e numero di gestione.</div></div>
     <div class="riga" id="stato-email"></div>
   </div>
   <section>
@@ -35,11 +35,11 @@
     const f = { stato: $("f-stato").value, canale: $("f-canale").value, q: $("f-q").value.toLowerCase() };
     const righe = dati.filter(c => (!f.stato || c.stato === f.stato) && (!f.canale || c.canale === f.canale)
       && (!f.q || `${c.id} ${c.chiave} ${c.destinatari.join(" ")}`.toLowerCase().includes(f.q)));
-    $("tabella").innerHTML = `<thead><tr><th>ID comunicazione</th><th>Data</th><th>Monitoraggio</th><th>N. bando</th><th>Codice</th><th>Destinatari</th><th>Oggetto</th><th>Difformità</th><th>Canale</th><th>Stato</th><th></th></tr></thead><tbody>` +
-      (righe.map((c, i) => `<tr class="cliccabile" data-i="${dati.indexOf(c)}"><td class="mono small">${esc(c.id)}</td><td>${ora(c.data)}</td><td class="mono small">${esc(c.monitoraggio)}</td><td>${esc(c.numero_bando)}</td><td>${esc(c.chiave)}</td>
+    $("tabella").innerHTML = `<thead><tr><th>ID comunicazione</th><th>Data</th><th>Monitoraggio</th><th>N. bando</th><th>N. gestione</th><th>Codice</th><th>Destinatari</th><th>Oggetto</th><th>Difformità</th><th>Canale</th><th>Stato</th><th></th></tr></thead><tbody>` +
+      (righe.map((c, i) => `<tr class="cliccabile" data-i="${dati.indexOf(c)}"><td class="mono small">${esc(c.id)}</td><td>${ora(c.data)}</td><td class="mono small">${esc(c.monitoraggio)}</td><td>${esc(c.numero_bando)}</td><td class="mono small">${esc(c.n_gestione)}</td><td>${esc(c.chiave)}</td>
         <td title="${esc(c.destinatari.join(", "))}">${esc(brevi(c.destinatari))}</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.oggetto)}">${esc(c.oggetto)}</td>
         <td>${c.n_difformita ?? ""}</td><td>${esc(c.canale)}</td><td><span class="pillola ${PILLOLE[c.stato][0]}">${PILLOLE[c.stato][1]}</span></td><td><button type="button" class="piccolo">Apri</button></td></tr>`).join("")
-        || `<tr><td colspan="11" class="muted">Nessuna comunicazione.</td></tr>`) + `</tbody>`;
+        || `<tr><td colspan="12" class="muted">Nessuna comunicazione.</td></tr>`) + `</tbody>`;
     document.querySelectorAll("tr[data-i]").forEach(tr => tr.onclick = () => apri(dati[Number(tr.dataset.i)]));
   }
   function apri(c) {

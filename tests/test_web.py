@@ -217,18 +217,24 @@ def test_punteggi_api(db, monkeypatch):
     assert c.get("/api/punteggi?mese=2026-10").get_json()["righe"] == []
 
 
-def test_vista_file_segreteria(db):
+def test_file_segreteria_problemi_e_storico(db):
     import io
 
+    from monitoraggio import atti
     from tests.test_segreteria import crea_excel
     c = app_di_prova()
-    assert c.get("/api/segreteria/foglio").status_code == 404  # nessun file caricato
-    c.post("/api/segreteria/carica", data={"file": (io.BytesIO(crea_excel()), "f.xlsx")}, content_type="multipart/form-data")
-    f = c.get("/api/segreteria/foglio?foglio=graduatorie").get_json()
-    assert f["foglio"] == "graduatorie" and len(f["righe"]) == 4 and "N. Bando" in f["colonne"]
-    assert [x["foglio"] for x in f["fogli"]] == ["bandi", "graduatorie", "scorrimento"]
-    atto_id = next(r["atto_id"] for r in f["righe"] if r["atto_id"])
-    evid = c.get(f"/api/segreteria/foglio?atto={atto_id}").get_json()
-    assert evid["foglio"] == "graduatorie" and evid["evidenzia"]
-    assert c.get("/monitoraggio/segreteria/file").status_code == 200
-    assert c.get("/api/segreteria/foglio?foglio=altro").status_code == 400
+    assert c.get("/api/segreteria/versioni").get_json()["versioni"] == []
+    for nome in ("uno.xlsx", "due.xlsx"):
+        c.post("/api/segreteria/carica", data={"file": (io.BytesIO(crea_excel()), nome)}, content_type="multipart/form-data")
+    versioni = c.get("/api/segreteria/versioni").get_json()["versioni"]
+    assert [v["esito"] for v in versioni] == ["in_uso", "precedente"] and [v["numero"] for v in versioni] == [2, 1]
+    assert versioni[1]["differenze"]["precedente"] is None
+    assert versioni[0]["differenze"] == {"precedente": versioni[1]["id"], "nuovi": 0, "spariti": 0, "modificati": 0}
+    problemi = c.get(f"/api/segreteria/versioni/{versioni[0]['id']}/problemi").get_json()
+    voci = problemi["scorrimento"]
+    assert {"riga": 6, "bando": None, "problema": "senza_bando"} in voci
+    assert {"riga": 5, "bando": "367.601 FA ISTC", "problema": "senza_tipologia"} in voci
+    pagina = c.get("/monitoraggio/segreteria/file?atto=7")
+    assert pagina.status_code == 302 and pagina.headers["Location"].endswith("/monitoraggio/segreteria?atto=7")
+    assert atti.url_file_segreteria(atto=7) == "/monitoraggio/segreteria?atto=7"
+    assert c.get("/api/segreteria/foglio").status_code == 404

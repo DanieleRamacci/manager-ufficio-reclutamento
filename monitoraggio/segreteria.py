@@ -384,21 +384,37 @@ def differenze(conn, versione_id: int) -> dict:
             "modificati": modificati}
 
 
-def foglio(conn, versione_id: int, nome: str) -> dict:
-    """Righe di un foglio della versione, con le colonne nell'ordine del file (per la vista "come Excel")."""
-    righe, colonne = [], {}
-    for r in conn.execute("SELECT numero_riga, valori, atto_id FROM segreteria_riga WHERE versione_id = ? AND foglio = ? "
-                          "ORDER BY numero_riga", (versione_id, nome)):
-        valori = json.loads(r["valori"])
-        for c in valori:
-            colonne.setdefault(c, None)
-        righe.append({"numero_riga": r["numero_riga"], "valori": valori, "atto_id": r["atto_id"]})
-    fogli = [{"foglio": f, "righe": n} for f, n in conn.execute(
-        "SELECT foglio, COUNT(*) FROM segreteria_riga WHERE versione_id = ? GROUP BY foglio "
-        "ORDER BY CASE foglio WHEN 'bandi' THEN 0 WHEN 'graduatorie' THEN 1 ELSE 2 END", (versione_id,))]
-    return {"versione": versione_id, "foglio": nome, "fogli": fogli, "colonne": list(colonne), "righe": righe}
+_COLONNA_BANDO = {"bandi": "bando", "graduatorie": "nbando", "scorrimento": "nbando"}
 
 
-def atto(conn, atto_id: int) -> dict | None:
-    riga = conn.execute("SELECT * FROM segreteria_atto WHERE id = ?", (atto_id,)).fetchone()
-    return dict(riga) if riga else None
+def _rapporto(conn, versione_id: int) -> dict:
+    riga = conn.execute("SELECT rapporto FROM segreteria_versione WHERE id = ?", (versione_id,)).fetchone()
+    return json.loads(riga["rapporto"]) if riga and riga["rapporto"] else {}
+
+
+def storico_versioni(conn) -> list[dict]:
+    """Versioni dalla più recente, con il numero progressivo e il riassunto delle differenze."""
+    voci = versioni(conn)
+    valide = sorted(v["id"] for v in voci if v["esito"] != "rifiutata")
+    for v in voci:
+        v["numero"] = valide.index(v["id"]) + 1 if v["id"] in valide else None
+        d = differenze(conn, v["id"]) if v["id"] in valide else None
+        v["differenze"] = {"precedente": d["precedente"], "nuovi": len(d["nuovi"]), "spariti": len(d["spariti"]),
+                           "modificati": len(d["modificati"])} if d else None
+    return voci
+
+
+def problemi_righe(conn, versione_id: int) -> dict[str, list[dict]]:
+    """Per ogni foglio, l'elenco "riga N, bando, problema" dal rapporto del file."""
+    rapporto = _rapporto(conn, versione_id)
+    risultato: dict[str, list[dict]] = {}
+    for nome, info in (rapporto.get("fogli") or {}).items():
+        valori = {r["numero_riga"]: json.loads(r["valori"]) for r in conn.execute(
+            "SELECT numero_riga, valori FROM segreteria_riga WHERE versione_id = ? AND foglio = ?", (versione_id, nome))}
+
+        def bando(riga: int):
+            return next((v for c, v in valori.get(riga, {}).items() if _norm_intestazione(c) == _COLONNA_BANDO[nome] and v), None)
+        risultato[nome] = [{"riga": riga, "bando": bando(riga), "problema": problema}
+                           for problema, righe in (info.get("problemi") or {}).items() for riga in righe]
+        risultato[nome].sort(key=lambda p: p["riga"])
+    return risultato
