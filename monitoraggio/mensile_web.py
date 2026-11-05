@@ -4,7 +4,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, redirect, request, send_file, send_from_directory
 
-from . import db, excel_mese, impostazioni, mensile, posta, utenti
+from . import db, difformita, excel_mese, impostazioni, mensile, posta, sol_sessione, utenti
 
 STATIC = Path(__file__).resolve().parent / "static"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -16,7 +16,9 @@ def _conn():
     return conn
 
 
-def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utente_corrente=lambda: None) -> Blueprint:
+def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utente_corrente=lambda: None,
+                           intestazioni_sol=sol_sessione.intestazioni) -> Blueprint:
+    """`intestazioni_sol()`: header per leggere i punteggi su SOL con l'accesso dell'utente, o vuoto se non è collegato."""
     bp = Blueprint("mensile", __name__)
 
     def _dati_mese(conn, m: dict, versione: int | None = None) -> dict:
@@ -152,6 +154,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         try:
             mese = mensile.mese_anno_corrente(corpo.get("numero_mese"))
             m = mensile.crea(conn, mese, corpo.get("mese_dati"), utente_corrente())
+            difformita.sincronizza(conn, mese, "creazione del monitoraggio", utente_corrente())
             return jsonify({"ok": True, "mese": m["mese"], "creato": True}), 201
         except mensile.MeseEsistente:
             return jsonify({"ok": True, "mese": mese, "creato": False})
@@ -180,7 +183,12 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             if not _trova(conn, mese):
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
             mensile.verifica_aperto(conn, mese)
-            m = mensile.aggiorna(conn, mese, request.get_json(silent=True) or {})
+            corpo = request.get_json(silent=True) or {}
+            cambia_periodo = "mese_dati" in corpo and corpo["mese_dati"] != _trova(conn, mese)["mese_dati"]
+            m = mensile.aggiorna(conn, mese, corpo)
+            if cambia_periodo:
+                difformita.reimposta(conn, mese)
+                difformita.sincronizza(conn, mese, "cambio del mese dei dati", utente_corrente())
             return jsonify(_dati_mese(conn, m))
         except mensile.MeseChiuso as e:
             return jsonify({"error": str(e)}), 409
@@ -229,6 +237,36 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             return jsonify(_dati_mese(conn, mensile.riapri(conn, mese, utente_corrente())))
         finally:
             conn.close()
+
+    # --- registro delle difformità
+    @bp.get("/api/monitoraggi/<mese>/difformita")
+    @protezione
+    def api_difformita(mese: str):
+        conn = _conn()
+        try:
+            if not _trova(conn, mese):
+                return jsonify({"error": "Monitoraggio non trovato"}), 404
+            return jsonify(difformita.elenco(conn, mese))
+        finally:
+            conn.close()
+
+    @bp.post("/api/monitoraggi/<mese>/difformita/verifica")
+    @protezione
+    @solo_admin
+    def api_difformita_verifica(mese: str):
+        corpo = request.get_json(silent=True) or {}
+        ids = corpo.get("ids")
+        if ids is not None and not (isinstance(ids, list) and all(isinstance(i, int) for i in ids)):
+            return jsonify({"error": "Difformità non valide"}), 400
+        conn = _conn()
+        try:
+            if not _trova(conn, mese):
+                return jsonify({"error": "Monitoraggio non trovato"}), 404
+        finally:
+            conn.close()
+        if not difformita.avvia_verifica(mese, ids, intestazioni_sol() or None, utente_corrente()):
+            return jsonify({"error": "Una verifica è già in corso"}), 409
+        return jsonify({"ok": True, "verifica": difformita.stato_verifica()}), 202
 
     @bp.get("/api/monitoraggi/<mese>/excel/<tipo>")
     @protezione

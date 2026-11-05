@@ -53,7 +53,7 @@
     }
 
     function disegna(m) {
-      if (m.stato === "chiuso") return disegnaChiuso(m);
+      if (m.stato === "chiuso") { disegnaChiuso(m); caricaRegistro(m.mese); return; }
       const e = m.email, p = m.posta;
       const opzioniMesi = [];
       const [anno, numero] = m.mese.split("-").map(Number);
@@ -81,6 +81,7 @@
           <p class="muted small">Nelle difformità trovi anteprima, invio e spunta per ogni bando. Solleciti segnati: ${m.solleciti.length}.</p>
           <label class="solo-admin">Mese dei dati <select id="mese-dati">${opzioniMesi.join("")}</select></label>
         </section>
+        <section id="registro-difformita"></section>
         <section class="solo-admin">
           <h2>File Excel</h2>
           <div class="azioni">
@@ -135,6 +136,7 @@
             || `<tr><td colspan="6" class="muted">Nessun invio.</td></tr>`}
           </tbody></table></div>
         </section>`;
+      caricaRegistro(m.mese);
       const errore = (t) => { $("errore").hidden = !t; $("errore").textContent = t || ""; };
       const azione = (id, fn) => { const b = $(id); if (b) b.onclick = async () => { try { errore(); await fn(); } catch (err) { errore(err.message); } }; };
       const aggiorna = async (dati) => disegna(await chiama(`/api/monitoraggi/${m.mese}`, jsonPost("PUT", dati)));
@@ -164,6 +166,69 @@
         $("esito").textContent = r.prova ? "Inviata in prova." : "Inviata.";
       });
     }
+    // --- registro delle difformità
+    const BADGE = { da_correggere: "Da correggere", parziale: "Parzialmente corretta", corretta: "Corretta", da_controllare: "Da controllare" };
+    const EVENTI = { rilevata: "rilevata", cambiata: "rilievi cambiati", corretta: "corretta", ricomparsa: "ricomparsa", non_trovata: "atto non più trovato" };
+    const dataIt = (d) => (d || "").slice(0, 10).split("-").reverse().join("/");
+    const INDETERMINATO = ["tempo_indeterminato", "reclutamento_speciale", "categorie_protette"];
+    let filtriRegistro = { stato: "", tipologia: "" };
+    let attesaRegistro = null;
+    function esitoVerifica(v) {
+      if (!v || v.in_corso || !v.fine) return "";
+      const r = v.risultato || {};
+      const parti = [`Verifica finita: ${r.corrette || 0} corrette, ${r.ricomparse || 0} ricomparse, ${r.nuove || 0} nuove.`];
+      parti.push(v.punteggi_riletti ? "Punteggi riletti." : "Punteggi NON riletti: per controllarli avvia Collega-SOL.");
+      return `<div class="${v.errori.length ? "avviso" : "ok"}">${esc(parti.join(" "))}${v.errori.map(e => `<div class="small">${esc(e)}</div>`).join("")}</div>`;
+    }
+    async function caricaRegistro(mese) {
+      const contenitore = $("registro-difformita");
+      if (!contenitore) return;
+      let d;
+      try { d = await chiama(`/api/monitoraggi/${mese}/difformita`); }
+      catch (err) { contenitore.innerHTML = `<div class="errore" role="alert">${esc(err.message)}</div>`; return; }
+      const v = d.verifica, inCorso = v.in_corso, qui = v.mese === mese;
+      const visibili = d.voci.filter(x => (!filtriRegistro.stato || x.badge === filtriRegistro.stato)
+        && (!filtriRegistro.tipologia || !x.tipologia || (filtriRegistro.tipologia === "indeterminato") === INDETERMINATO.includes(x.tipologia)));
+      contenitore.innerHTML = `
+        <h2>Difformità e correzioni</h2>
+        <p class="muted small">Restano qui anche dopo la correzione. Ultimo controllo: ${d.ultimo_controllo ? ora(d.ultimo_controllo) : "mai"}. Si aggiornano da sole dopo ogni aggiornamento dei dati, e subito con Verifica.</p>
+        ${d.fonti_affidabili ? "" : `<div class="avviso">L'ultima raccolta di una fonte non è riuscita o non è stata fatta: finché non riesce, nessuna difformità viene segnata come corretta.</div>`}
+        <div class="conteggi">
+          <span class="badge da_correggere">Da correggere: ${d.conteggi.da_correggere}</span>
+          <span class="badge parziale">Parziali: ${d.conteggi.parziale}</span>
+          <span class="badge corretta">Corrette: ${d.conteggi.corretta}</span>
+          ${d.conteggi.da_controllare ? `<span class="badge da_controllare">Da controllare: ${d.conteggi.da_controllare}</span>` : ""}
+        </div>
+        <div class="azioni">
+          <label>Stato <select id="filtro-stato"><option value="">Tutti</option>${Object.entries(BADGE).map(([k, t]) => `<option value="${k}"${filtriRegistro.stato === k ? " selected" : ""}>${t}</option>`).join("")}</select></label>
+          <label>Tipologia <select id="filtro-tipologia"><option value="">Tutte</option><option value="indeterminato"${filtriRegistro.tipologia === "indeterminato" ? " selected" : ""}>Tempo indeterminato (concorsi pubblici)</option><option value="mobilita"${filtriRegistro.tipologia === "mobilita" ? " selected" : ""}>Mobilità e comandi</option></select></label>
+          <button class="primario solo-admin" type="button" id="verifica-tutte"${inCorso ? " disabled" : ""}>Verifica tutte</button>
+        </div>
+        ${inCorso ? `<div class="avviso" role="status">Verifica in corso${qui ? `: ${v.fatti} di ${v.totale} bandi` : " su un altro monitoraggio"}…</div>` : qui ? esitoVerifica(v) : ""}
+        <div class="errore" id="errore-registro" role="alert" hidden></div>
+        <div class="scroll"><table>
+          <thead><tr><th>Stato</th><th>Atto</th><th>Rilievi</th><th>Sollecito</th><th></th></tr></thead><tbody>
+          ${visibili.map(x => `<tr>
+            <td><span class="badge ${x.badge}">${BADGE[x.badge]}</span>${x.corretta_il ? `<div class="muted small">il ${ora(x.corretta_il)}</div>` : ""}</td>
+            <td><b>${esc(x.codice || x.numero_bando)}</b><div class="small">${esc(x.atto)} del ${esc(dataIt(x.data))}</div>${x.protocollo ? `<div class="muted small">prot. ${esc(x.protocollo)}</div>` : ""}</td>
+            <td><ul class="rilievi">${x.rilievi.map(r => `<li${r.risolto ? ' class="risolto"' : ""}>${esc(r.testo)}${r.nuovo ? " (nuovo)" : ""}</li>`).join("")}</ul>
+              <details><summary>Storico</summary>${x.storico.map(e => `<div class="small">${ora(e.quando)}: ${esc(EVENTI[e.tipo] || e.tipo)} (${esc(e.origine)}${e.utente ? `, ${esc(e.utente)}` : ""})</div>`).join("")}</details></td>
+            <td class="small">${x.sollecito ? `${x.sollecito.stato === "inviata" ? "Inviata" : "Inviata a mano"}<div class="muted">${ora(x.sollecito.quando)}</div>` : `<span class="muted">Non inviata</span>`}</td>
+            <td>${x.badge === "corretta" ? "" : `<button type="button" class="solo-admin" data-verifica="${x.id}"${inCorso ? " disabled" : ""}>Verifica</button>`}</td>
+          </tr>`).join("") || `<tr><td colspan="5" class="muted">${d.totale ? "Nessuna difformità con questi filtri." : "Nessuna difformità rilevata."}</td></tr>`}
+          </tbody></table></div>`;
+      $("filtro-stato").onchange = () => { filtriRegistro.stato = $("filtro-stato").value; caricaRegistro(mese); };
+      $("filtro-tipologia").onchange = () => { filtriRegistro.tipologia = $("filtro-tipologia").value; caricaRegistro(mese); };
+      const avvia = async (dati) => {
+        try { await chiama(`/api/monitoraggi/${mese}/difformita/verifica`, jsonPost("POST", dati)); caricaRegistro(mese); }
+        catch (err) { $("errore-registro").hidden = false; $("errore-registro").textContent = err.message; }
+      };
+      $("verifica-tutte").onclick = () => avvia({});
+      contenitore.querySelectorAll("[data-verifica]").forEach(b => b.onclick = () => avvia({ ids: [Number(b.dataset.verifica)] }));
+      clearTimeout(attesaRegistro);
+      if (inCorso) attesaRegistro = setTimeout(() => caricaRegistro(mese), 2000);
+    }
+
     function statoCella(stato, protocollo) {
       return `${esc((stato || "").replaceAll("_", " "))}${protocollo ? `<div class="muted small">${esc(protocollo)}</div>` : ""}`;
     }
@@ -199,7 +264,8 @@
           <thead><tr><th>Versione</th><th>Creata</th><th>Motivo</th><th>Atti</th><th>Difformità</th><th>Solleciti</th><th>Punteggi verificati</th></tr></thead><tbody>
           ${f.versioni.map(v => `<tr><td>${v.versione === f.versione ? `<b>${v.versione}</b>` : `<a href="#" data-versione="${v.versione}">${v.versione}</a>`}</td><td>${ora(v.creata_il)} ${esc(v.creata_da)}</td><td>${esc(v.motivo)}</td><td>${v.totale}</td><td>${v.difformi}</td><td>${v.inviate}</td><td>${v.punteggi_verificati}</td></tr>`).join("")}
           </tbody></table></div></section>
-        <section><h2>Difformità: ${f.difformi} su ${f.totale} atti, solleciti segnati su ${f.inviate}</h2>${tabella(f.righe.filter(r => r.difforme))}</section>
+        <section id="registro-difformita"></section>
+        <section><h2>Difformità in questa versione: ${f.difformi} su ${f.totale} atti, solleciti segnati su ${f.inviate}</h2>${tabella(f.righe.filter(r => r.difforme))}</section>
         <details><summary>Tutti gli atti del mese (${f.totale})</summary>${tabella(f.righe)}</details>
         <section style="margin-top:14px"><h2>Punteggi di questa versione (${f.punteggi.length})</h2><div class="scroll"><table>
           <thead><tr><th>Codice</th><th>Protocollo</th><th>Domande</th><th>Con punteggi</th><th>V</th><th>I</th><th>S</th><th>Senza protocollo</th><th>Esito</th><th>Verificato il</th></tr></thead><tbody>

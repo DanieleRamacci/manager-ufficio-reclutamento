@@ -14,7 +14,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, send_from_directory
 from werkzeug.utils import secure_filename
 
-from . import accessibilita, atti, collegamento, compat, config, db, impostazioni, notifiche, punteggi, referenti, segreteria, sol_sessione
+from . import accessibilita, atti, collegamento, compat, config, db, difformita, impostazioni, notifiche, punteggi, referenti, segreteria, sol_sessione
 
 # esito dell'ultima verifica dei punteggi (solo conteggi, in memoria)
 ULTIMA_VERIFICA: dict = {}
@@ -100,6 +100,7 @@ def _esegui_in_background(fonti: list[str], modalita: str, avviata_da: str | Non
                                         dopo_scrittura=lambda c, f: collegamento.collega(c))
         finally:
             conn.close()
+        difformita.sincronizza_tutti()
         notifiche.dopo_aggiornamento(esiti, modalita)
     threading.Thread(target=lavoro, daemon=True, name="raccolta-manuale").start()
 
@@ -291,6 +292,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
                 pass
             finally:
                 c.close()
+            difformita.sincronizza_tutti("verifica dei punteggi")
         ULTIMA_VERIFICA.clear()
         ULTIMA_VERIFICA.update(dal=dal, al=al, esito="in_corso")
         threading.Thread(target=lavoro, daemon=True, name="punteggi").start()
@@ -535,6 +537,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
         conn = _conn()
         try:
             versione = segreteria.importa(conn, contenuto, file.filename, utente_corrente())
+            difformita.sincronizza_tutti("file della segreteria")
             return jsonify({"versione": versione, "differenze": segreteria.differenze(conn, versione["id"])}), 201
         except segreteria.FileNonValido as e:
             return jsonify({"error": str(e)}), 400

@@ -6,7 +6,7 @@ import threading
 import time
 from datetime import datetime
 
-from . import collegamento, compat, config, db, impostazioni, notifiche
+from . import collegamento, compat, config, db, difformita, impostazioni, notifiche
 from .raccolta import RaccoltaInCorso, raccogli
 from .web import prossima_notturna
 
@@ -44,6 +44,7 @@ def esegui(fonti, modalita_raccolta: str, avviata_da: str) -> None:
         lavoro.start()
     for lavoro in lavori:
         lavoro.join()
+    difformita.sincronizza_tutti()
     notifiche.dopo_aggiornamento(esiti, modalita_raccolta)
 
 

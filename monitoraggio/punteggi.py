@@ -265,11 +265,15 @@ def schede_del_mese(conn, mese: str) -> list:
 
 def verifica(conn, dal: str, al: str, intestazioni: dict, client=None) -> dict:
     """Legge domande e candidati con punteggi per le graduatorie del periodo."""
+    return verifica_schede(conn, schede_periodo(conn, dal, al), dal, al, intestazioni, client)
+
+
+def verifica_schede(conn, schede: list, dal: str, al: str, intestazioni: dict, client=None) -> dict:
+    """Come verifica(), solo per le schede indicate."""
     if not _in_corso.acquire(blocking=False):
         raise VerificaInCorso("Verifica dei punteggi già in corso")
     try:
         client = client or Client(config.pausa_sol())
-        schede = schede_periodo(conn, dal, al)
         totali = {"graduatorie": len(schede), "completi": 0, "parziali": 0, "mancanti": 0, "protocollo_mancante": 0,
                   "nessuna_domanda": 0, "errore": 0}
         for s in schede:

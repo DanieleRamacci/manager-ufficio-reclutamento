@@ -157,12 +157,13 @@ def _upsert(conn, tabella: str, chiavi: dict, campi: list[str], valori: dict, or
     return riga["id"], "invariato", precedente
 
 
-def scrivi(conn, fonte: str, schede: list[dict], id_in_elenco: list[str], ora: str) -> tuple[dict, list[int]]:
+def scrivi(conn, fonte: str, schede: list[dict], id_in_elenco: list[str], ora: str, parziale: bool = False) -> tuple[dict, list[int]]:
     """Salva schede e documenti in un'unica transazione.
 
     `schede`: schede lette (con `documenti` = None se gli allegati non sono stati letti).
     `id_in_elenco`: id esterni presenti negli elenchi della fonte, anche se il dettaglio
     non è stato letto per un errore: non vanno marcati come assenti.
+    `parziale`: si è riletto solo qualche bando, quindi gli altri non vanno marcati come assenti.
     Ritorna i conteggi e gli id dei documenti nuovi o con link cambiato (per il controllo PDF).
     """
     conteggi = {"bandi_trovati": len(id_in_elenco), "documenti_trovati": 0, "nuovi": 0, "aggiornati": 0}
@@ -194,7 +195,8 @@ def scrivi(conn, fonte: str, schede: list[dict], id_in_elenco: list[str], ora: s
         # schede presenti negli elenchi ma non lette per un errore: restano presenti
         conn.executemany("UPDATE scheda SET ultima_rilevazione = ?, presente = 1 WHERE fonte = ? AND id_esterno = ?",
                          [(ora, fonte, i) for i in id_in_elenco])
-        conn.execute("UPDATE scheda SET presente = 0 WHERE fonte = ? AND ultima_rilevazione < ?", (fonte, ora))
+        if not parziale:
+            conn.execute("UPDATE scheda SET presente = 0 WHERE fonte = ? AND ultima_rilevazione < ?", (fonte, ora))
         conn.execute("COMMIT")
     except BaseException:
         conn.execute("ROLLBACK")
@@ -267,6 +269,54 @@ def _leggi_sol(conn, client, completa: bool) -> tuple[list[dict], list[str], lis
         noti.setdefault(r["scheda"], set()).add(r["documento"])
     sol.togli_documenti_dei_figli(schede, noti)
     return schede, [s["id_esterno"] for s in schede], errori, dichiarati
+
+
+def _schede_sol_del_bando(client, numero_bando: str | None, codice: str | None) -> list[dict]:
+    valore = (numero_bando or codice or "").replace("'", "''")
+    condizione = f"LIKE '{valore}%'" if numero_bando else f"= '{valore}'"
+    items, _ = sol._cerca(client, f"SELECT * FROM jconon_call:folder root WHERE root.jconon_call:codice {condizione}")
+    schede = []
+    for item in items:
+        tipo = item.get("cmis:objectTypeId")
+        if tipo not in config.SOL_TIPI:
+            continue
+        scheda = sol.scheda_da_item(item, tipo)
+        if (numero_bando and scheda["numero_bando"] == numero_bando) or (not numero_bando and scheda["codice_originale"] == codice):
+            schede.append(scheda)
+    return schede
+
+
+def aggiorna_bando(conn, numero_bando: str | None, codice: str | None, client_sol, client_urp) -> list[str]:
+    """Rilegge SOL e URP per un solo bando, per verificare subito una correzione. Ritorna gli errori."""
+    errori: list[str] = []
+    etichetta = numero_bando or codice
+    try:
+        schede = _schede_sol_del_bando(client_sol, numero_bando, codice)
+        for scheda in schede:
+            scheda["documenti"] = sol.allegati_bando(client_sol, scheda["id_esterno"], scheda["url"])
+        sol.togli_documenti_dei_figli(schede)
+        if schede:
+            scrivi(conn, "sol", schede, [s["id_esterno"] for s in schede], adesso(), parziale=True)
+    except Exception as e:
+        log.warning("Rilettura di SOL non riuscita per %s: %s", etichetta, type(e).__name__)
+        errori.append(f"{etichetta}: Selezioni Online non riletto")
+    filtro = "numero_bando = ?" if numero_bando else "codice_originale = ?"
+    note = conn.execute(f"SELECT id_esterno, sezione FROM scheda WHERE fonte = 'urp' AND presente = 1 AND {filtro}",
+                        (numero_bando or codice,)).fetchall()
+    try:
+        lette = []
+        for r in note:
+            if r["sezione"] != config.URP_ARCHIVIO_SEZIONE:
+                lette.append(urp.dettaglio_bando(client_urp, config.URP_BASE + r["id_esterno"], r["sezione"]))
+        if any(r["sezione"] == config.URP_ARCHIVIO_SEZIONE for r in note):
+            ids = {r["id_esterno"] for r in note}
+            lette.extend(s for s in urp.elenco_archivio(client_urp) if s["id_esterno"] in ids)
+        if lette:
+            scrivi(conn, "urp", lette, [s["id_esterno"] for s in lette], adesso(), parziale=True)
+    except Exception as e:
+        log.warning("Rilettura di URP non riuscita per %s: %s", etichetta, type(e).__name__)
+        errori.append(f"{etichetta}: URP non riletto")
+    return errori
 
 
 # --------------------------------------------------------------------------- esecuzione

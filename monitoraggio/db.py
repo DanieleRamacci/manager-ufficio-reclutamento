@@ -3,7 +3,7 @@ import sqlite3
 
 from . import config
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -234,7 +234,8 @@ CREATE TABLE IF NOT EXISTS monitoraggio_mese (
     creato_il TEXT NOT NULL,
     stato TEXT NOT NULL DEFAULT 'aperto' CHECK (stato IN ('aperto', 'chiuso')),
     chiuso_da TEXT,
-    chiuso_il TEXT
+    chiuso_il TEXT,
+    difformita_aggiornate_il TEXT
 );
 
 -- Fotografia del mese alla chiusura: non cambia più se cambiano le fonti. Niente dati dei candidati.
@@ -300,6 +301,37 @@ CREATE TABLE IF NOT EXISTS monitoraggio_fonte (
     fonte TEXT NOT NULL,
     ultima_raccolta TEXT,
     PRIMARY KEY (mese, versione, fonte)
+);
+
+-- Registro delle difformità di ogni mese: restano dopo la correzione. Niente dati dei candidati.
+CREATE TABLE IF NOT EXISTS difformita (
+    id INTEGER PRIMARY KEY,
+    mese TEXT NOT NULL REFERENCES monitoraggio_mese(mese),
+    numero_bando TEXT,
+    codice TEXT,
+    titolo_bando TEXT,
+    tipologia TEXT,
+    atto TEXT NOT NULL,
+    data TEXT,
+    protocollo TEXT,
+    protocolli TEXT,
+    rilievi_iniziali TEXT NOT NULL,
+    rilievi_attuali TEXT NOT NULL,
+    stato TEXT NOT NULL CHECK (stato IN ('aperta', 'corretta', 'da_controllare')),
+    prima_rilevata_il TEXT NOT NULL,
+    corretta_il TEXT,
+    ultimo_controllo_il TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_difformita_mese ON difformita (mese, stato);
+
+CREATE TABLE IF NOT EXISTS difformita_evento (
+    id INTEGER PRIMARY KEY,
+    difformita_id INTEGER NOT NULL REFERENCES difformita(id),
+    quando TEXT NOT NULL,
+    tipo TEXT NOT NULL,
+    origine TEXT,
+    utente TEXT,
+    dettaglio TEXT
 );
 
 CREATE TABLE IF NOT EXISTS monitoraggio_evento (
@@ -385,7 +417,8 @@ def inizializza(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_3)
     conn.executescript(SCHEMA_4)
     colonne_mese = {r[1] for r in conn.execute("PRAGMA table_info(monitoraggio_mese)")}
-    for colonna, tipo in (("stato", "TEXT NOT NULL DEFAULT 'aperto'"), ("chiuso_da", "TEXT"), ("chiuso_il", "TEXT")):  # versione 9
+    for colonna, tipo in (("stato", "TEXT NOT NULL DEFAULT 'aperto'"), ("chiuso_da", "TEXT"), ("chiuso_il", "TEXT"),  # versione 9
+                          ("difformita_aggiornate_il", "TEXT")):  # versione 11
         if colonna not in colonne_mese:
             conn.execute(f"ALTER TABLE monitoraggio_mese ADD COLUMN {colonna} {tipo}")
     _migra_versioni(conn)

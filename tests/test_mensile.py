@@ -769,3 +769,225 @@ def test_la_raccolta_dalla_pagina_avvisa_a_fine_lavoro(ambiente, monkeypatch):
             break
         time.sleep(0.02)
     assert avvisi == [(["sol", "urp"], "completa")]
+
+
+# --- registro delle difformità
+
+def _raccolte_riuscite(db):
+    from monitoraggio import raccolta
+    for fonte in ("urp", "sol"):
+        rid = raccolta.avvia(db, fonte, "manuale", "test")
+        raccolta.chiudi(db, rid, "completata", {})
+
+
+def _correggi(db, protocollo="1002"):
+    from monitoraggio import collegamento
+    salva(db, "sol", [scheda("sol", "s1", "367.479 CTER", "367.479", documenti=[doc("g1", "graduatoria", protocollo, "2026-04-12")])])
+    collegamento.collega(db)
+
+
+def test_difformita_corretta_resta_in_elenco_con_il_badge(ambiente, db):
+    from monitoraggio import difformita
+    admin, mese = _mese_con_dati(ambiente, db)
+    _raccolte_riuscite(db)
+    d = admin.get(f"/api/monitoraggi/{mese}/difformita").get_json()
+    voce = d["voci"][0]
+    assert d["totale"] == 1 and voce["badge"] == "da_correggere" and voce["codice"] == "367.479 CTER"
+    assert "protocollo diverso: SOL 1001, URP 1002" in voce["rilievi"][0]["testo"] and not voce["rilievi"][0]["risolto"]
+    _correggi(db)
+    assert difformita.sincronizza(db, mese)["corrette"] == 1
+    d = admin.get(f"/api/monitoraggi/{mese}/difformita").get_json()
+    voce = d["voci"][0]
+    assert d["totale"] == 1 and voce["badge"] == "corretta" and voce["corretta_il"] and d["conteggi"]["corretta"] == 1
+    assert voce["rilievi"][0]["risolto"] and "SOL 1001" in voce["rilievi"][0]["testo"]  # il testo originale resta
+    assert [e["tipo"] for e in voce["storico"]] == ["corretta", "rilevata"]
+
+
+def test_ricompare_torna_da_correggere(ambiente, db):
+    from monitoraggio import difformita
+    admin, mese = _mese_con_dati(ambiente, db)
+    _raccolte_riuscite(db)
+    difformita.sincronizza(db, mese)
+    _correggi(db)
+    difformita.sincronizza(db, mese)
+    _correggi(db, "1001")
+    assert difformita.sincronizza(db, mese)["ricomparse"] == 1
+    voce = admin.get(f"/api/monitoraggi/{mese}/difformita").get_json()["voci"][0]
+    assert voce["badge"] == "da_correggere" and voce["corretta_il"] is None
+    assert [e["tipo"] for e in voce["storico"]] == ["ricomparsa", "corretta", "rilevata"]
+    assert admin.get(f"/api/monitoraggi/{mese}/difformita").get_json()["totale"] == 1  # nessun doppione
+
+
+def test_correzione_parziale(ambiente, db):
+    from monitoraggio import atti, difformita
+    admin, mese = _mese_con_dati(ambiente, db)
+    _raccolte_riuscite(db)
+    uno, due = "primo rilievo", "secondo rilievo"
+    reale = atti.elenco_atti
+    note = [uno, due]
+
+    def finto(conn, dal=None, al=None):
+        righe = reale(conn, dal, al)
+        for r in righe:
+            r["note"], r["difforme"] = list(note), True
+        return righe
+    from unittest import mock
+    with mock.patch.object(difformita.atti, "elenco_atti", finto):
+        difformita.sincronizza(db, mese)
+        note[:] = [due]
+        difformita.sincronizza(db, mese)
+    voce = admin.get(f"/api/monitoraggi/{mese}/difformita").get_json()["voci"][0]
+    assert voce["badge"] == "parziale"
+    assert {r["testo"]: r["risolto"] for r in voce["rilievi"]} == {uno: True, due: False}
+
+
+def test_atto_non_trovato_non_diventa_verde(ambiente, db):
+    from monitoraggio import difformita
+    admin, mese = _mese_con_dati(ambiente, db)
+    _raccolte_riuscite(db)
+    difformita.sincronizza(db, mese)
+    db.execute("UPDATE documento SET presente = 0")
+    difformita.sincronizza(db, mese)
+    voce = admin.get(f"/api/monitoraggi/{mese}/difformita").get_json()["voci"][0]
+    assert voce["badge"] == "da_controllare" and voce["corretta_il"] is None
+
+
+def test_con_una_raccolta_fallita_nessuna_correzione(ambiente, db):
+    from monitoraggio import difformita, raccolta
+    admin, mese = _mese_con_dati(ambiente, db)
+    _raccolte_riuscite(db)
+    difformita.sincronizza(db, mese)
+    _correggi(db)
+    rid = raccolta.avvia(db, "urp", "manuale", "test")
+    raccolta.chiudi(db, rid, "fallita", messaggio="URP non raggiunto")
+    assert difformita.sincronizza(db, mese)["fonti_affidabili"] is False
+    d = admin.get(f"/api/monitoraggi/{mese}/difformita").get_json()
+    assert d["voci"][0]["badge"] == "da_correggere" and d["fonti_affidabili"] is False
+
+
+def test_mese_chiuso_badge_aggiornato_e_versione_ferma(ambiente, db):
+    from monitoraggio import difformita
+    admin, mese = _mese_con_dati(ambiente, db)
+    _raccolte_riuscite(db)
+    difformita.sincronizza(db, mese)
+    admin.post(f"/api/monitoraggi/{mese}/chiudi")
+    _correggi(db)
+    difformita.sincronizza(db, mese)
+    assert admin.get(f"/api/monitoraggi/{mese}/difformita").get_json()["voci"][0]["badge"] == "corretta"
+    f = admin.get(f"/api/monitoraggi/{mese}").get_json()["fotografia"]
+    assert f["difformi"] == 1 and f["righe"][0]["sol_protocollo"] == "1001"
+
+
+def test_il_registro_non_contiene_dati_dei_candidati(ambiente, db, monkeypatch):
+    from monitoraggio import difformita
+    admin, mese = _mese_con_dati(ambiente, db)
+    sid = db.execute("SELECT id FROM scheda WHERE id_esterno = 's1'").fetchone()[0]
+    monkeypatch.setattr(punteggi, "_candidati", {sid: {"candidati": [{"cognome": "Rossi", "codice_fiscale": "RSSMRA80A01H501U"}]}})
+    difformita.sincronizza(db, mese)
+    dump = "\n".join(str(tuple(r)) for t in ("difformita", "difformita_evento") for r in db.execute(f"SELECT * FROM {t}"))
+    assert "Rossi" not in dump and "RSSMRA" not in dump
+
+
+def _attendi(difformita):
+    for _ in range(300):
+        if not difformita.stato_verifica().get("in_corso"):
+            return difformita.stato_verifica()
+        time.sleep(0.02)
+    raise AssertionError("verifica non finita")
+
+
+def test_verifica_di_una_sola_difformita(ambiente, db, monkeypatch):
+    from monitoraggio import difformita, raccolta
+    admin, mese = _mese_con_dati(ambiente, db)
+    _raccolte_riuscite(db)
+    salva(db, "sol", [scheda("sol", "s1", "367.479 CTER", "367.479", documenti=[doc("g1", "graduatoria", "1001", "2026-04-12")]),
+                      scheda("sol", "s2", "367.800 RIC", "367.800", documenti=[doc("g5", "graduatoria", "5001", "2026-04-15")])], )
+    salva(db, "urp", [scheda("urp", "/node/1", "367.479 CTER", "367.479", documenti=[doc("g2", "graduatoria", "1002", "2026-04-12")]),
+                      scheda("urp", "/node/8", "367.800 RIC", "367.800", documenti=[doc("g6", "graduatoria", "5002", "2026-04-15")])])
+    from monitoraggio import collegamento
+    collegamento.collega(db)
+    difformita.sincronizza(db, mese)
+    voci = admin.get(f"/api/monitoraggi/{mese}/difformita").get_json()["voci"]
+    assert len(voci) == 2
+    chiamati = []
+
+    def finto(conn, numero, codice, c1, c2):
+        chiamati.append(numero)
+        conn.execute("UPDATE documento SET protocollo = '1002', protocollo_originale = '1002' WHERE id_esterno = 'g1'")
+        return []
+    monkeypatch.setattr(raccolta, "aggiorna_bando", finto)
+    scelta = next(v for v in voci if v["numero_bando"] == "367.479")
+    r = admin.post(f"/api/monitoraggi/{mese}/difformita/verifica", json={"ids": [scelta["id"]]})
+    assert r.status_code == 202
+    fine = _attendi(difformita)
+    assert chiamati == ["367.479"] and fine["risultato"]["corrette"] == 1 and fine["punteggi_riletti"] is False
+    stati = {v["numero_bando"]: v["badge"] for v in admin.get(f"/api/monitoraggi/{mese}/difformita").get_json()["voci"]}
+    assert stati == {"367.479": "corretta", "367.800": "da_correggere"}
+
+
+def test_verifica_tutte_salta_le_corrette_e_una_alla_volta(ambiente, db, monkeypatch):
+    from monitoraggio import difformita, raccolta
+    admin, mese = _mese_con_dati(ambiente, db)
+    _raccolte_riuscite(db)
+    difformita.sincronizza(db, mese)
+    _correggi(db)
+    difformita.sincronizza(db, mese)
+    chiamati = []
+    monkeypatch.setattr(raccolta, "aggiorna_bando", lambda *a: chiamati.append(a[1]) or [])
+    assert admin.post(f"/api/monitoraggi/{mese}/difformita/verifica", json={}).status_code == 202
+    _attendi(difformita)
+    assert chiamati == []
+    monkeypatch.setitem(difformita._verifica, "in_corso", True)
+    assert admin.post(f"/api/monitoraggi/{mese}/difformita/verifica", json={}).status_code == 409
+    monkeypatch.setitem(difformita._verifica, "in_corso", False)
+    assert admin.post(f"/api/monitoraggi/{mese}/difformita/verifica", json={"ids": "tutte"}).status_code == 400
+
+
+def test_verifica_riporta_gli_errori_e_con_sol_collegato_rilegge_i_punteggi(ambiente, db, monkeypatch):
+    from monitoraggio import difformita, raccolta
+    admin, mese = _mese_con_dati(ambiente, db)
+    _raccolte_riuscite(db)
+    difformita.sincronizza(db, mese)
+    monkeypatch.setattr(raccolta, "aggiorna_bando", lambda *a: ["367.479: URP non riletto"])
+    riletti = []
+    monkeypatch.setattr(punteggi, "verifica_schede", lambda c, s, d, a, i, cl: riletti.append((len(s), i)) or {"esito": "completata"})
+    difformita.avvia_verifica(mese, None, {"Cookie": "ticket=T"}, "capo.ufficio")
+    fine = _attendi(difformita)
+    assert fine["errori"] == ["367.479: URP non riletto"] and fine["punteggi_riletti"] is True
+    assert riletti == [(1, {"Cookie": "ticket=T"})]
+
+
+def test_lettura_vede_il_registro_ma_non_verifica(ambiente, db):
+    admin, mese = _mese_con_dati(ambiente, db)
+    admin.post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"})
+    c = ambiente("lettore.uno")
+    assert c.get(f"/api/monitoraggi/{mese}/difformita").status_code == 200
+    assert c.post(f"/api/monitoraggi/{mese}/difformita/verifica", json={}).status_code == 403
+
+
+def test_cambio_del_mese_dei_dati_rifa_il_registro(ambiente, db):
+    from monitoraggio import difformita
+    admin, mese = _mese_con_dati(ambiente, db)
+    difformita.sincronizza(db, mese)
+    assert admin.get(f"/api/monitoraggi/{mese}/difformita").get_json()["totale"] == 1
+    admin.put(f"/api/monitoraggi/{mese}", json={"mese_dati": "2026-02"})
+    assert admin.get(f"/api/monitoraggi/{mese}/difformita").get_json()["totale"] == 0
+
+
+def test_aggiorna_bando_non_tocca_gli_altri_bandi(db, client_finto):
+    from monitoraggio import raccolta
+    salva(db, "sol", [scheda("sol", "s1", "367.1 CTER", "367.1", documenti=[doc("a", "graduatoria", "1", "2026-04-12")]),
+                      scheda("sol", "s2", "367.2 CTER", "367.2", documenti=[doc("b", "graduatoria", "2", "2026-04-12")])])
+    item = {"cmis:objectId": "s1", "cmis:objectTypeId": "F:jconon_call_tind:folder_concorsi_pubblici", "jconon_call:codice": "367.1 CTER"}
+    allegato = {"cmis:objectId": "nuovo", "cmis:name": "Graduatoria", "cmis:objectTypeId": "D:jconon_attachment:call_classification",
+                "jconon_protocollo:numero": "99", "jconon_protocollo:data": "2026-04-20"}
+
+    def risposte(url, params):
+        lista = [item] if "jconon_call:folder" in params["q"] else [allegato]
+        return {"totalNumItems": len(lista), "hasMoreItems": False, "items": lista}
+    client = client_finto(json_per_chiave=risposte)
+    assert raccolta.aggiorna_bando(db, "367.1", "367.1 CTER", client, client) == []
+    presenti = {r[0]: r[1] for r in db.execute("SELECT id_esterno, presente FROM scheda WHERE fonte = 'sol'")}
+    assert presenti == {"s1": 1, "s2": 1}
+    assert {r[0] for r in db.execute("SELECT d.protocollo FROM documento d JOIN scheda s ON s.id = d.scheda_id WHERE s.id_esterno = 's1' AND d.presente = 1")} == {"99"}
+    assert {r[0] for r in db.execute("SELECT d.protocollo FROM documento d JOIN scheda s ON s.id = d.scheda_id WHERE s.id_esterno = 's2' AND d.presente = 1")} == {"2"}

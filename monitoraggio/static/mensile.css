@@ -26,3 +26,14 @@ th, td { overflow-wrap: normal; text-align: left; padding: 8px; border-bottom: 1
 .azioni { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; align-items: center; }
 details summary { cursor: pointer; font-weight: 600; }
 label.spunta { flex-direction: row; align-items: center; gap: 8px; color: var(--testo); font-size: 1rem; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: .82rem; font-weight: 600; white-space: nowrap; }
+.badge.corretta { background: var(--ok-bg); color: var(--ok); }
+.badge.da_correggere { background: var(--err-bg); color: var(--err); }
+.badge.parziale, .badge.da_controllare { background: var(--warn-bg); color: var(--warn); }
+.rilievi { margin: 0; padding: 0; list-style: none; }
+.rilievi li { margin-bottom: 6px; padding-left: 18px; position: relative; }
+.rilievi li::before { content: "●"; position: absolute; left: 0; color: var(--err); font-size: .75rem; top: 2px; }
+.rilievi li.risolto { color: var(--muted); text-decoration: line-through; }
+.rilievi li.risolto::before { content: "✓"; color: var(--ok); font-size: .9rem; top: 0; }
+.conteggi { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
+td details summary { font-weight: 400; font-size: .85rem; color: var(--muted); }

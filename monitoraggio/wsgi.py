@@ -7,7 +7,7 @@ from flask import Flask, redirect, session
 from flask_session import Session
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from . import accesso, collegamento, config, db, scheduler, utenti
+from . import accesso, collegamento, config, db, scheduler, sol_sessione, utenti
 from .mensile_web import crea_blueprint_mensile
 from .web import PAGINE_LOCALI, crea_blueprint, crea_blueprint_pagine_esistenti
 
@@ -24,6 +24,17 @@ def _protezione_sso():
 def _protezione_ticket():
     return accesso.bp, dict(protezione=accesso.login_required, utente_corrente=accesso.utente,
                             token_utente=accesso.intestazioni, sessione_sol=accesso, logout_url="/logout")
+
+
+def _intestazioni_sol(sso: bool, opzioni: dict):
+    if not sso:
+        return accesso.intestazioni
+
+    def dal_token() -> dict:
+        token = opzioni["token_utente"]()
+        ticket = sol_sessione.ticket_da_token(token) if token else None
+        return {"Cookie": f"ticket={ticket}"} if ticket else {}
+    return dal_token
 
 
 def crea_app() -> Flask:
@@ -62,7 +73,8 @@ def crea_app() -> Flask:
                                           login_url="/login?next=/monitoraggio", login_sol=False, **opzioni))
     app.register_blueprint(crea_blueprint_pagine_esistenti(protezione=protezione, solo_admin=solo_admin))
     app.register_blueprint(crea_blueprint_mensile(protezione=protezione, solo_admin=solo_admin,
-                                                  utente_corrente=opzioni["utente_corrente"]))
+                                                  utente_corrente=opzioni["utente_corrente"],
+                                                  intestazioni_sol=_intestazioni_sol(sso, opzioni)))
 
     @app.get("/")
     @protezione
