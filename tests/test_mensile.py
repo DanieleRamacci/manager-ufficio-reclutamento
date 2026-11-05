@@ -499,3 +499,30 @@ def test_avviso_se_i_dati_non_sono_su_un_volume(tmp_path, monkeypatch):
     assert "volume" in config.avviso_dati_non_persistenti()
     monkeypatch.setattr(config.os.path, "ismount", lambda p: True)
     assert config.avviso_dati_non_persistenti() is None
+
+
+def test_riapro_correggo_aggiorno_e_richiudo(ambiente, db):
+    from monitoraggio import collegamento
+    admin, mese = _mese_con_dati(ambiente, db)
+    admin.put(f"/api/monitoraggi/{mese}/solleciti/367.479 CTER", json={"inviata": True})
+    prima = admin.post(f"/api/monitoraggi/{mese}/chiudi").get_json()["fotografia"]["righe"][0]
+    assert prima["difforme"] == 1 and prima["sol_protocollo"] == "1001"
+    # i dati raccolti restano e si aggiornano anche a mese chiuso: la fotografia no
+    admin.post(f"/api/monitoraggi/{mese}/riapri")
+    salva(db, "sol", [scheda("sol", "s1", "367.479 CTER", "367.479", documenti=[doc("g1", "graduatoria", "1002", "2026-04-12")])])
+    collegamento.collega(db)
+    dopo = admin.post(f"/api/monitoraggi/{mese}/chiudi").get_json()["fotografia"]
+    riga = dopo["righe"][0]
+    assert riga["sol_protocollo"] == "1002" and riga["difforme"] == 0 and riga["note"] == []
+    assert riga["sollecito_stato"] == "inviata_a_mano"  # la spunta non si perde
+
+
+def test_i_dati_sincronizzati_non_dipendono_dalla_chiusura(db):
+    from monitoraggio import collegamento
+    salva(db, "sol", [scheda("sol", "s1", "367.479 CTER", "367.479", documenti=[doc("g1", "graduatoria", "1001", "2026-04-12")])])
+    collegamento.collega(db)
+    mensile.crea(db, "2026-05", None, "x")
+    assert db.execute("SELECT COUNT(*) FROM documento").fetchone()[0] == 1
+    assert db.execute("SELECT COUNT(*) FROM monitoraggio_riga").fetchone()[0] == 0  # nessuna chiusura: i dati ci sono già
+    mensile.segna(db, "2026-05", "367.479 CTER", "inviata_a_mano", "x")
+    assert len(mensile.solleciti(db, "2026-05")) == 1
