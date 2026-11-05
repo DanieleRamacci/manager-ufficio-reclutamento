@@ -111,7 +111,7 @@ def messaggio(conn, monitoraggio: dict, codice: str) -> dict | None:
     if r0.get("link_codice"):
         corpo += f"\nScheda su Selezioni Online: {r0['link_codice']}\n"
     return {"chiave": codice, "n_gestione": r0.get("n_gestione"), "numero_bando": r0.get("numero_bando"), "titolo_bando": r0.get("titolo_bando"), "referenti": referenti,
-            "destinatari": [p["email"] for p in referenti], "oggetto": f"[{id_m}] Monitoraggio {mese_testo} – bando {codice}: {n} difformità",
+            "destinatari": [p["email"] for p in referenti], "oggetto": f"Monitoraggio {mese_testo}. Bando n° {codice}: Aggiornamento Dati – Rif. {r0.get('n_gestione')}",
             "corpo": corpo, "n_difformita": n, "stato": (righe or tutte)[0]["comunicazione"]["stato"],
             "storico": mensile.registro_comunicazioni(conn, monitoraggio["mese"], codice), "posta": posta.stato()}
 

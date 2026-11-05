@@ -1053,7 +1053,7 @@ def test_messaggio_standard_per_codice(ambiente, db):
     admin, mese, url = _mese_con_rdp(ambiente, db)
     m = admin.get(url + "/messaggio").get_json()
     assert m["destinatari"] == ["rdp@cnr.it"] and m["referenti"][0]["nome"] == "Anna Bianchi"
-    assert m["oggetto"] == "[MON-04.2026] Monitoraggio aprile 2026 – bando 367.479 CTER: 1 difformità"
+    assert m["oggetto"] == f"Monitoraggio aprile 2026. Bando n° 367.479 CTER: Aggiornamento Dati – Rif. {m['n_gestione']}" and len(m["n_gestione"]) == 4
     assert m["corpo"].startswith("Gentile Anna Bianchi,") and "(rif. MON-04.2026)" in m["corpo"]
     assert "1) Graduatoria del 12/04/2026" in m["corpo"] and "protocollo diverso: SOL 1001, URP 1002" in m["corpo"]
     assert "Cordiali saluti," in m["corpo"] and m["stato"] == "da_inviare"
@@ -1068,7 +1068,7 @@ def test_prova_e_ufficiale_sono_separate(ambiente, db, monkeypatch):
     r = admin.post(url + "/invia", json={"modo": "ufficiale"})
     assert r.status_code == 502 and "disattivate" in r.get_json()["error"] and inviati == []
     r = admin.post(url + "/invia", json={"modo": "prova"}).get_json()
-    assert r["prova"] is True and inviati[0]["To"] == "prova@cnr.it" and inviati[0]["Subject"].startswith("[PROVA] [MON-04.2026]")
+    assert r["prova"] is True and inviati[0]["To"] == "prova@cnr.it" and inviati[0]["Subject"].startswith("[PROVA] Monitoraggio aprile 2026. Bando n° 367.479 CTER: Aggiornamento Dati – Rif. ")
     a = admin.get(f"/api/monitoraggi/{mese}/atti").get_json()
     assert a["righe"][0]["comunicazione"]["stato"] == "da_inviare"  # la prova non cambia lo stato
     registro = admin.get(f"/api/comunicazioni?mese={mese}").get_json()["comunicazioni"]
