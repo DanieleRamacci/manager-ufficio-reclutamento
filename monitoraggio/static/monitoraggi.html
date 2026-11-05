@@ -176,7 +176,7 @@
     function esitoVerifica(v) {
       if (!v || v.in_corso || !v.fine) return "";
       const r = v.risultato || {};
-      const parti = [`Verifica finita: ${r.corrette || 0} corrette, ${r.ricomparse || 0} ricomparse, ${r.nuove || 0} nuove.`];
+      const parti = [`Verifica finita. Corrette: ${r.corrette || 0}, ricomparse: ${r.ricomparse || 0}, nuove: ${r.nuove || 0}.`];
       parti.push(v.punteggi_riletti ? "Punteggi riletti." : "Punteggi NON riletti: per controllarli avvia Collega-SOL.");
       return `<div class="${v.errori.length ? "avviso" : "ok"}">${esc(parti.join(" "))}${v.errori.map(e => `<div class="small">${esc(e)}</div>`).join("")}</div>`;
     }

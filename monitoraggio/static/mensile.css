@@ -37,3 +37,4 @@ label.spunta { flex-direction: row; align-items: center; gap: 8px; color: var(--
 .rilievi li.risolto::before { content: "✓"; color: var(--ok); font-size: .9rem; top: 0; }
 .conteggi { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
 td details summary { font-weight: 400; font-size: .85rem; color: var(--muted); }
+td button { white-space: nowrap; overflow-wrap: normal; }
