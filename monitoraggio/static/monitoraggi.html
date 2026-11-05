@@ -66,7 +66,7 @@
         <p class="small"><a href="/monitoraggio/mensili">← Monitoraggi mensili</a></p>
         <h1>Monitoraggio di ${esc(m.etichetta)}</h1>
         <p class="muted">Dati di ${esc(m.etichetta_dati)} · creato da ${esc(m.creato_da)} il ${ora(m.creato_il)}</p>
-        ${p.prova ? `<div class="avviso">Modalità di prova: le email vanno solo a ${esc(p.prova)}.</div>` : ""}
+        <div class="${p.prova ? "avviso" : "ok"} solo-admin">${p.prova ? `Email di prova attiva: vanno solo a ${esc(p.prova)}.` : "Invio reale attivo: le email vanno ai destinatari veri."} <a href="/monitoraggio/impostazioni">Impostazioni</a></div>
         <section class="solo-admin">
           <h2>Chiusura</h2>
           <p class="muted small">Quando hai finito, chiudi il monitoraggio: viene salvata una versione di atti, difformità, solleciti e conteggi dei punteggi di ${esc(m.etichetta_dati)}, che non cambia più. Se poi correggono i dati, puoi generarne una nuova: le precedenti restano. Lancia prima un aggiornamento dei dati e la verifica dei punteggi.</p>
@@ -157,7 +157,7 @@
         catch { $("anteprima").select(); $("esito").textContent = "Copia automatica non disponibile: seleziona e copia."; }
       });
       azione("invia", async () => {
-        const avviso = p.prova ? `In prova, solo a ${p.prova}` : `A: ${e.destinatari.join(", ")}`;
+        const avviso = p.prova ? `In prova, solo a ${p.prova}` : `INVIO REALE a: ${e.destinatari.join(", ")}`;
         if (!confirm(`Inviare l'email?\n\n${avviso}`)) return;
         const r = await chiama(`/api/monitoraggi/${m.mese}/email-compilazione/invia`, { method: "POST" });
         await dettaglio();

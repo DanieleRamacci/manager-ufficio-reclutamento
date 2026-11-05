@@ -193,7 +193,7 @@ def _link_email(monkeypatch):
     monkeypatch.setenv("SMTP_SERVER", "smtp.esempio")
     monkeypatch.setenv("MAIL_SENDER", "noreply@esempio.it")
     monkeypatch.setenv("SITO_URL", "https://sito.esempio")
-    monkeypatch.setattr(accesso.posta, "invia", lambda d, o, c: inviate.append((d, c)) or False)
+    monkeypatch.setattr(accesso.posta, "invia", lambda d, o, c, sempre_reale=False: inviate.append((d, c, sempre_reale)) or False)
     monkeypatch.setattr(accesso, "_link_email", {})
     monkeypatch.setattr(accesso, "_ultima_email", {})
     return inviate
@@ -210,6 +210,7 @@ def test_visualizzatore_entra_in_sola_lettura_col_link(db, tmp_path, monkeypatch
     assert "Accedi come visualizzatore autorizzato" in c.get("/login").get_data(as_text=True)
     assert c.post("/login/visualizzatore", data={"username": "Anna.Bianchi@altro.it"}).status_code == 200
     assert inviate[0][0] == ["anna.bianchi@cnr.it"]  # mai il dominio scritto da chi chiede
+    assert inviate[0][2] is True  # il link arriva alla persona anche con le email di prova attive
     percorso = _percorso(inviate[0][1])
     codice = percorso.split("=")[1]
     # i controlli della posta aprono il link: aprirlo non deve consumarlo né aprire la sessione

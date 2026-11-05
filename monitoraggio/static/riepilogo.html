@@ -455,7 +455,7 @@ function apriInvio(riga, gruppo) {
   $("testo-sollecito").value = `A: ${destinatari.join("; ")}\nOggetto: ${m.oggetto}\n\n${corpo}`;
   $("avviso-copia-manuale").textContent = datiInvii.posta.prova
     ? `Modalità di prova: l'email andrà solo a ${datiInvii.posta.prova} e il bando non risulterà inviato.`
-    : "Controlla il testo: l'email parte solo premendo Invia.";
+    : "Attenzione: invio reale. L'email parte ai destinatari qui sopra premendo Invia.";
   $("azioni-invio").hidden = false;
   $("esito-invio").textContent = "";
   $("dialog-sollecito").showModal();

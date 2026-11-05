@@ -144,8 +144,7 @@ Finito il lavoro del mese, l'amministratore chiude il monitoraggio. Atti, diffor
 - **FR-016**: Gli amministratori MUST poter spuntare o togliere a mano lo stato di invio, distinto dall'invio dall'app.
 - **FR-017**: Le email MUST NOT contenere dati dei candidati.
 - **FR-018**: Il sistema MUST inviare tramite il server di posta configurato, con mittente e indirizzo di risposta configurabili; senza configurazione l'invio MUST essere disattivato restando disponibili copia e spunta.
-- **FR-019**: Il sistema MUST offrire una modalità di prova che recapita tutto a un solo indirizzo senza segnare i bandi come inviati.
-
+- **FR-019**: Gli amministratori MUST poter attivare e disattivare da una pagina Impostazioni la modalità di prova, che recapita tutto a un solo indirizzo senza segnare i bandi come inviati. La scelta MUST restare salvata nel database; finché nessuno sceglie, la modalità di prova MUST essere attiva. Disattivarla MUST richiedere una conferma. I link di accesso MUST arrivare sempre alla persona che li chiede.
 - **FR-020**: La pagina di accesso MUST offrire il pulsante "Accedi come visualizzatore autorizzato": chi è autorizzato riceve nella propria casella un link monouso valido 15 minuti ed entra in sola lettura, anche se il suo ruolo è amministratore. Il sistema MUST NOT rivelare chi è autorizzato e MUST inviare il link solo all'indirizzo registrato.
 
 - **FR-021**: Le viste delle graduatorie e degli scorrimenti del mese MUST permettere di filtrare per tipologia monitorata: tempo indeterminato (su Selezioni Online concorsi pubblici, con reclutamento speciale e categorie protette) e mobilità con comandi. Le righe senza tipologia nota MUST restare visibili.

@@ -44,6 +44,31 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
     def pagina_mensili(mese=None):
         return send_from_directory(STATIC, "monitoraggi.html")
 
+    @bp.get("/monitoraggio/impostazioni")
+    @protezione
+    @solo_admin
+    def pagina_impostazioni():
+        return send_from_directory(STATIC, "impostazioni.html")
+
+    @bp.get("/api/impostazioni/posta")
+    @protezione
+    @solo_admin
+    def api_impostazioni_posta():
+        return jsonify({**posta.stato(), "prova_impostazioni": posta.impostazioni_prova()})
+
+    @bp.put("/api/impostazioni/posta")
+    @protezione
+    @solo_admin
+    def api_impostazioni_posta_salva():
+        corpo = request.get_json(silent=True) or {}
+        if not isinstance(corpo.get("attiva"), bool):
+            return jsonify({"error": "Indica se la modalità di prova è attiva"}), 400
+        try:
+            posta.salva_prova(corpo["attiva"], corpo.get("indirizzo"), utente_corrente())
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify({**posta.stato(), "prova_impostazioni": posta.impostazioni_prova()})
+
     @bp.get("/monitoraggio/utenti")
     @protezione
     @solo_admin

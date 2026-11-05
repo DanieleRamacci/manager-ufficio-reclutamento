@@ -192,7 +192,7 @@ def chiedi_link():
         posta.invia([utenti.email_di(nome)], "Accesso al monitoraggio bandi",
                     "Buongiorno,\n\nper entrare nel monitoraggio in sola lettura apri questo link entro 15 minuti:\n"
                     f"{config.sito_url()}/login/visualizzatore?codice={codice}\n\n"
-                    "Se non hai chiesto tu l'accesso, puoi ignorare questa email.\n")
+                    "Se non hai chiesto tu l'accesso, puoi ignorare questa email.\n", sempre_reale=True)
         utenti.registra_accesso(nome)
     except posta.PostaErrore:
         log.warning("Link di accesso non inviato")

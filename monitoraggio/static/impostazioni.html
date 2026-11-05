@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Impostazioni monitoraggio</title>
+  <link rel="stylesheet" href="/monitoraggio/mensile.css">
+  <script src="/monitoraggio/menu.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1>Impostazioni</h1>
+    <section>
+      <h2>Invio delle email</h2>
+      <div id="stato" role="status"></div>
+      <form id="modulo">
+        <p><label class="spunta"><input type="checkbox" id="prova"> <span><b>Email di prova</b>: manda tutte le email a questo indirizzo</span></label></p>
+        <label class="campo-largo">Indirizzo per le prove <input type="email" id="indirizzo" autocomplete="off"></label>
+        <div class="azioni"><button class="primario" type="submit">Salva</button><span class="muted small" id="esito" aria-live="polite"></span></div>
+      </form>
+      <p class="muted small">In prova i bandi non risultano inviati e il testo riporta i destinatari reali. Se togli la spunta, le email vanno ai destinatari veri. L'email con il link di accesso arriva sempre alla persona che lo chiede.</p>
+      <div class="errore" id="errore" role="alert" hidden></div>
+    </section>
+    <section>
+      <h2>Server di posta</h2>
+      <table><tbody id="posta"></tbody></table>
+      <p class="muted small">Questi valori si cambiano nelle variabili di Coolify.</p>
+    </section>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const esc = (t) => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const ora = (iso) => iso ? new Date(iso).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" }) : "";
+    async function chiama(url, opzioni) {
+      const r = await fetch(url, { cache: "no-store", ...opzioni });
+      const corpo = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(corpo.error || `Errore ${r.status}`);
+      return corpo;
+    }
+    function mostra(d) {
+      const p = d.prova_impostazioni;
+      $("prova").checked = p.attiva;
+      $("indirizzo").value = p.indirizzo || "";
+      $("stato").className = p.attiva ? "avviso" : "errore";
+      $("stato").textContent = p.attiva
+        ? `Email di prova attiva: vanno solo a ${p.indirizzo || "(indirizzo non impostato)"}.`
+        : "Invio reale attivo: le email vanno ai destinatari veri.";
+      if (p.modificata_il) $("stato").textContent += ` Ultima modifica: ${p.modificata_da || ""} il ${ora(p.modificata_il)}.`;
+      $("posta").innerHTML = `<tr><th>Stato</th><td>${d.configurata ? "Configurato" : "Non configurato: mancano SMTP_SERVER o MAIL_SENDER"}</td></tr>
+        <tr><th>Mittente</th><td>${esc(d.mittente)}</td></tr><tr><th>Risposte a</th><td>${esc(d.risposta)}</td></tr>`;
+    }
+    $("modulo").onsubmit = async (e) => {
+      e.preventDefault();
+      $("errore").hidden = true;
+      const attiva = $("prova").checked;
+      if (!attiva && !confirm("Togliere le email di prova?\n\nDa ora le email andranno ai destinatari veri.")) return;
+      try {
+        mostra(await chiama("/api/impostazioni/posta", { method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ attiva, indirizzo: $("indirizzo").value }) }));
+        $("esito").textContent = "Salvato.";
+      } catch (err) { $("errore").hidden = false; $("errore").textContent = err.message; }
+    };
+    chiama("/api/impostazioni/posta").then(mostra).catch(err => { $("errore").hidden = false; $("errore").textContent = err.message; });
+  </script>
+</body>
+</html>

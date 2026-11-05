@@ -25,3 +25,4 @@ th, td { overflow-wrap: normal; text-align: left; padding: 8px; border-bottom: 1
 .ok { background: var(--ok-bg); color: var(--ok); border-radius: 6px; padding: 10px 12px; margin: 10px 0; }
 .azioni { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; align-items: center; }
 details summary { cursor: pointer; font-weight: 600; }
+label.spunta { flex-direction: row; align-items: center; gap: 8px; color: var(--testo); font-size: 1rem; }

@@ -51,6 +51,7 @@ def _configura_posta(monkeypatch, inviati, **extra):
     monkeypatch.setenv("MAIL_REPLY_TO", "ufficio@esempio.it")
     for chiave, valore in extra.items():
         monkeypatch.setenv(chiave, valore)
+    posta.salva_prova("MAIL_PROVA" in extra, extra.get("MAIL_PROVA"), "test")
 
     class Smtp:
         def __init__(self, host, port, timeout):
@@ -603,3 +604,66 @@ def test_fotografie_della_versione_9_diventano_versione_1(tmp_path, monkeypatch)
     assert f["versione"] == 1 and f["totale"] == 1 and f["versioni"][0]["creata_da"] == "capo"
     assert f["fonti"] == [{"fonte": "sol", "ultima_raccolta": "2026-10-29T00:00:00Z"}]
     assert conn.execute("SELECT versione FROM schema_version").fetchone()[0] == dbmod.SCHEMA_VERSION
+
+
+# --- impostazioni email
+
+def test_nuova_installazione_parte_in_prova(ambiente, monkeypatch):
+    inviati = []
+    _configura_posta(monkeypatch, inviati)
+    monkeypatch.setenv("MAIL_REPLY_TO", "me@cnr.it")
+    from monitoraggio import db as dbmod
+    conn = dbmod.connetti()
+    conn.execute("DELETE FROM impostazione")
+    conn.close()
+    assert posta.stato()["prova"] == "me@cnr.it"
+    assert posta.invia(["vero@cnr.it"], "Oggetto", "Testo") is True
+    assert inviati[0]["To"] == "me@cnr.it" and "vero@cnr.it" in inviati[0].get_content()
+
+
+def test_spunta_prova_dalla_pagina(ambiente, monkeypatch):
+    inviati = []
+    _configura_posta(monkeypatch, inviati)
+    admin = ambiente()
+    assert admin.get("/monitoraggio/impostazioni").status_code == 200
+    d = admin.put("/api/impostazioni/posta", json={"attiva": True, "indirizzo": "Me@cnr.it"}).get_json()
+    assert d["prova"] == "me@cnr.it" and d["prova_impostazioni"]["modificata_da"] == "capo.ufficio"
+    assert posta.invia(["vero@cnr.it"], "Oggetto", "Testo") is True
+    assert inviati[-1]["To"] == "me@cnr.it" and inviati[-1]["Subject"] == "[PROVA] Oggetto"
+    d = admin.put("/api/impostazioni/posta", json={"attiva": False, "indirizzo": "me@cnr.it"}).get_json()
+    assert d["prova"] is None and d["prova_impostazioni"]["indirizzo"] == "me@cnr.it"
+    assert posta.invia(["vero@cnr.it"], "Oggetto", "Testo") is False
+    assert inviati[-1]["To"] == "vero@cnr.it" and inviati[-1]["Subject"] == "Oggetto"
+    assert admin.put("/api/impostazioni/posta", json={"attiva": True, "indirizzo": "sbagliato"}).status_code == 400
+    assert admin.put("/api/impostazioni/posta", json={"attiva": "si"}).status_code == 400
+
+
+def test_prova_senza_indirizzo_non_invia_a_nessuno(ambiente, monkeypatch):
+    inviati = []
+    _configura_posta(monkeypatch, inviati)
+    monkeypatch.delenv("MAIL_REPLY_TO")
+    from monitoraggio import db as dbmod
+    conn = dbmod.connetti()
+    conn.execute("DELETE FROM impostazione")
+    conn.close()
+    with pytest.raises(posta.PostaErrore):
+        posta.invia(["vero@cnr.it"], "Oggetto", "Testo")
+    assert inviati == []
+    assert ambiente().put("/api/impostazioni/posta", json={"attiva": True}).status_code == 400
+
+
+def test_link_di_accesso_arriva_alla_persona_anche_in_prova(ambiente, monkeypatch):
+    inviati = []
+    _configura_posta(monkeypatch, inviati, MAIL_PROVA="me@cnr.it")
+    assert posta.invia(["collega@cnr.it"], "Accesso", "link", sempre_reale=True) is False
+    assert inviati[0]["To"] == "collega@cnr.it"
+
+
+def test_impostazioni_solo_per_amministratori_e_voce_di_menu(ambiente):
+    admin = ambiente()
+    admin.post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"})
+    c = ambiente("lettore.uno")
+    assert c.get("/monitoraggio/impostazioni").status_code == 403
+    assert c.put("/api/impostazioni/posta", json={"attiva": False}).status_code == 403
+    voci = lambda x: {v["titolo"] for g in x.get("/api/menu").get_json()["gruppi"] for v in g["voci"]}  # noqa: E731
+    assert "Impostazioni" in voci(admin) and "Impostazioni" not in voci(c)

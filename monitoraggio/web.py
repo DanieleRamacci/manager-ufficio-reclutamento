@@ -35,6 +35,7 @@ MENU = [
         {"titolo": "File segreteria: vista del file", "url": "/monitoraggio/segreteria/file", "route": True},
         {"titolo": "Report del mese", "url": "/report-mese.html", "pagina": "report-mese.html"},
         {"titolo": "Utenti", "url": "/monitoraggio/utenti", "route": True, "solo_admin": True},
+        {"titolo": "Impostazioni", "url": "/monitoraggio/impostazioni", "route": True, "solo_admin": True},
     ]},
     {"gruppo": "Controlli URP", "voci": [
         {"titolo": "Controllo bandi", "url": "/index.html", "pagina": "index.html"},
