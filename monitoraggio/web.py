@@ -594,6 +594,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
                 "SELECT numero_bando, stato_collegamento FROM bando WHERE numero_bando IS NOT NULL")}
             for a in atti_file:
                 a["stato_collegamento"] = collegati.get(a["numero_bando"])
+            segreteria.collega_urp(conn, atti_file)
             return jsonify({"versione": versione_id, "atti": atti_file})
         finally:
             conn.close()

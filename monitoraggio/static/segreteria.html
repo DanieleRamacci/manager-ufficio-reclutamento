@@ -98,6 +98,11 @@ function pillolaCollegamento(a) {
   if (!a.in_ambito) return `<span class="pillola p-na">fuori ambito</span>`;
   return a.stato_collegamento ? `<span class="pillola p-ok">bando trovato</span>` : `<span class="pillola p-ko">non trovato</span>`;
 }
+function linkUrp(a) {
+  const url = a.url_documento_urp || a.url_pagina_urp;
+  if (!url) return "";
+  return `<div class="small" style="margin-top:4px"><a href="${esc(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${a.url_documento_urp ? "Documento su URP ↗" : "Pagina del bando su URP ↗"}</a></div>`;
+}
 function disegnaAtti() {
   const cat = $("categoria").value, mese = $("mese").value, ambito = $("solo-ambito").checked, nonColl = $("solo-non-collegati").checked, q = $("q").value.trim().toLowerCase();
   const righe = atti.filter(a => (!cat || a.categoria === cat) && (!mese || (a.data || "").startsWith(mese)) && (!ambito || a.in_ambito) && (!nonColl || !a.stato_collegamento)
@@ -109,7 +114,7 @@ function disegnaAtti() {
       <td>${esc(a.codice_originale)}<div class="muted2 small">${esc(a.titolo)}</div></td>
       <td>${CATEGORIE[a.categoria]}${a.categoria === "scorrimento" ? (a.sottotipo ? ` <span class="chip t-altro">${SOTTOTIPI[a.sottotipo]}</span>` : ` <span class="pillola p-warn">tipologia mancante</span>`) : ""}${a.tipo_procedura ? `<div class="muted2 small">${esc(a.tipo_procedura)}</div>` : ""}</td>
       <td class="mono small">${esc(a.protocollo)}</td><td class="mono small">${esc(a.protocollo_privato)}${a.data_privato ? `<div class="muted2">${dataIt(a.data_privato)}</div>` : ""}</td>
-      <td>${a.categoria === "bando" ? "" : a.persone}</td><td>${pillolaCollegamento(a)}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">Nessun atto con questi filtri.</td></tr>`) + `</tbody>`;
+      <td>${a.categoria === "bando" ? "" : a.persone}</td><td>${pillolaCollegamento(a)}${linkUrp(a)}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">Nessun atto con questi filtri.</td></tr>`) + `</tbody>`;
   document.querySelectorAll("#atti tr[data-id]").forEach(tr => tr.onclick = () => apriAtto(tr.dataset.id));
 }
 async function apriAtto(id) {

@@ -356,6 +356,20 @@ def atti_versione(conn, versione_id: int, categoria: str | None = None, mese: st
         f"SELECT * FROM segreteria_atto WHERE {' AND '.join(where)} ORDER BY data DESC, numero_bando", args)]
 
 
+def collega_urp(conn, atti: list[dict]) -> None:
+    """Link su URP di ogni atto: il documento con lo stesso protocollo, altrimenti la pagina del bando."""
+    documenti, pagine = {}, {}
+    for d in conn.execute("SELECT s.numero_bando, d.protocollo, d.url FROM documento d JOIN scheda s ON s.id = d.scheda_id "
+                          "WHERE s.fonte = 'urp' AND s.presente = 1 AND d.presente = 1 AND d.url IS NOT NULL AND d.protocollo IS NOT NULL"):
+        documenti.setdefault((d["numero_bando"], d["protocollo"]), d["url"])
+    for s in conn.execute("SELECT numero_bando, url FROM scheda WHERE fonte = 'urp' AND presente = 1 AND url IS NOT NULL "
+                          "ORDER BY codice_sotto IS NOT NULL, id"):
+        pagine.setdefault(s["numero_bando"], s["url"])
+    for a in atti:
+        a["url_documento_urp"] = documenti.get((a["numero_bando"], a["protocollo"]))
+        a["url_pagina_urp"] = pagine.get(a["numero_bando"])
+
+
 def righe_atto(conn, atto_id: int) -> list[dict]:
     return [{"numero_riga": r["numero_riga"], "foglio": r["foglio"], "valori": json.loads(r["valori"])}
             for r in conn.execute("SELECT * FROM segreteria_riga WHERE atto_id = ? ORDER BY numero_riga", (atto_id,))]

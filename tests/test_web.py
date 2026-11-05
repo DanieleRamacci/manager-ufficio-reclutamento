@@ -238,3 +238,23 @@ def test_file_segreteria_problemi_e_storico(db):
     assert pagina.status_code == 302 and pagina.headers["Location"].endswith("/monitoraggio/segreteria?atto=7")
     assert atti.url_file_segreteria(atto=7) == "/monitoraggio/segreteria?atto=7"
     assert c.get("/api/segreteria/foglio").status_code == 404
+
+
+def test_atti_del_file_con_link_a_urp(db):
+    import io
+
+    from tests.test_collegamento import doc, salva, scheda
+    from tests.test_segreteria import crea_excel
+    salva(db, "urp", [scheda("urp", "/n/1", "367.601 FA ISTC", "367.601", documenti=[{**doc("g1", "graduatoria", "270086", "2026-06-12"), "url": "http://urp/graduatoria.pdf"}]),
+                      scheda("urp", "/n/2", "367.500", "367.500")])
+    c = app_di_prova()
+    c.post("/api/segreteria/carica", data={"file": (io.BytesIO(crea_excel()), "f.xlsx")}, content_type="multipart/form-data")
+    atti = c.get("/api/segreteria/atti").get_json()["atti"]
+    con_doc = next(a for a in atti if a["protocollo"] == "270086")
+    assert con_doc["url_documento_urp"] == "http://urp/graduatoria.pdf" and con_doc["url_pagina_urp"] == "http://urp//n/1"
+    altro_atto = next(a for a in atti if a["numero_bando"] == "367.601" and a["protocollo"] != "270086")
+    assert altro_atto["url_documento_urp"] is None and altro_atto["url_pagina_urp"] == "http://urp//n/1"  # protocollo diverso: la pagina
+    pagina = next(a for a in atti if a["numero_bando"] == "367.500")
+    assert pagina["url_documento_urp"] is None and pagina["url_pagina_urp"] == "http://urp//n/2"
+    assert next(a for a in atti if a["numero_bando"] == "367.434")["url_pagina_urp"] is None
+
