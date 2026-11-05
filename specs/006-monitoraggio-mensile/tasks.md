@@ -11,4 +11,5 @@
 - [X] T009 [US4,US5] Invio SMTP, modalità di prova e registro in monitoraggio/posta.py
 - [X] T010 Test in tests/test_mensile.py
 - [X] T012 [US1] Accesso del visualizzatore con link via email in monitoraggio/accesso.py e pulsante in monitoraggio/static/accesso.html
+- [X] T013 [US6] Chiusura e riapertura con fotografia nel database in monitoraggio/mensile.py; avviso per il volume mancante
 - [ ] T011 Verifica manuale nell'app in esecuzione e invio reale dal server di produzione

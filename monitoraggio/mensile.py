@@ -38,6 +38,10 @@ class MeseEsistente(Exception):
     pass
 
 
+class MeseChiuso(Exception):
+    pass
+
+
 def _adesso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -60,7 +64,8 @@ def elenco(conn) -> list[dict]:
     inviati = {r["mese"]: r["n"] for r in conn.execute("SELECT mese, COUNT(*) AS n FROM sollecito GROUP BY mese")}
     return [{**dict(r), "etichetta": etichetta(r["mese"]), "etichetta_dati": etichetta(r["mese_dati"]),
              "solleciti_inviati": inviati.get(r["mese"], 0)}
-            for r in conn.execute("SELECT mese, mese_dati, creato_da, creato_il FROM monitoraggio_mese ORDER BY mese DESC")]
+            for r in conn.execute("SELECT mese, mese_dati, creato_da, creato_il, stato, chiuso_da, chiuso_il "
+                                  "FROM monitoraggio_mese ORDER BY mese DESC")]
 
 
 def mese_anno_corrente(numero, oggi: date | None = None) -> str:
@@ -77,7 +82,87 @@ def crea(conn, mese: str, mese_dati: str | None, autore: str | None) -> dict:
         raise MeseEsistente(mese)
     conn.execute("INSERT INTO monitoraggio_mese (mese, mese_dati, creato_da, creato_il) VALUES (?, ?, ?, ?)",
                  (mese, mese_dati or mese_precedente(mese), autore, _adesso()))
+    _evento(conn, mese, "creato", autore)
     return leggi(conn, mese)
+
+
+def _evento(conn, mese: str, azione: str, autore: str | None) -> None:
+    conn.execute("INSERT INTO monitoraggio_evento (mese, azione, autore, quando) VALUES (?, ?, ?, ?)",
+                 (mese, azione, autore, _adesso()))
+
+
+def verifica_aperto(conn, mese: str) -> None:
+    riga = conn.execute("SELECT stato FROM monitoraggio_mese WHERE mese = ?", (mese,)).fetchone()
+    if riga and riga["stato"] == "chiuso":
+        raise MeseChiuso("Il monitoraggio è chiuso: riaprilo per modificarlo")
+
+
+def chiudi(conn, mese: str, autore: str | None) -> dict:
+    """Salva la fotografia del mese nel database, tutta insieme o per niente. Solo conteggi e stati:
+    i dati dei candidati restano fuori (constitution, Principio II)."""
+    from . import atti, compat, punteggi
+
+    verifica_aperto(conn, mese)
+    monitoraggio = leggi(conn, mese)
+    dal, al = periodo_dati(monitoraggio)
+    righe = atti.elenco_atti(conn, dal, al)
+    inviati = solleciti(conn, mese)
+    conteggi = punteggi.elenco_periodo(conn, dal, al)
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        for tabella in ("monitoraggio_riga", "monitoraggio_punteggi", "monitoraggio_fonte"):
+            conn.execute(f"DELETE FROM {tabella} WHERE mese = ?", (mese,))
+        for r in righe:
+            f = r["fonti"]
+            inviato = inviati.get(r.get("codice") or "") or inviati.get(r.get("numero_bando") or "") or {}
+            conn.execute(
+                "INSERT INTO monitoraggio_riga (mese, numero_bando, codice, titolo_bando, tipologia, atto, sottotipo, data, "
+                "protocollo, sol_stato, sol_protocollo, urp_stato, urp_protocollo, segreteria_stato, segreteria_protocollo, "
+                "rdp, note, difforme, sollecito_stato, sollecito_autore, sollecito_quando) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (mese, r.get("numero_bando"), r.get("codice"), r.get("titolo_bando"), r.get("tipologia"), r["atto"],
+                 r.get("sottotipo"), r.get("data"), r.get("protocollo"), f["sol"].get("stato"), f["sol"].get("protocollo"),
+                 f["urp"].get("stato"), f["urp"].get("protocollo"), f["segreteria"].get("stato"), f["segreteria"].get("protocollo"),
+                 json.dumps(r.get("rdp") or [], ensure_ascii=False), json.dumps(r.get("note") or [], ensure_ascii=False),
+                 int(bool(r.get("difforme"))), inviato.get("stato"), inviato.get("autore"), inviato.get("quando")))
+        for p in conteggi:
+            conn.execute(
+                "INSERT INTO monitoraggio_punteggi (mese, numero_bando, codice, protocollo, data, domande, con_punteggi, vincitori, "
+                "idonei, scorrimento, senza_protocollo, esito, verificato_il, difformita) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (mese, p.get("numero_bando"), p.get("codice"), p.get("protocollo"), p.get("data"), p.get("domande"),
+                 p.get("con_punteggi"), p.get("vincitori"), p.get("idonei"), p.get("scorrimento"), p.get("senza_protocollo"),
+                 p.get("esito"), p.get("verificato_il"), json.dumps(p.get("difformita") or [], ensure_ascii=False)))
+        for fonte in ("urp", "sol"):
+            conn.execute("INSERT INTO monitoraggio_fonte (mese, fonte, ultima_raccolta) VALUES (?, ?, ?)",
+                         (mese, fonte, compat.ultima_riuscita(conn, fonte)))
+        conn.execute("UPDATE monitoraggio_mese SET stato = 'chiuso', chiuso_da = ?, chiuso_il = ? WHERE mese = ?",
+                     (autore, _adesso(), mese))
+        _evento(conn, mese, "chiuso", autore)
+        conn.execute("COMMIT")
+    except BaseException:
+        conn.execute("ROLLBACK")
+        raise
+    return leggi(conn, mese)
+
+
+def riapri(conn, mese: str, autore: str | None) -> dict:
+    """Riapre il mese: la fotografia resta finché una nuova chiusura non la sostituisce."""
+    conn.execute("UPDATE monitoraggio_mese SET stato = 'aperto', chiuso_da = NULL, chiuso_il = NULL WHERE mese = ?", (mese,))
+    _evento(conn, mese, "riaperto", autore)
+    return leggi(conn, mese)
+
+
+def fotografia(conn, mese: str) -> dict:
+    righe = [{**dict(r), "rdp": json.loads(r["rdp"] or "[]"), "note": json.loads(r["note"] or "[]")}
+             for r in conn.execute("SELECT * FROM monitoraggio_riga WHERE mese = ? ORDER BY data DESC, codice", (mese,))]
+    return {"righe": righe, "totale": len(righe), "difformi": sum(1 for r in righe if r["difforme"]),
+            "inviate": sum(1 for r in righe if r["difforme"] and r["sollecito_stato"]),
+            "punteggi": [{**dict(r), "difformita": json.loads(r["difformita"] or "[]")}
+                         for r in conn.execute("SELECT * FROM monitoraggio_punteggi WHERE mese = ? ORDER BY codice", (mese,))],
+            "fonti": [dict(r) for r in conn.execute("SELECT fonte, ultima_raccolta FROM monitoraggio_fonte WHERE mese = ?", (mese,))],
+            "eventi": [dict(r) for r in conn.execute("SELECT azione, autore, quando FROM monitoraggio_evento WHERE mese = ? "
+                                                     "ORDER BY id DESC", (mese,))]}
 
 
 def leggi(conn, mese: str) -> dict | None:

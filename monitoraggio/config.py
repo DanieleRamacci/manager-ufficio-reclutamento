@@ -59,6 +59,14 @@ def data_dir() -> Path:
     return Path(_env("DATA_DIR", str(ROOT / "instance")))
 
 
+def avviso_dati_non_persistenti() -> str | None:
+    """Sul server i dati devono stare su un volume: senza, un deploy li cancella tutti."""
+    if os.path.ismount(data_dir()):
+        return None
+    return (f"Attenzione: {data_dir()} non è su un volume persistente. Al prossimo deploy tutti i dati andranno persi: "
+            f"aggiungi un volume con destinazione {data_dir()} nella configurazione di Coolify.")
+
+
 def db_path() -> Path:
     return data_dir() / "monitoraggio.db"
 

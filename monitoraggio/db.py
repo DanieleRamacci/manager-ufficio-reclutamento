@@ -3,7 +3,7 @@ import sqlite3
 
 from . import config
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -231,7 +231,71 @@ CREATE TABLE IF NOT EXISTS monitoraggio_mese (
     oggetto TEXT,
     testo TEXT,
     creato_da TEXT,
-    creato_il TEXT NOT NULL
+    creato_il TEXT NOT NULL,
+    stato TEXT NOT NULL DEFAULT 'aperto' CHECK (stato IN ('aperto', 'chiuso')),
+    chiuso_da TEXT,
+    chiuso_il TEXT
+);
+
+-- Fotografia del mese alla chiusura: non cambia più se cambiano le fonti. Niente dati dei candidati.
+CREATE TABLE IF NOT EXISTS monitoraggio_riga (
+    id INTEGER PRIMARY KEY,
+    mese TEXT NOT NULL REFERENCES monitoraggio_mese(mese),
+    numero_bando TEXT,
+    codice TEXT,
+    titolo_bando TEXT,
+    tipologia TEXT,
+    atto TEXT NOT NULL,
+    sottotipo TEXT,
+    data TEXT,
+    protocollo TEXT,
+    sol_stato TEXT,
+    sol_protocollo TEXT,
+    urp_stato TEXT,
+    urp_protocollo TEXT,
+    segreteria_stato TEXT,
+    segreteria_protocollo TEXT,
+    rdp TEXT,
+    note TEXT,
+    difforme INTEGER NOT NULL DEFAULT 0,
+    sollecito_stato TEXT,
+    sollecito_autore TEXT,
+    sollecito_quando TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_monitoraggio_riga ON monitoraggio_riga (mese, difforme);
+
+CREATE TABLE IF NOT EXISTS monitoraggio_punteggi (
+    id INTEGER PRIMARY KEY,
+    mese TEXT NOT NULL REFERENCES monitoraggio_mese(mese),
+    numero_bando TEXT,
+    codice TEXT,
+    protocollo TEXT,
+    data TEXT,
+    domande INTEGER,
+    con_punteggi INTEGER,
+    vincitori INTEGER,
+    idonei INTEGER,
+    scorrimento INTEGER,
+    senza_protocollo INTEGER,
+    esito TEXT,
+    verificato_il TEXT,
+    difformita TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_monitoraggio_punteggi ON monitoraggio_punteggi (mese);
+
+CREATE TABLE IF NOT EXISTS monitoraggio_fonte (
+    mese TEXT NOT NULL REFERENCES monitoraggio_mese(mese),
+    fonte TEXT NOT NULL,
+    ultima_raccolta TEXT,
+    PRIMARY KEY (mese, fonte)
+);
+
+CREATE TABLE IF NOT EXISTS monitoraggio_evento (
+    id INTEGER PRIMARY KEY,
+    mese TEXT NOT NULL,
+    azione TEXT NOT NULL CHECK (azione IN ('creato', 'chiuso', 'riaperto')),
+    autore TEXT,
+    quando TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS impostazione (
@@ -285,6 +349,10 @@ def inizializza(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_2)
     conn.executescript(SCHEMA_3)
     conn.executescript(SCHEMA_4)
+    colonne_mese = {r[1] for r in conn.execute("PRAGMA table_info(monitoraggio_mese)")}
+    for colonna, tipo in (("stato", "TEXT NOT NULL DEFAULT 'aperto'"), ("chiuso_da", "TEXT"), ("chiuso_il", "TEXT")):  # versione 9
+        if colonna not in colonne_mese:
+            conn.execute(f"ALTER TABLE monitoraggio_mese ADD COLUMN {colonna} {tipo}")
     riga = conn.execute("SELECT versione FROM schema_version").fetchone()
     if riga is None:
         conn.execute("INSERT INTO schema_version (versione) VALUES (?)", (SCHEMA_VERSION,))

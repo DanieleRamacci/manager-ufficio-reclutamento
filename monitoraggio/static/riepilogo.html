@@ -433,11 +433,13 @@ let invioAperto = null;
 
 function controlliInvio(a) {
   if (!monitoraggio) return "";
+  const chiuso = datiInvii.stato === "chiuso";
   const stato = datiInvii.solleciti[window.Solleciti.chiave(a)];
   const etichettaStato = stato
     ? `${stato.stato === "inviata" ? "Inviata" : "Inviata a mano"} il ${oraIt(stato.quando)}${stato.autore ? ` da ${esc(stato.autore)}` : ""}`
     : "Non ancora inviata";
   const conRdp = righeDelCodice(a).some(x => (x.rdp || []).some(r => r.email));
+  if (chiuso) return `<span class="chip ${stato ? "ok" : "warn"}">${etichettaStato}</span>`;
   return `<button type="button" class="btn-invia-sollecito solo-admin"${datiInvii.posta.configurata && conRdp ? "" : " disabled"}
       title="${datiInvii.posta.configurata ? (conRdp ? "" : "Nessuna email RdP") : "Invio email non configurato"}">Anteprima e invio</button>
     <label class="solo-admin"><input type="checkbox" class="spunta-sollecito"${stato ? " checked" : ""}> inviata</label>
@@ -488,7 +490,7 @@ async function caricaInvii() {
   datiInvii = corpo;
   $("barra-monitoraggio").hidden = false;
   $("barra-monitoraggio").innerHTML = `Monitoraggio di <b>${esc(corpo.etichetta)}</b>, dati di ${esc(corpo.etichetta_dati)} ·
-    <a href="/monitoraggio/mensili/${esc(monitoraggio)}">torna al monitoraggio</a>${corpo.posta.prova ? ` · <span class="chip warn">Modalità di prova: ${esc(corpo.posta.prova)}</span>` : ""}`;
+    <a href="/monitoraggio/mensili/${esc(monitoraggio)}">torna al monitoraggio</a>${corpo.stato === "chiuso" ? ` · <span class="chip warn">Monitoraggio chiuso: qui vedi i dati aggiornati, quelli della chiusura sono nella sua pagina</span>` : ""}${corpo.posta.prova ? ` · <span class="chip warn">Modalità di prova: ${esc(corpo.posta.prova)}</span>` : ""}`;
 }
 
 function avvisoFreschezza() {

@@ -405,3 +405,97 @@ def test_sollecito_per_codice_con_i_referenti_del_bando(ambiente, db, monkeypatc
     assert admin.put(f"{url}/367.434 CA - ROMA Codice 13", json={"inviata": True}).status_code == 200
     assert len(admin.get(url).get_json()["solleciti"]) == 2
     assert admin.post(url + "/invia", json=_sollecito("367.434 CA - ROMA Codice 13", ["estraneo@cnr.it"])).status_code == 400
+
+
+# --- chiusura
+
+def _mese_con_dati(ambiente, db):
+    from monitoraggio import collegamento
+    salva(db, "sol", [scheda("sol", "s1", "367.479 CTER", "367.479", documenti=[doc("g1", "graduatoria", "1001", "2026-04-12")])])
+    salva(db, "urp", [scheda("urp", "/node/1", "367.479 CTER", "367.479", documenti=[doc("g2", "graduatoria", "1002", "2026-04-12")])])
+    collegamento.collega(db)
+    admin = ambiente()
+    mese = mensile.crea(db, "2026-05", None, "capo.ufficio")["mese"]
+    return admin, mese
+
+
+def test_chiusura_salva_la_fotografia_che_non_cambia(ambiente, db):
+    admin, mese = _mese_con_dati(ambiente, db)
+    admin.put(f"/api/monitoraggi/{mese}/solleciti/367.479 CTER", json={"inviata": True})
+    d = admin.post(f"/api/monitoraggi/{mese}/chiudi").get_json()
+    assert d["stato"] == "chiuso" and d["chiuso_da"] == "capo.ufficio"
+    f = d["fotografia"]
+    assert f["totale"] == 1 and f["difformi"] == 1 and f["inviate"] == 1
+    r = f["righe"][0]
+    assert (r["codice"], r["sol_protocollo"], r["urp_protocollo"]) == ("367.479 CTER", "1001", "1002")
+    assert "protocollo diverso" in r["note"][0] and r["sollecito_stato"] == "inviata_a_mano"
+    # cambiano le fonti: la fotografia resta uguale
+    db.execute("UPDATE documento SET presente = 0")
+    db.execute("DELETE FROM referente")
+    assert admin.get(f"/api/monitoraggi/{mese}").get_json()["fotografia"]["righe"][0]["sol_protocollo"] == "1001"
+    assert [e["azione"] for e in f["eventi"]] == ["chiuso", "creato"]
+
+
+def test_chiuso_non_si_modifica_finche_non_si_riapre(ambiente, db, monkeypatch):
+    inviati = []
+    _configura_posta(monkeypatch, inviati)
+    admin, mese = _mese_con_dati(ambiente, db)
+    admin.post(f"/api/monitoraggi/{mese}/chiudi")
+    assert admin.post(f"/api/monitoraggi/{mese}/chiudi").status_code == 409
+    assert admin.put(f"/api/monitoraggi/{mese}", json={"mese_dati": "2026-01"}).status_code == 409
+    assert admin.put(f"/api/monitoraggi/{mese}/solleciti/x", json={"inviata": True}).status_code == 409
+    assert admin.post(f"/api/monitoraggi/{mese}/solleciti/invia", json=_sollecito()).status_code == 409
+    assert admin.post(f"/api/monitoraggi/{mese}/email-compilazione/invia").status_code == 409
+    assert inviati == []
+    d = admin.post(f"/api/monitoraggi/{mese}/riapri").get_json()
+    assert d["stato"] == "aperto" and d["fotografia"]["totale"] == 1  # resta fino alla nuova chiusura
+    assert admin.put(f"/api/monitoraggi/{mese}", json={"mese_dati": "2026-04"}).status_code == 200
+    assert admin.post(f"/api/monitoraggi/{mese}/chiudi").get_json()["fotografia"]["totale"] == 1
+    assert [e["azione"] for e in admin.get(f"/api/monitoraggi/{mese}").get_json()["fotografia"]["eventi"]] == ["chiuso", "riaperto", "chiuso", "creato"]
+
+
+def test_lettura_vede_il_chiuso_ma_non_chiude(ambiente, db):
+    admin, mese = _mese_con_dati(ambiente, db)
+    admin.post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"})
+    c = ambiente("lettore.uno")
+    assert c.post(f"/api/monitoraggi/{mese}/chiudi").status_code == 403
+    admin.post(f"/api/monitoraggi/{mese}/chiudi")
+    assert c.get(f"/api/monitoraggi/{mese}").get_json()["fotografia"]["totale"] == 1
+    assert c.post(f"/api/monitoraggi/{mese}/riapri").status_code == 403
+
+
+def test_nessun_dato_dei_candidati_nella_fotografia(ambiente, db, monkeypatch):
+    admin, mese = _mese_con_dati(ambiente, db)
+    sid = db.execute("SELECT id FROM scheda WHERE id_esterno = 's1'").fetchone()[0]
+    monkeypatch.setattr(punteggi, "_candidati", {sid: {"candidati": [
+        {"cognome": "Rossi", "nome": "Mario", "codice_fiscale": "RSSMRA80A01H501U", "esito": "V"}]}})
+    admin.post(f"/api/monitoraggi/{mese}/chiudi")
+    dump = "\n".join(str(tuple(r)) for t in ("monitoraggio_riga", "monitoraggio_punteggi", "monitoraggio_fonte", "monitoraggio_evento")
+                     for r in db.execute(f"SELECT * FROM {t}"))
+    assert "Rossi" not in dump and "RSSMRA" not in dump
+
+
+def test_aggiornamento_da_uno_schema_precedente(tmp_path, monkeypatch):
+    import sqlite3
+    from monitoraggio import config, db as dbmod
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    c = sqlite3.connect(config.db_path())
+    c.executescript("CREATE TABLE schema_version(versione INTEGER); INSERT INTO schema_version VALUES (8);"
+                    "CREATE TABLE monitoraggio_mese (mese TEXT PRIMARY KEY, mese_dati TEXT NOT NULL, link_scorrimenti TEXT, "
+                    "link_graduatorie TEXT, oggetto TEXT, testo TEXT, creato_da TEXT, creato_il TEXT NOT NULL);"
+                    "INSERT INTO monitoraggio_mese (mese, mese_dati, creato_il) VALUES ('2026-10', '2026-09', 'x');")
+    c.commit()
+    c.close()
+    conn = dbmod.connetti()
+    dbmod.inizializza(conn)
+    assert conn.execute("SELECT stato FROM monitoraggio_mese").fetchone()["stato"] == "aperto"  # i dati restano
+    assert conn.execute("SELECT versione FROM schema_version").fetchone()[0] == dbmod.SCHEMA_VERSION
+
+
+def test_avviso_se_i_dati_non_sono_su_un_volume(tmp_path, monkeypatch):
+    from monitoraggio import config
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(config.os.path, "ismount", lambda p: False)
+    assert "volume" in config.avviso_dati_non_persistenti()
+    monkeypatch.setattr(config.os.path, "ismount", lambda p: True)
+    assert config.avviso_dati_non_persistenti() is None

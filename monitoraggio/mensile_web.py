@@ -26,7 +26,8 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
                 "file_scorrimenti": excel_mese.nome_scorrimenti(m["mese"]), "file_graduatorie": excel_mese.nome_graduatorie(m["mese"]),
                 "graduatorie_senza_elenco": excel_mese.graduatorie_senza_elenco(conn, dal, al),
                 "email": mensile.email_compilazione(conn, m), "posta": posta.stato(),
-                "solleciti": list(mensile.solleciti(conn, m["mese"]).values()), "invii": mensile.invii(conn, m["mese"])}
+                "solleciti": list(mensile.solleciti(conn, m["mese"]).values()), "invii": mensile.invii(conn, m["mese"]),
+                "fotografia": mensile.fotografia(conn, m["mese"])}
 
     def _trova(conn, mese: str):
         return mensile.leggi(conn, mese) if mensile.mese_valido(mese) else None
@@ -136,10 +137,39 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         try:
             if not _trova(conn, mese):
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
+            mensile.verifica_aperto(conn, mese)
             m = mensile.aggiorna(conn, mese, request.get_json(silent=True) or {})
             return jsonify(_dati_mese(conn, m))
+        except mensile.MeseChiuso as e:
+            return jsonify({"error": str(e)}), 409
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
+        finally:
+            conn.close()
+
+    @bp.post("/api/monitoraggi/<mese>/chiudi")
+    @protezione
+    @solo_admin
+    def api_monitoraggio_chiudi(mese: str):
+        conn = _conn()
+        try:
+            if not _trova(conn, mese):
+                return jsonify({"error": "Monitoraggio non trovato"}), 404
+            return jsonify(_dati_mese(conn, mensile.chiudi(conn, mese, utente_corrente())))
+        except mensile.MeseChiuso as e:
+            return jsonify({"error": str(e)}), 409
+        finally:
+            conn.close()
+
+    @bp.post("/api/monitoraggi/<mese>/riapri")
+    @protezione
+    @solo_admin
+    def api_monitoraggio_riapri(mese: str):
+        conn = _conn()
+        try:
+            if not _trova(conn, mese):
+                return jsonify({"error": "Monitoraggio non trovato"}), 404
+            return jsonify(_dati_mese(conn, mensile.riapri(conn, mese, utente_corrente())))
         finally:
             conn.close()
 
@@ -196,10 +226,13 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             m = _trova(conn, mese)
             if not m:
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
+            mensile.verifica_aperto(conn, mese)
             email = mensile.email_compilazione(conn, m)
             if email["mancanti"]:
                 return jsonify({"error": "Manca: " + ", ".join(email["mancanti"])}), 400
             return _invia(conn, "compilazione", mese, None, email["destinatari"], email["oggetto"], email["corpo"])
+        except mensile.MeseChiuso as e:
+            return jsonify({"error": str(e)}), 409
         finally:
             conn.close()
 
@@ -224,7 +257,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             if not m:
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
             return jsonify({"etichetta": mensile.etichetta(mese), "etichetta_dati": mensile.etichetta(m["mese_dati"]),
-                            "mese_dati": m["mese_dati"], "solleciti": mensile.solleciti(conn, mese), "posta": posta.stato()})
+                            "stato": m["stato"], "mese_dati": m["mese_dati"], "solleciti": mensile.solleciti(conn, mese), "posta": posta.stato()})
         finally:
             conn.close()
 
@@ -240,6 +273,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         try:
             if not _trova(conn, mese):
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
+            mensile.verifica_aperto(conn, mese)
             if not numero or not oggetto or not testo.strip():
                 return jsonify({"error": "Bando, oggetto e testo sono obbligatori"}), 400
             if not destinatari:
@@ -252,6 +286,8 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             if numero in mensile.solleciti(conn, mese) and not corpo.get("conferma"):
                 return jsonify({"error": "Sollecito già segnato come inviato", "gia_inviato": True}), 409
             return _invia(conn, "sollecito", mese, numero, destinatari, oggetto, testo)
+        except mensile.MeseChiuso as e:
+            return jsonify({"error": str(e)}), 409
         finally:
             conn.close()
 
@@ -264,11 +300,14 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         try:
             if not _trova(conn, mese):
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
+            mensile.verifica_aperto(conn, mese)
             if inviata:
                 mensile.segna(conn, mese, numero, "inviata_a_mano", utente_corrente())
             else:
                 mensile.togli_segno(conn, mese, numero)
             return jsonify({"ok": True, "solleciti": mensile.solleciti(conn, mese)})
+        except mensile.MeseChiuso as e:
+            return jsonify({"error": str(e)}), 409
         finally:
             conn.close()
 

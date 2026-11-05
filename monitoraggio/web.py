@@ -229,7 +229,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
                    pagine_disponibili: set[str] | None = None, token_utente=lambda: None,
                    login_url: str | None = None, logout_url: str | None = None,
                    login_sol: bool = False, sessione_sol=None, solo_admin=lambda f: f,
-                   ruolo_corrente=lambda: "amministratore") -> Blueprint:
+                   ruolo_corrente=lambda: "amministratore", avviso_dati=lambda: None) -> Blueprint:
     """`token_utente()`: token SSO valido dell'utente collegato (rinnovato se serve) o None.
     `login_sol`: abilita il collegamento a Selezioni Online con finestra di login (solo prova locale);
     altrimenti le chiamate a SOL usano il ticket ottenuto dal token SSO dell'utente.
@@ -426,7 +426,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
         ruolo = ruolo_corrente()
         gruppi = [{**g, "voci": [v for v in g["voci"] if not v["solo_admin"] or ruolo == "amministratore"]}
                   for g in menu(pagine_disponibili)]
-        return jsonify({"gruppi": gruppi, "utente": utente_corrente(), "ruolo": ruolo,
+        return jsonify({"gruppi": gruppi, "utente": utente_corrente(), "ruolo": ruolo, "avviso_dati": avviso_dati(),
                         "login": login_url, "logout": logout_url})
 
     @bp.post("/api/raccolta/avvia")

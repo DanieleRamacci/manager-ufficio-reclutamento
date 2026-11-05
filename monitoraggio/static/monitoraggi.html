@@ -39,9 +39,9 @@
           <div class="errore" id="errore" role="alert" hidden></div>
         </section>
         <section><h2>Monitoraggi creati</h2><div class="scroll"><table>
-          <thead><tr><th>Mese</th><th>Dati di</th><th>Solleciti segnati</th><th>Creato</th></tr></thead><tbody>
-          ${monitoraggi.map(m => `<tr><td><a href="/monitoraggio/mensili/${esc(m.mese)}">${esc(m.etichetta)}</a></td><td>${esc(m.etichetta_dati)}</td><td>${m.solleciti_inviati}</td><td>${esc(m.creato_da)} ${ora(m.creato_il)}</td></tr>`).join("")
-            || `<tr><td colspan="4" class="muted">Nessun monitoraggio creato.</td></tr>`}
+          <thead><tr><th>Mese</th><th>Dati di</th><th>Stato</th><th>Solleciti segnati</th><th>Creato</th></tr></thead><tbody>
+          ${monitoraggi.map(m => `<tr><td><a href="/monitoraggio/mensili/${esc(m.mese)}">${esc(m.etichetta)}</a></td><td>${esc(m.etichetta_dati)}</td><td>${m.stato === "chiuso" ? `Chiuso il ${ora(m.chiuso_il)}` : "Aperto"}</td><td>${m.solleciti_inviati}</td><td>${esc(m.creato_da)} ${ora(m.creato_il)}</td></tr>`).join("")
+            || `<tr><td colspan="5" class="muted">Nessun monitoraggio creato.</td></tr>`}
           </tbody></table></div></section>`;
       $("crea").onsubmit = async (e) => {
         e.preventDefault();
@@ -53,6 +53,7 @@
     }
 
     function disegna(m) {
+      if (m.stato === "chiuso") return disegnaChiuso(m);
       const e = m.email, p = m.posta;
       const opzioniMesi = [];
       const [anno, numero] = m.mese.split("-").map(Number);
@@ -66,6 +67,11 @@
         <h1>Monitoraggio di ${esc(m.etichetta)}</h1>
         <p class="muted">Dati di ${esc(m.etichetta_dati)} · creato da ${esc(m.creato_da)} il ${ora(m.creato_il)}</p>
         ${p.prova ? `<div class="avviso">Modalità di prova: le email vanno solo a ${esc(p.prova)}.</div>` : ""}
+        <section class="solo-admin">
+          <h2>Chiusura</h2>
+          <p class="muted small">Quando hai finito, chiudi il monitoraggio: atti, difformità, solleciti e conteggi dei punteggi di ${esc(m.etichetta_dati)} vengono salvati nel database così come sono ora e non cambiano più. Lancia prima un aggiornamento dei dati e la verifica dei punteggi.</p>
+          <div class="azioni"><button class="primario" type="button" id="chiudi-monitoraggio">Chiudi il monitoraggio</button></div>
+        </section>
         <section>
           <h2>Vista e difformità</h2>
           <div class="azioni">
@@ -133,6 +139,10 @@
       const azione = (id, fn) => { const b = $(id); if (b) b.onclick = async () => { try { errore(); await fn(); } catch (err) { errore(err.message); } }; };
       const aggiorna = async (dati) => disegna(await chiama(`/api/monitoraggi/${m.mese}`, jsonPost("PUT", dati)));
       $("mese-dati").onchange = () => aggiorna({ mese_dati: $("mese-dati").value }).catch(err => errore(err.message));
+      azione("chiudi-monitoraggio", async () => {
+        if (!confirm(`Chiudere il monitoraggio di ${m.etichetta}?\n\nI dati vengono salvati così come sono ora.`)) return;
+        disegna(await chiama(`/api/monitoraggi/${m.mese}/chiudi`, { method: "POST" }));
+      });
       azione("salva-link", () => aggiorna({ link_scorrimenti: $("link-scorrimenti").value, link_graduatorie: $("link-graduatorie").value }));
       azione("salva-destinatari", async () => { await chiama("/api/impostazioni/email", jsonPost("PUT", { destinatari: $("destinatari").value })); await dettaglio(); });
       azione("salva-mese", () => aggiorna({ oggetto: $("modello-oggetto").value, testo: $("modello-testo").value }));
@@ -153,6 +163,40 @@
         await dettaglio();
         $("esito").textContent = r.prova ? "Inviata in prova." : "Inviata.";
       });
+    }
+    function statoCella(stato, protocollo) {
+      return `${esc((stato || "").replaceAll("_", " "))}${protocollo ? `<div class="muted small">${esc(protocollo)}</div>` : ""}`;
+    }
+    function disegnaChiuso(m) {
+      const f = m.fotografia;
+      const tabella = (righe) => `<div class="scroll"><table>
+        <thead><tr><th>Data</th><th>Codice</th><th>Atto</th><th>Protocollo</th><th>SOL</th><th>URP</th><th>File segreteria</th><th>RdP</th><th>Note</th><th>Sollecito</th></tr></thead><tbody>
+        ${righe.map(r => `<tr><td>${esc((r.data || "").split("-").reverse().join("/"))}</td><td>${esc(r.codice || r.numero_bando)}</td><td>${esc(r.atto)}</td><td>${esc(r.protocollo)}</td>
+          <td>${statoCella(r.sol_stato, r.sol_protocollo)}</td><td>${statoCella(r.urp_stato, r.urp_protocollo)}</td><td>${statoCella(r.segreteria_stato, r.segreteria_protocollo)}</td>
+          <td>${r.rdp.map(p => esc([p.nome, p.cognome].filter(Boolean).join(" "))).join("<br>")}</td><td>${r.note.map(esc).join("<br>")}</td>
+          <td>${r.sollecito_stato ? `${r.sollecito_stato === "inviata" ? "Inviata" : "Inviata a mano"} ${ora(r.sollecito_quando)}` : ""}</td></tr>`).join("")
+          || `<tr><td colspan="10" class="muted">Nessuna riga.</td></tr>`}
+        </tbody></table></div>`;
+      $("contenuto").innerHTML = `
+        <p class="small"><a href="/monitoraggio/mensili">← Monitoraggi mensili</a></p>
+        <h1>Monitoraggio di ${esc(m.etichetta)}</h1>
+        <div class="ok">Chiuso da ${esc(m.chiuso_da)} il ${ora(m.chiuso_il)}: questi dati sono salvati e non cambiano più.</div>
+        <p class="muted">Dati di ${esc(m.etichetta_dati)} · ${f.fonti.map(x => `ultima raccolta ${esc(x.fonte.toUpperCase())}: ${x.ultima_raccolta ? ora(x.ultima_raccolta) : "mai"}`).join(" · ")}</p>
+        <section><h2>Difformità: ${f.difformi} su ${f.totale} atti, solleciti segnati su ${f.inviate}</h2>${tabella(f.righe.filter(r => r.difforme))}</section>
+        <details><summary>Tutti gli atti del mese (${f.totale})</summary>${tabella(f.righe)}</details>
+        <section style="margin-top:14px"><h2>Punteggi al momento della chiusura (${f.punteggi.length})</h2><div class="scroll"><table>
+          <thead><tr><th>Codice</th><th>Protocollo</th><th>Domande</th><th>Con punteggi</th><th>V</th><th>I</th><th>S</th><th>Senza protocollo</th><th>Esito</th><th>Verificato il</th></tr></thead><tbody>
+          ${f.punteggi.map(p => `<tr><td>${esc(p.codice)}</td><td>${esc(p.protocollo)}</td><td>${esc(p.domande)}</td><td>${esc(p.con_punteggi)}</td><td>${esc(p.vincitori)}</td><td>${esc(p.idonei)}</td><td>${esc(p.scorrimento)}</td><td>${esc(p.senza_protocollo)}</td><td>${esc(p.esito)}</td><td>${ora(p.verificato_il)}</td></tr>`).join("")
+            || `<tr><td colspan="10" class="muted">Nessuna verifica salvata.</td></tr>`}
+          </tbody></table></div></section>
+        <section><h2>Storico</h2>${f.eventi.map(e => `<div class="small">${ora(e.quando)}: ${esc(e.azione)} da ${esc(e.autore)}</div>`).join("")}
+          <div class="azioni solo-admin"><button type="button" id="riapri">Riapri il monitoraggio</button></div>
+          <div class="errore" id="errore" role="alert" hidden></div></section>`;
+      $("riapri").onclick = async () => {
+        if (!confirm("Riaprire il monitoraggio? La nuova chiusura sostituirà i dati salvati.")) return;
+        try { disegna(await chiama(`/api/monitoraggi/${m.mese}/riapri`, { method: "POST" })); }
+        catch (err) { $("errore").hidden = false; $("errore").textContent = err.message; }
+      };
     }
     const dettaglio = async () => disegna(await chiama(`/api/monitoraggi/${meseScelto}`));
     (meseScelto ? dettaglio() : elenco()).catch(err => { $("contenuto").innerHTML = `<div class="errore" role="alert">${esc(err.message)}</div>`; });

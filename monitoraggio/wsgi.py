@@ -1,4 +1,5 @@
 """WSGI entrypoint for the Coolify deployment."""
+import logging
 import os
 
 from dotenv import load_dotenv
@@ -54,7 +55,10 @@ def crea_app() -> Flask:
 
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
     app.register_blueprint(blueprint_accesso)
+    if config.avviso_dati_non_persistenti():
+        logging.getLogger(__name__).error(config.avviso_dati_non_persistenti())
     app.register_blueprint(crea_blueprint(protezione=protezione, solo_admin=solo_admin, ruolo_corrente=utenti.ruolo_corrente,
+                                          avviso_dati=config.avviso_dati_non_persistenti,
                                           login_url="/login?next=/monitoraggio", login_sol=False, **opzioni))
     app.register_blueprint(crea_blueprint_pagine_esistenti(protezione=protezione, solo_admin=solo_admin))
     app.register_blueprint(crea_blueprint_mensile(protezione=protezione, solo_admin=solo_admin,

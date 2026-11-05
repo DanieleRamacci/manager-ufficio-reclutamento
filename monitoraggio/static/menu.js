@@ -116,6 +116,13 @@
       const info = await r.json();
       if (info.ruolo === "lettura") document.documentElement.classList.add("sola-lettura");
       disegna(info.gruppi, info);
+      if (info.avviso_dati) {
+        const barra = document.createElement("div");
+        barra.setAttribute("role", "alert");
+        barra.style.cssText = "background:#b3261e;color:#fff;padding:10px 16px;font:600 14px system-ui,sans-serif";
+        barra.textContent = info.avviso_dati;
+        document.body.insertBefore(barra, document.body.firstChild);
+      }
       aggiornaStato();
       aggiornaSol();
     } catch (e) { /* senza API il menu non si mostra, la pagina resta usabile */ }

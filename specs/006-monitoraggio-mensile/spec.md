@@ -96,6 +96,23 @@ Nella pagina del monitoraggio l'amministratore vede le difformità del periodo p
 
 ---
 
+### User Story 6 - Chiudere il monitoraggio (Priority: P1)
+
+Finito il lavoro del mese, l'amministratore chiude il monitoraggio. Atti, difformità, solleciti e conteggi dei punteggi vengono salvati nel database e non cambiano più, anche se cambiano le fonti.
+
+**Why this priority**: Un monitoraggio concluso è un documento di lavoro: deve restare consultabile così com'era e sopravvivere a ogni aggiornamento dell'applicazione.
+
+**Independent Test**: Chiudere un mese, modificare i dati raccolti, rifare il deploy e verificare che la pagina mostri gli stessi dati e che invii e modifiche siano rifiutati.
+
+**Acceptance Scenarios**:
+
+1. **Given** un monitoraggio aperto, **When** l'amministratore lo chiude, **Then** tutte le righe del periodo con stati, protocolli, RdP, rilievi e solleciti vengono salvate in un'unica operazione, senza dati dei candidati.
+2. **Given** un monitoraggio chiuso, **When** cambiano le fonti, **Then** la sua pagina mostra ancora i dati della chiusura.
+3. **Given** un monitoraggio chiuso, **When** si tenta di modificarlo o di inviare email, **Then** l'operazione viene rifiutata finché non viene riaperto; apertura e chiusura restano registrate.
+4. **Given** un server senza volume persistente, **When** si apre il sito, **Then** ogni pagina mostra un avviso che i dati andranno persi al prossimo deploy.
+
+---
+
 ### Edge Cases
 
 - Servizio email non configurato: la pagina lo segnala, restano copia del testo e spunta manuale.
@@ -132,6 +149,9 @@ Nella pagina del monitoraggio l'amministratore vede le difformità del periodo p
 - **FR-020**: La pagina di accesso MUST offrire il pulsante "Accedi come visualizzatore autorizzato": chi è autorizzato riceve nella propria casella un link monouso valido 15 minuti ed entra in sola lettura, anche se il suo ruolo è amministratore. Il sistema MUST NOT rivelare chi è autorizzato e MUST inviare il link solo all'indirizzo registrato.
 
 - **FR-021**: Le viste delle graduatorie e degli scorrimenti del mese MUST permettere di filtrare per tipologia monitorata: tempo indeterminato (su Selezioni Online concorsi pubblici, con reclutamento speciale e categorie protette) e mobilità con comandi. Le righe senza tipologia nota MUST restare visibili.
+
+- **FR-022**: Gli amministratori MUST poter chiudere e riaprire un monitoraggio; la chiusura MUST salvare nel database una fotografia immutabile del mese, senza dati dei candidati, e MUST impedire modifiche e invii finché resta chiuso.
+- **FR-023**: Il sistema MUST avvisare in modo evidente se i dati non sono su un volume persistente.
 
 ### Key Entities
 
