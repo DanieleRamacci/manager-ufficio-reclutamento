@@ -1,5 +1,6 @@
 """Monitoraggio mensile, ruoli, Excel e invio delle email (spec 006)."""
 import io
+import time
 from datetime import date
 
 import openpyxl
@@ -8,6 +9,7 @@ from flask import Flask, session
 from flask_session import Session
 
 from monitoraggio import excel_mese, mensile, posta, punteggi, utenti
+from monitoraggio import web as web_modulo
 from monitoraggio.mensile_web import crea_blueprint_mensile
 from monitoraggio.web import crea_blueprint, crea_blueprint_pagine_esistenti
 from tests.test_collegamento import doc, salva, scheda
@@ -92,9 +94,10 @@ def test_lettura_vede_ma_non_modifica(ambiente, db):
 def test_voce_utenti_solo_per_amministratori(ambiente):
     ambiente().post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"})
     voci = lambda c: {v["titolo"] for g in c.get("/api/menu").get_json()["gruppi"] for v in g["voci"]}  # noqa: E731
-    assert "Utenti" in voci(ambiente())
+    assert "Impostazioni" in voci(ambiente())
     voci_lettura = voci(ambiente("lettore.uno"))
-    assert "Utenti" not in voci_lettura and "Monitoraggi mensili" in voci_lettura
+    assert "Impostazioni" not in voci_lettura and "Monitoraggi mensili" in voci_lettura
+    assert ambiente().get("/monitoraggio/utenti").headers["Location"] == "/monitoraggio/impostazioni#utenti"
 
 
 def test_togliere_ha_effetto_alla_richiesta_successiva(ambiente, db):
@@ -667,3 +670,102 @@ def test_impostazioni_solo_per_amministratori_e_voce_di_menu(ambiente):
     assert c.put("/api/impostazioni/posta", json={"attiva": False}).status_code == 403
     voci = lambda x: {v["titolo"] for g in x.get("/api/menu").get_json()["gruppi"] for v in g["voci"]}  # noqa: E731
     assert "Impostazioni" in voci(admin) and "Impostazioni" not in voci(c)
+
+
+# --- aggiornamenti e avviso
+
+def test_orario_e_giorno_dalle_impostazioni(ambiente, monkeypatch):
+    from datetime import datetime
+    from monitoraggio import impostazioni, scheduler, web
+    monkeypatch.setenv("RACCOLTA_ORARIO", "02:30")
+    admin = ambiente()
+    d = admin.get("/api/impostazioni/aggiornamenti").get_json()
+    assert d["orario"] == "02:30" and d["giorno_completa"] == "dom" and d["avviso_modo"] == "completi"
+    d = admin.put("/api/impostazioni/aggiornamenti", json={"orario": "21:15", "giorno_completa": "lun"}).get_json()
+    assert d["orario"] == "21:15" and d["giorno_completa"] == "lun"
+    assert impostazioni.orario_raccolta() == (21, 15)
+    ora = datetime(2026, 11, 5, 20, 0).astimezone()
+    assert web.prossima_notturna(ora).startswith("2026-11-05T21:15")
+    assert scheduler.modalita(datetime(2026, 11, 9)) == "completa" and scheduler.modalita(datetime(2026, 11, 8)) == "notturna"
+    for sbagliato in ({"orario": "25:00"}, {"orario": "mattina"}, {"giorno_completa": "xyz"}, {"avviso_modo": "boh"},
+                      {"avviso_indirizzo": "sbagliato"}):
+        assert admin.put("/api/impostazioni/aggiornamenti", json=sbagliato).status_code == 400, sbagliato
+
+
+def test_storico_degli_aggiornamenti(ambiente, db):
+    from monitoraggio import raccolta
+    rid = raccolta.avvia(db, "urp", "completa", "pianificata")
+    raccolta.chiudi(db, rid, "completata", {"bandi_trovati": 241, "documenti_trovati": 2118})
+    d = ambiente().get("/api/impostazioni/aggiornamenti").get_json()
+    voce = d["storico"][0]
+    assert (voce["fonte"], voce["modalita"], voce["esito"], voce["errori"]) == ("urp", "completa", "completata", 0)
+    assert voce["fine"] and d["ultimo_completo"] == voce["fine"]
+
+
+def test_impostazioni_aggiornamenti_solo_amministratori(ambiente):
+    ambiente().post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"})
+    c = ambiente("lettore.uno")
+    assert c.get("/api/impostazioni/aggiornamenti").status_code == 403
+    assert c.put("/api/impostazioni/aggiornamenti", json={"orario": "01:00"}).status_code == 403
+
+
+def _esiti(esito="completata"):
+    return {"urp": {"esito": esito, "bandi_trovati": 241, "documenti_trovati": 2118, "errori": 0},
+            "sol": {"esito": "completata", "bandi_trovati": 1203, "documenti_trovati": 900, "errori": 0}}
+
+
+def test_avviso_solo_dopo_il_completo_all_indirizzo_scelto(ambiente, monkeypatch):
+    from monitoraggio import notifiche
+    inviati = []
+    _configura_posta(monkeypatch, inviati, MAIL_PROVA="prova@cnr.it")  # anche con le email di prova attive
+    ambiente().put("/api/impostazioni/aggiornamenti", json={"avviso_indirizzo": "admin@cnr.it", "avviso_modo": "completi"})
+    assert notifiche.dopo_aggiornamento(_esiti(), "notturna") is False and inviati == []
+    assert notifiche.dopo_aggiornamento(_esiti(), "completa") is True
+    m = inviati[0]
+    assert m["To"] == "admin@cnr.it" and m["Subject"] == "Monitoraggio: aggiornamento completo completato"
+    assert "URP: completata, 241 bandi, 2118 documenti" in m.get_content() and "#aggiornamenti" in m.get_content()
+
+
+def test_avviso_per_tutti_mai_e_quando_non_riesce(ambiente, monkeypatch):
+    from monitoraggio import notifiche
+    inviati = []
+    _configura_posta(monkeypatch, inviati)
+    admin = ambiente()
+    admin.put("/api/impostazioni/aggiornamenti", json={"avviso_indirizzo": "admin@cnr.it", "avviso_modo": "tutti"})
+    assert notifiche.dopo_aggiornamento(_esiti("fallita"), "notturna") is True
+    assert "NON riuscito" in inviati[0]["Subject"]
+    admin.put("/api/impostazioni/aggiornamenti", json={"avviso_modo": "mai"})
+    assert notifiche.dopo_aggiornamento(_esiti(), "completa") is False and len(inviati) == 1
+
+
+def test_avviso_non_blocca_la_raccolta(ambiente, monkeypatch):
+    from monitoraggio import notifiche
+    _configura_posta(monkeypatch, [])
+    ambiente().put("/api/impostazioni/aggiornamenti", json={"avviso_indirizzo": "admin@cnr.it", "avviso_modo": "tutti"})
+
+    def rotto(*a, **k):
+        raise OSError("rete")
+    monkeypatch.setattr(posta.smtplib, "SMTP", rotto)
+    assert notifiche.dopo_aggiornamento(_esiti(), "completa") is False
+
+
+def test_lo_scheduler_avvisa_a_fine_ciclo(ambiente, monkeypatch):
+    from monitoraggio import scheduler
+    avvisi = []
+    monkeypatch.setattr(scheduler, "raccogli", lambda conn, f, **k: {"esito": "completata", "fonte": f})
+    monkeypatch.setattr(scheduler.notifiche, "dopo_aggiornamento", lambda e, m: avvisi.append((sorted(e), m)))
+    scheduler.esegui(scheduler.FONTI, "completa", "pianificata")
+    assert avvisi == [(["sol", "urp"], "completa")]
+
+
+def test_la_raccolta_dalla_pagina_avvisa_a_fine_lavoro(ambiente, monkeypatch):
+    avvisi = []
+    monkeypatch.setattr(web_modulo.notifiche, "dopo_aggiornamento", lambda e, m: avvisi.append((sorted(e), m)))
+    monkeypatch.setattr(web_modulo, "raccogli", lambda conn, f, **k: {"esito": "completata", "fonte": f})
+    r = ambiente().post("/api/raccolta/avvia", json={"fonti": ["urp", "sol"], "completa": True})
+    assert r.status_code == 202
+    for _ in range(100):
+        if avvisi:
+            break
+        time.sleep(0.02)
+    assert avvisi == [(["sol", "urp"], "completa")]

@@ -154,6 +154,10 @@ Finito il lavoro del mese, l'amministratore chiude il monitoraggio. Atti, diffor
 
 - **FR-024**: Gli amministratori MUST poter generare, per un monitoraggio chiuso, una nuova versione dai dati attuali, con un motivo facoltativo e senza riaprirlo. Ogni versione MUST restare consultabile con i suoi conteggi, e il sistema MUST segnalare se dopo l'ultima versione ci sono state raccolte o verifiche dei punteggi.
 
+- **FR-025**: La pagina Impostazioni MUST riunire email, utenti e aggiornamenti.
+- **FR-026**: Gli amministratori MUST poter vedere quando è stato completato ogni aggiornamento, con esito e conteggi, e MUST poter scegliere l'orario di quello giornaliero e il giorno di quello completo.
+- **FR-027**: Il sistema MUST poter avvisare via email l'amministratore alla fine di un aggiornamento (solo i completi, tutti, oppure mai), segnalando anche quelli non riusciti; l'avviso arriva sempre all'indirizzo scelto, anche con le email di prova attive, e contiene solo conteggi.
+
 ### Key Entities
 
 - **Utente**: nome utente, ruolo, email facoltativa, attivo, autore e data dell'ultima modifica.

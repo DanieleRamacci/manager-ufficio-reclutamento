@@ -14,4 +14,5 @@
 - [X] T013 [US6] Chiusura e riapertura con fotografia nel database in monitoraggio/mensile.py; avviso per il volume mancante
 - [X] T014 [US6] Versioni del monitoraggio chiuso, con migrazione delle fotografie esistenti
 - [X] T015 [US4] Pagina Impostazioni con la spunta delle email di prova in monitoraggio/static/impostazioni.html
+- [X] T016 Impostazioni con utenti, orari, storico degli aggiornamenti e avviso via email
 - [ ] T011 Verifica manuale nell'app in esecuzione e invio reale dal server di produzione

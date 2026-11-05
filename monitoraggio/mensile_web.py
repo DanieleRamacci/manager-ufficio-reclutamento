@@ -2,9 +2,9 @@
 import io
 from pathlib import Path
 
-from flask import Blueprint, jsonify, request, send_file, send_from_directory
+from flask import Blueprint, jsonify, redirect, request, send_file, send_from_directory
 
-from . import db, excel_mese, mensile, posta, utenti
+from . import db, excel_mese, impostazioni, mensile, posta, utenti
 
 STATIC = Path(__file__).resolve().parent / "static"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -69,11 +69,27 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             return jsonify({"error": str(e)}), 400
         return jsonify({**posta.stato(), "prova_impostazioni": posta.impostazioni_prova()})
 
+    @bp.get("/api/impostazioni/aggiornamenti")
+    @protezione
+    @solo_admin
+    def api_impostazioni_aggiornamenti():
+        return jsonify(impostazioni.stato_aggiornamenti())
+
+    @bp.put("/api/impostazioni/aggiornamenti")
+    @protezione
+    @solo_admin
+    def api_impostazioni_aggiornamenti_salva():
+        try:
+            impostazioni.salva_aggiornamenti(request.get_json(silent=True) or {}, utente_corrente())
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify(impostazioni.stato_aggiornamenti())
+
     @bp.get("/monitoraggio/utenti")
     @protezione
     @solo_admin
     def pagina_utenti():
-        return send_from_directory(STATIC, "utenti.html")
+        return redirect("/monitoraggio/impostazioni#utenti")
 
     # --- utenti
     @bp.get("/api/utenti")

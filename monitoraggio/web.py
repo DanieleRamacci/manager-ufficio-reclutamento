@@ -14,7 +14,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, send_from_directory
 from werkzeug.utils import secure_filename
 
-from . import accessibilita, atti, collegamento, compat, config, db, punteggi, referenti, segreteria, sol_sessione
+from . import accessibilita, atti, collegamento, compat, config, db, impostazioni, notifiche, punteggi, referenti, segreteria, sol_sessione
 
 # esito dell'ultima verifica dei punteggi (solo conteggi, in memoria)
 ULTIMA_VERIFICA: dict = {}
@@ -34,7 +34,6 @@ MENU = [
         {"titolo": "File segreteria", "url": "/monitoraggio/segreteria", "route": True},
         {"titolo": "File segreteria: vista del file", "url": "/monitoraggio/segreteria/file", "route": True},
         {"titolo": "Report del mese", "url": "/report-mese.html", "pagina": "report-mese.html"},
-        {"titolo": "Utenti", "url": "/monitoraggio/utenti", "route": True, "solo_admin": True},
         {"titolo": "Impostazioni", "url": "/monitoraggio/impostazioni", "route": True, "solo_admin": True},
     ]},
     {"gruppo": "Controlli URP", "voci": [
@@ -83,7 +82,7 @@ def prossima_notturna(ora: datetime | None = None) -> str | None:
     if not config.raccolta_notturna():
         return None
     ora = ora or datetime.now().astimezone()
-    h, m = config.raccolta_orario()
+    h, m = impostazioni.orario_raccolta()
     prossima = ora.replace(hour=h, minute=m, second=0, microsecond=0)
     if prossima <= ora:
         prossima += timedelta(days=1)
@@ -94,12 +93,14 @@ def _esegui_in_background(fonti: list[str], modalita: str, avviata_da: str | Non
     """Esegue le raccolte già registrate (ids) una dopo l'altra, con una connessione propria."""
     def lavoro():
         conn = _conn()
+        esiti = {}
         try:
             for fonte in fonti:
-                raccogli(conn, fonte, modalita=modalita, avviata_da=avviata_da, raccolta_id=ids[fonte],
-                         dopo_scrittura=lambda c, f: collegamento.collega(c))
+                esiti[fonte] = raccogli(conn, fonte, modalita=modalita, avviata_da=avviata_da, raccolta_id=ids[fonte],
+                                        dopo_scrittura=lambda c, f: collegamento.collega(c))
         finally:
             conn.close()
+        notifiche.dopo_aggiornamento(esiti, modalita)
     threading.Thread(target=lavoro, daemon=True, name="raccolta-manuale").start()
 
 
