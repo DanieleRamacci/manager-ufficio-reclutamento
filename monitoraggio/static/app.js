@@ -46,15 +46,14 @@ window.App = (() => {
   }
 
   // Cella fonte: presente, mancante, protocollo diverso, fuori periodo, non caricato.
+  const DOVE_FONTE = { sol: "Apri il bando su Selezioni Online", urp: "Apri il bando su URP", segreteria: "Apri nel file della segreteria" };
   function cellaFonte(riga, chiave) {
     const c = riga.fonti?.[chiave] || {};
-    if (c.stato === "presente") {
-      const diverso = riga.protocollo_diverso && c.protocollo && riga.protocollo && String(c.protocollo) !== String(riga.protocollo);
-      return `<td class="cella-fonte ${diverso ? "f-diverso" : "f-presente"}">${diverso ? "protocollo diverso" : "presente"}<small>${esc(c.protocollo || "")}</small></td>`;
-    }
-    if (c.stato === "mancante") return `<td class="cella-fonte f-mancante">mancante</td>`;
-    if (c.stato === "non_applicabile") return `<td class="cella-fonte f-na">fuori periodo</td>`;
-    return `<td class="cella-fonte f-nonprev">non caricato</td>`;
+    const diverso = c.stato === "presente" && riga.protocollo_diverso && c.protocollo && riga.protocollo && String(c.protocollo) !== String(riga.protocollo);
+    const [classe, testo] = diverso ? ["f-diverso", "protocollo diverso"] : c.stato === "presente" ? ["f-presente", "presente"]
+      : c.stato === "mancante" ? ["f-mancante", "mancante"] : c.stato === "non_applicabile" ? ["f-na", "fuori periodo"] : ["f-nonprev", "non caricato"];
+    const contenuto = `${testo}${c.stato === "presente" ? `<small>${esc(c.protocollo || "")}</small>` : ""}`;
+    return `<td class="cella-fonte ${classe}">${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener" title="${DOVE_FONTE[chiave]}">${contenuto}<span class="freccia"> ↗</span></a>` : contenuto}</td>`;
   }
 
   // RdP compatti: al massimo 2 nomi, poi "+N altri · email"; il clic apre i dettagli nella cella.

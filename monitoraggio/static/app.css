@@ -49,6 +49,10 @@ tr.difforme > td:first-child { box-shadow: inset 3px 0 0 #d6453a; } tr.in-regola
 .etichetta { display: inline-block; padding: 1px 6px; border-radius: 5px; font-size: 11.5px; background: var(--ko-bg); color: var(--ko); }
 .cella-fonte { text-align: center; font-size: 12px; font-weight: 600; min-width: 92px; }
 .cella-fonte small { display: block; font: 400 11.5px var(--mono); }
+.cella-fonte a { display: block; color: inherit; font-weight: inherit; text-decoration: none; }
+.cella-fonte a:hover { text-decoration: underline; }
+.cella-fonte:has(a):hover { outline: 2px solid var(--primary); outline-offset: -2px; }
+.cella-fonte .freccia { opacity: .6; font-weight: 400; }
 .f-presente { background: var(--ok-bg); color: var(--ok); } .f-mancante { background: var(--ko-bg); color: var(--ko); } .f-diverso { background: var(--warn-bg); color: var(--warn); }
 .f-na { color: var(--na); font-weight: 400; } .f-nonprev { color: #9aa1ab; font-weight: 400; }
 .rdp { font-size: 12.5px; min-width: 130px; max-width: 200px; } .rdp .nome { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

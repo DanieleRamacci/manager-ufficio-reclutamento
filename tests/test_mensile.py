@@ -1230,6 +1230,7 @@ def test_numero_di_gestione_stabile_e_nell_id(ambiente, db, monkeypatch):
     assert uno == mensile.numero_gestione(db, "367.479 CTER") and len(uno) == 4 and uno != mensile.numero_gestione(db, "altro codice")
     riga = admin.get(f"/api/monitoraggi/{mese}/atti").get_json()["righe"][0]
     assert riga["n_gestione"] == uno and admin.get(url + "/messaggio").get_json()["n_gestione"] == uno
+    assert riga["fonti"]["sol"]["url"] and riga["fonti"]["urp"]["url"]  # le celle del dettaglio portano a SOL e URP
     assert admin.post(url + "/invia", json={"modo": "prova"}).get_json()["id"] == f"MON-04.2026/367.479/{uno}"
     voce = admin.get(f"/api/comunicazioni?mese={mese}").get_json()["comunicazioni"][0]
     assert voce["n_gestione"] == uno
