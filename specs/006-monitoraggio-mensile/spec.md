@@ -153,11 +153,14 @@ Finito il lavoro del mese, l'amministratore chiude il monitoraggio. Atti, diffor
 - **FR-022**: Gli amministratori MUST poter chiudere e riaprire un monitoraggio; la chiusura MUST salvare nel database una fotografia immutabile del mese, senza dati dei candidati, e MUST impedire modifiche e invii finché resta chiuso.
 - **FR-023**: Il sistema MUST avvisare in modo evidente se i dati non sono su un volume persistente.
 
+- **FR-024**: Gli amministratori MUST poter generare, per un monitoraggio chiuso, una nuova versione dai dati attuali, con un motivo facoltativo e senza riaprirlo. Ogni versione MUST restare consultabile con i suoi conteggi, e il sistema MUST segnalare se dopo l'ultima versione ci sono state raccolte o verifiche dei punteggi.
+
 ### Key Entities
 
 - **Utente**: nome utente, ruolo, email facoltativa, attivo, autore e data dell'ultima modifica.
 - **Monitoraggio**: mese, periodo dei dati, link dei file condivisi, testo dell'email di richiesta, autore e data di creazione.
 - **Impostazioni email**: modello del testo e destinatari della richiesta di compilazione.
+- **Versione del monitoraggio**: mese, numero, autore, data, motivo; ogni versione ha le sue righe, i suoi punteggi e lo stato delle fonti.
 - **Sollecito**: monitoraggio, bando, stato (inviata, inviata a mano), autore, data, destinatari, oggetto, rilievi al momento dell'invio.
 - **Registro invii**: ogni tentativo di invio con esito e motivo dell'errore.
 

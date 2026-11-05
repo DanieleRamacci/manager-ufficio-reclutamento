@@ -19,7 +19,7 @@ def _conn():
 def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utente_corrente=lambda: None) -> Blueprint:
     bp = Blueprint("mensile", __name__)
 
-    def _dati_mese(conn, m: dict) -> dict:
+    def _dati_mese(conn, m: dict, versione: int | None = None) -> dict:
         dal, al = mensile.periodo_dati(m)
         return {**m, "etichetta": mensile.etichetta(m["mese"]), "etichetta_dati": mensile.etichetta(m["mese_dati"]),
                 "dal": dal, "al": al, "link_vista": mensile.link_vista(m),
@@ -27,7 +27,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
                 "graduatorie_senza_elenco": excel_mese.graduatorie_senza_elenco(conn, dal, al),
                 "email": mensile.email_compilazione(conn, m), "posta": posta.stato(),
                 "solleciti": list(mensile.solleciti(conn, m["mese"]).values()), "invii": mensile.invii(conn, m["mese"]),
-                "fotografia": mensile.fotografia(conn, m["mese"])}
+                "fotografia": mensile.fotografia(conn, m["mese"], versione)}
 
     def _trova(conn, mese: str):
         return mensile.leggi(conn, mese) if mensile.mese_valido(mese) else None
@@ -125,7 +125,8 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         conn = _conn()
         try:
             m = _trova(conn, mese)
-            return jsonify(_dati_mese(conn, m)) if m else (jsonify({"error": "Monitoraggio non trovato"}), 404)
+            versione = request.args.get("versione", type=int)
+            return jsonify(_dati_mese(conn, m, versione)) if m else (jsonify({"error": "Monitoraggio non trovato"}), 404)
         finally:
             conn.close()
 
@@ -157,6 +158,21 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
             return jsonify(_dati_mese(conn, mensile.chiudi(conn, mese, utente_corrente())))
         except mensile.MeseChiuso as e:
+            return jsonify({"error": str(e)}), 409
+        finally:
+            conn.close()
+
+    @bp.post("/api/monitoraggi/<mese>/nuova-versione")
+    @protezione
+    @solo_admin
+    def api_monitoraggio_nuova_versione(mese: str):
+        conn = _conn()
+        try:
+            if not _trova(conn, mese):
+                return jsonify({"error": "Monitoraggio non trovato"}), 404
+            motivo = (request.get_json(silent=True) or {}).get("motivo")
+            return jsonify(_dati_mese(conn, mensile.nuova_versione(conn, mese, utente_corrente(), motivo)))
+        except mensile.MeseAperto as e:
             return jsonify({"error": str(e)}), 409
         finally:
             conn.close()

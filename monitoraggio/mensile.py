@@ -42,6 +42,10 @@ class MeseChiuso(Exception):
     pass
 
 
+class MeseAperto(Exception):
+    pass
+
+
 def _adesso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -97,12 +101,11 @@ def verifica_aperto(conn, mese: str) -> None:
         raise MeseChiuso("Il monitoraggio è chiuso: riaprilo per modificarlo")
 
 
-def chiudi(conn, mese: str, autore: str | None) -> dict:
-    """Salva la fotografia del mese nel database, tutta insieme o per niente. Solo conteggi e stati:
-    i dati dei candidati restano fuori (constitution, Principio II)."""
+def _genera_versione(conn, mese: str, autore: str | None, motivo: str | None, azioni) -> int:
+    """Salva una nuova versione del mese, tutta insieme o per niente, senza toccare le precedenti. Solo
+    conteggi e stati: i dati dei candidati restano fuori (constitution, Principio II)."""
     from . import atti, compat, punteggi
 
-    verifica_aperto(conn, mese)
     monitoraggio = leggi(conn, mese)
     dal, al = periodo_dati(monitoraggio)
     righe = atti.elenco_atti(conn, dal, al)
@@ -110,57 +113,106 @@ def chiudi(conn, mese: str, autore: str | None) -> dict:
     conteggi = punteggi.elenco_periodo(conn, dal, al)
     conn.execute("BEGIN IMMEDIATE")
     try:
-        for tabella in ("monitoraggio_riga", "monitoraggio_punteggi", "monitoraggio_fonte"):
-            conn.execute(f"DELETE FROM {tabella} WHERE mese = ?", (mese,))
+        versione = conn.execute("SELECT COALESCE(MAX(versione), 0) + 1 FROM monitoraggio_versione WHERE mese = ?",
+                                (mese,)).fetchone()[0]
+        conn.execute("INSERT INTO monitoraggio_versione (mese, versione, creata_da, creata_il, motivo) VALUES (?, ?, ?, ?, ?)",
+                     (mese, versione, autore, _adesso(), (motivo or "").strip() or None))
         for r in righe:
             f = r["fonti"]
             inviato = inviati.get(r.get("codice") or "") or inviati.get(r.get("numero_bando") or "") or {}
             conn.execute(
-                "INSERT INTO monitoraggio_riga (mese, numero_bando, codice, titolo_bando, tipologia, atto, sottotipo, data, "
+                "INSERT INTO monitoraggio_riga (mese, versione, numero_bando, codice, titolo_bando, tipologia, atto, sottotipo, data, "
                 "protocollo, sol_stato, sol_protocollo, urp_stato, urp_protocollo, segreteria_stato, segreteria_protocollo, "
                 "rdp, note, difforme, sollecito_stato, sollecito_autore, sollecito_quando) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (mese, r.get("numero_bando"), r.get("codice"), r.get("titolo_bando"), r.get("tipologia"), r["atto"],
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (mese, versione, r.get("numero_bando"), r.get("codice"), r.get("titolo_bando"), r.get("tipologia"), r["atto"],
                  r.get("sottotipo"), r.get("data"), r.get("protocollo"), f["sol"].get("stato"), f["sol"].get("protocollo"),
                  f["urp"].get("stato"), f["urp"].get("protocollo"), f["segreteria"].get("stato"), f["segreteria"].get("protocollo"),
                  json.dumps(r.get("rdp") or [], ensure_ascii=False), json.dumps(r.get("note") or [], ensure_ascii=False),
                  int(bool(r.get("difforme"))), inviato.get("stato"), inviato.get("autore"), inviato.get("quando")))
         for p in conteggi:
             conn.execute(
-                "INSERT INTO monitoraggio_punteggi (mese, numero_bando, codice, protocollo, data, domande, con_punteggi, vincitori, "
-                "idonei, scorrimento, senza_protocollo, esito, verificato_il, difformita) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (mese, p.get("numero_bando"), p.get("codice"), p.get("protocollo"), p.get("data"), p.get("domande"),
+                "INSERT INTO monitoraggio_punteggi (mese, versione, numero_bando, codice, protocollo, data, domande, con_punteggi, "
+                "vincitori, idonei, scorrimento, senza_protocollo, esito, verificato_il, difformita) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (mese, versione, p.get("numero_bando"), p.get("codice"), p.get("protocollo"), p.get("data"), p.get("domande"),
                  p.get("con_punteggi"), p.get("vincitori"), p.get("idonei"), p.get("scorrimento"), p.get("senza_protocollo"),
                  p.get("esito"), p.get("verificato_il"), json.dumps(p.get("difformita") or [], ensure_ascii=False)))
         for fonte in ("urp", "sol"):
-            conn.execute("INSERT INTO monitoraggio_fonte (mese, fonte, ultima_raccolta) VALUES (?, ?, ?)",
-                         (mese, fonte, compat.ultima_riuscita(conn, fonte)))
-        conn.execute("UPDATE monitoraggio_mese SET stato = 'chiuso', chiuso_da = ?, chiuso_il = ? WHERE mese = ?",
-                     (autore, _adesso(), mese))
-        _evento(conn, mese, "chiuso", autore)
+            conn.execute("INSERT INTO monitoraggio_fonte (mese, versione, fonte, ultima_raccolta) VALUES (?, ?, ?, ?)",
+                         (mese, versione, fonte, compat.ultima_riuscita(conn, fonte)))
+        azioni()
         conn.execute("COMMIT")
     except BaseException:
         conn.execute("ROLLBACK")
         raise
+    return versione
+
+
+def chiudi(conn, mese: str, autore: str | None, motivo: str | None = None) -> dict:
+    verifica_aperto(conn, mese)
+
+    def segna_chiuso():
+        conn.execute("UPDATE monitoraggio_mese SET stato = 'chiuso', chiuso_da = ?, chiuso_il = ? WHERE mese = ?",
+                     (autore, _adesso(), mese))
+        _evento(conn, mese, "chiuso", autore)
+    _genera_versione(conn, mese, autore, motivo, segna_chiuso)
+    return leggi(conn, mese)
+
+
+def nuova_versione(conn, mese: str, autore: str | None, motivo: str | None = None) -> dict:
+    """Rigenera un mese chiuso dai dati attuali, per esempio dopo una correzione su Selezioni Online."""
+    if leggi(conn, mese)["stato"] != "chiuso":
+        raise MeseAperto("Il monitoraggio è aperto: per salvarlo usa Chiudi")
+    _genera_versione(conn, mese, autore, motivo, lambda: None)
     return leggi(conn, mese)
 
 
 def riapri(conn, mese: str, autore: str | None) -> dict:
-    """Riapre il mese: la fotografia resta finché una nuova chiusura non la sostituisce."""
+    """Riapre il mese: le versioni salvate restano."""
     conn.execute("UPDATE monitoraggio_mese SET stato = 'aperto', chiuso_da = NULL, chiuso_il = NULL WHERE mese = ?", (mese,))
     _evento(conn, mese, "riaperto", autore)
     return leggi(conn, mese)
 
 
-def fotografia(conn, mese: str) -> dict:
+def _dati_piu_recenti(conn, dal: str, al: str, creata_il: str) -> list[str]:
+    """Cosa è cambiato dopo una versione, per suggerire di generarne una nuova."""
+    da_segnalare = []
+    if conn.execute("SELECT 1 FROM raccolta WHERE esito IN ('completata', 'completata_con_errori') AND fine > ?",
+                    (creata_il,)).fetchone():
+        da_segnalare.append("raccolta dei dati")
+    from . import punteggi
+    schede = [s["id"] for s in punteggi.schede_periodo(conn, dal, al)]
+    if schede and conn.execute(f"SELECT 1 FROM punteggi_verifica WHERE verificato_il > ? AND scheda_id IN "
+                               f"({', '.join('?' * len(schede))})", (creata_il, *schede)).fetchone():
+        da_segnalare.append("verifica dei punteggi")
+    return da_segnalare
+
+
+def fotografia(conn, mese: str, versione: int | None = None) -> dict:
+    versioni = []
+    for v in conn.execute("SELECT * FROM monitoraggio_versione WHERE mese = ? ORDER BY versione DESC", (mese,)):
+        conteggio = conn.execute(
+            "SELECT COUNT(*) AS totale, COALESCE(SUM(difforme), 0) AS difformi, "
+            "COALESCE(SUM(difforme = 1 AND sollecito_stato IS NOT NULL), 0) AS inviate "
+            "FROM monitoraggio_riga WHERE mese = ? AND versione = ?", (mese, v["versione"])).fetchone()
+        versioni.append({**dict(v), **dict(conteggio), "punteggi_verificati": conn.execute(
+            "SELECT COUNT(*) FROM monitoraggio_punteggi WHERE mese = ? AND versione = ? AND verificato_il IS NOT NULL",
+            (mese, v["versione"])).fetchone()[0]})
+    ultima = versioni[0]["versione"] if versioni else None
+    scelta = versione if any(v["versione"] == versione for v in versioni) else ultima
+    chiave = (mese, scelta)
     righe = [{**dict(r), "rdp": json.loads(r["rdp"] or "[]"), "note": json.loads(r["note"] or "[]")}
-             for r in conn.execute("SELECT * FROM monitoraggio_riga WHERE mese = ? ORDER BY data DESC, codice", (mese,))]
-    return {"righe": righe, "totale": len(righe), "difformi": sum(1 for r in righe if r["difforme"]),
+             for r in conn.execute("SELECT * FROM monitoraggio_riga WHERE mese = ? AND versione = ? ORDER BY data DESC, codice", chiave)]
+    monitoraggio = leggi(conn, mese)
+    dati_piu_recenti = _dati_piu_recenti(conn, *periodo_dati(monitoraggio), versioni[0]["creata_il"]) if versioni else []
+    return {"versione": scelta, "ultima": ultima, "versioni": versioni, "dati_piu_recenti": dati_piu_recenti,
+            "righe": righe, "totale": len(righe), "difformi": sum(1 for r in righe if r["difforme"]),
             "inviate": sum(1 for r in righe if r["difforme"] and r["sollecito_stato"]),
-            "punteggi": [{**dict(r), "difformita": json.loads(r["difformita"] or "[]")}
-                         for r in conn.execute("SELECT * FROM monitoraggio_punteggi WHERE mese = ? ORDER BY codice", (mese,))],
-            "fonti": [dict(r) for r in conn.execute("SELECT fonte, ultima_raccolta FROM monitoraggio_fonte WHERE mese = ?", (mese,))],
+            "punteggi": [{**dict(r), "difformita": json.loads(r["difformita"] or "[]")} for r in conn.execute(
+                "SELECT * FROM monitoraggio_punteggi WHERE mese = ? AND versione = ? ORDER BY codice", chiave)],
+            "fonti": [dict(r) for r in conn.execute(
+                "SELECT fonte, ultima_raccolta FROM monitoraggio_fonte WHERE mese = ? AND versione = ?", chiave)],
             "eventi": [dict(r) for r in conn.execute("SELECT azione, autore, quando FROM monitoraggio_evento WHERE mese = ? "
                                                      "ORDER BY id DESC", (mese,))]}
 

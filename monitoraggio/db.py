@@ -3,7 +3,7 @@ import sqlite3
 
 from . import config
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -238,9 +238,19 @@ CREATE TABLE IF NOT EXISTS monitoraggio_mese (
 );
 
 -- Fotografia del mese alla chiusura: non cambia più se cambiano le fonti. Niente dati dei candidati.
+CREATE TABLE IF NOT EXISTS monitoraggio_versione (
+    mese TEXT NOT NULL REFERENCES monitoraggio_mese(mese),
+    versione INTEGER NOT NULL,
+    creata_da TEXT,
+    creata_il TEXT NOT NULL,
+    motivo TEXT,
+    PRIMARY KEY (mese, versione)
+);
+
 CREATE TABLE IF NOT EXISTS monitoraggio_riga (
     id INTEGER PRIMARY KEY,
     mese TEXT NOT NULL REFERENCES monitoraggio_mese(mese),
+    versione INTEGER NOT NULL DEFAULT 1,
     numero_bando TEXT,
     codice TEXT,
     titolo_bando TEXT,
@@ -267,6 +277,7 @@ CREATE INDEX IF NOT EXISTS idx_monitoraggio_riga ON monitoraggio_riga (mese, dif
 CREATE TABLE IF NOT EXISTS monitoraggio_punteggi (
     id INTEGER PRIMARY KEY,
     mese TEXT NOT NULL REFERENCES monitoraggio_mese(mese),
+    versione INTEGER NOT NULL DEFAULT 1,
     numero_bando TEXT,
     codice TEXT,
     protocollo TEXT,
@@ -285,9 +296,10 @@ CREATE INDEX IF NOT EXISTS idx_monitoraggio_punteggi ON monitoraggio_punteggi (m
 
 CREATE TABLE IF NOT EXISTS monitoraggio_fonte (
     mese TEXT NOT NULL REFERENCES monitoraggio_mese(mese),
+    versione INTEGER NOT NULL DEFAULT 1,
     fonte TEXT NOT NULL,
     ultima_raccolta TEXT,
-    PRIMARY KEY (mese, fonte)
+    PRIMARY KEY (mese, versione, fonte)
 );
 
 CREATE TABLE IF NOT EXISTS monitoraggio_evento (
@@ -343,6 +355,29 @@ def connetti() -> sqlite3.Connection:
     return conn
 
 
+def _migra_versioni(conn: sqlite3.Connection) -> None:
+    """Versione 10: le fotografie salvate con la 9 diventano la versione 1 del loro mese."""
+    if "versione" not in {r[1] for r in conn.execute("PRAGMA table_info(monitoraggio_fonte)")}:
+        conn.executescript("""
+            BEGIN;
+            ALTER TABLE monitoraggio_riga ADD COLUMN versione INTEGER NOT NULL DEFAULT 1;
+            ALTER TABLE monitoraggio_punteggi ADD COLUMN versione INTEGER NOT NULL DEFAULT 1;
+            CREATE TABLE monitoraggio_fonte_10 (
+                mese TEXT NOT NULL REFERENCES monitoraggio_mese(mese), versione INTEGER NOT NULL DEFAULT 1,
+                fonte TEXT NOT NULL, ultima_raccolta TEXT, PRIMARY KEY (mese, versione, fonte));
+            INSERT INTO monitoraggio_fonte_10 (mese, versione, fonte, ultima_raccolta)
+                SELECT mese, 1, fonte, ultima_raccolta FROM monitoraggio_fonte;
+            DROP TABLE monitoraggio_fonte;
+            ALTER TABLE monitoraggio_fonte_10 RENAME TO monitoraggio_fonte;
+            INSERT OR IGNORE INTO monitoraggio_versione (mese, versione, creata_da, creata_il)
+                SELECT m.mese, 1, m.chiuso_da, COALESCE(m.chiuso_il, m.creato_il) FROM monitoraggio_mese m
+                WHERE EXISTS (SELECT 1 FROM monitoraggio_fonte f WHERE f.mese = m.mese);
+            COMMIT;
+        """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_riga_versione ON monitoraggio_riga (mese, versione)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_punteggi_versione ON monitoraggio_punteggi (mese, versione)")
+
+
 def inizializza(conn: sqlite3.Connection) -> None:
     """Crea le tabelle mancanti e aggiorna la versione dello schema (le CREATE sono idempotenti)."""
     conn.executescript(SCHEMA)
@@ -353,6 +388,7 @@ def inizializza(conn: sqlite3.Connection) -> None:
     for colonna, tipo in (("stato", "TEXT NOT NULL DEFAULT 'aperto'"), ("chiuso_da", "TEXT"), ("chiuso_il", "TEXT")):  # versione 9
         if colonna not in colonne_mese:
             conn.execute(f"ALTER TABLE monitoraggio_mese ADD COLUMN {colonna} {tipo}")
+    _migra_versioni(conn)
     riga = conn.execute("SELECT versione FROM schema_version").fetchone()
     if riga is None:
         conn.execute("INSERT INTO schema_version (versione) VALUES (?)", (SCHEMA_VERSION,))

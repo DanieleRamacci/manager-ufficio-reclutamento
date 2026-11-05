@@ -69,7 +69,7 @@
         ${p.prova ? `<div class="avviso">Modalità di prova: le email vanno solo a ${esc(p.prova)}.</div>` : ""}
         <section class="solo-admin">
           <h2>Chiusura</h2>
-          <p class="muted small">Quando hai finito, chiudi il monitoraggio: atti, difformità, solleciti e conteggi dei punteggi di ${esc(m.etichetta_dati)} vengono salvati nel database così come sono ora e non cambiano più. Lancia prima un aggiornamento dei dati e la verifica dei punteggi.</p>
+          <p class="muted small">Quando hai finito, chiudi il monitoraggio: viene salvata una versione di atti, difformità, solleciti e conteggi dei punteggi di ${esc(m.etichetta_dati)}, che non cambia più. Se poi correggono i dati, puoi generarne una nuova: le precedenti restano. Lancia prima un aggiornamento dei dati e la verifica dei punteggi.</p>
           <div class="azioni"><button class="primario" type="button" id="chiudi-monitoraggio">Chiudi il monitoraggio</button></div>
         </section>
         <section>
@@ -177,14 +177,31 @@
           <td>${r.sollecito_stato ? `${r.sollecito_stato === "inviata" ? "Inviata" : "Inviata a mano"} ${ora(r.sollecito_quando)}` : ""}</td></tr>`).join("")
           || `<tr><td colspan="10" class="muted">Nessuna riga.</td></tr>`}
         </tbody></table></div>`;
+      const vecchia = f.versione !== f.ultima;
+      const attuale = f.versioni.find(v => v.versione === f.versione) || {};
       $("contenuto").innerHTML = `
         <p class="small"><a href="/monitoraggio/mensili">← Monitoraggi mensili</a></p>
         <h1>Monitoraggio di ${esc(m.etichetta)}</h1>
-        <div class="ok">Chiuso da ${esc(m.chiuso_da)} il ${ora(m.chiuso_il)}: questi dati sono salvati e non cambiano più.</div>
+        <div class="ok">Chiuso da ${esc(m.chiuso_da)} il ${ora(m.chiuso_il)}. Stai vedendo la versione ${f.versione} di ${f.ultima}, creata il ${ora(attuale.creata_il)}${attuale.motivo ? `: ${esc(attuale.motivo)}` : ""}.</div>
+        ${vecchia ? `<div class="avviso">Questa non è l'ultima versione. <a href="/monitoraggio/mensili/${m.mese}">Vai all'ultima</a></div>` : ""}
+        ${f.dati_piu_recenti.length ? `<div class="avviso solo-admin">Dopo l'ultima versione c'è stata una nuova ${esc(f.dati_piu_recenti.join(" e una nuova "))}: se è il caso, genera una nuova versione.</div>` : ""}
         <p class="muted">Dati di ${esc(m.etichetta_dati)} · ${f.fonti.map(x => `ultima raccolta ${esc(x.fonte.toUpperCase())}: ${x.ultima_raccolta ? ora(x.ultima_raccolta) : "mai"}`).join(" · ")}</p>
+        <section class="solo-admin">
+          <h2>Aggiornare i dati del mese</h2>
+          <p class="muted small">Se hanno corretto Selezioni Online: aggiorna i dati e verifica i punteggi di ${esc(m.etichetta_dati)}, poi genera una nuova versione. Le precedenti restano consultabili.</p>
+          <div class="azioni">
+            <a class="pulsante" href="${esc(m.link_vista)}">Aggiorna i dati e verifica i punteggi</a>
+            <button class="primario" type="button" id="nuova-versione">Genera nuova versione</button>
+            <span class="muted small" id="esito-versione" aria-live="polite"></span>
+          </div>
+        </section>
+        <section><h2>Versioni</h2><div class="scroll"><table>
+          <thead><tr><th>Versione</th><th>Creata</th><th>Motivo</th><th>Atti</th><th>Difformità</th><th>Solleciti</th><th>Punteggi verificati</th></tr></thead><tbody>
+          ${f.versioni.map(v => `<tr><td>${v.versione === f.versione ? `<b>${v.versione}</b>` : `<a href="#" data-versione="${v.versione}">${v.versione}</a>`}</td><td>${ora(v.creata_il)} ${esc(v.creata_da)}</td><td>${esc(v.motivo)}</td><td>${v.totale}</td><td>${v.difformi}</td><td>${v.inviate}</td><td>${v.punteggi_verificati}</td></tr>`).join("")}
+          </tbody></table></div></section>
         <section><h2>Difformità: ${f.difformi} su ${f.totale} atti, solleciti segnati su ${f.inviate}</h2>${tabella(f.righe.filter(r => r.difforme))}</section>
         <details><summary>Tutti gli atti del mese (${f.totale})</summary>${tabella(f.righe)}</details>
-        <section style="margin-top:14px"><h2>Punteggi al momento della chiusura (${f.punteggi.length})</h2><div class="scroll"><table>
+        <section style="margin-top:14px"><h2>Punteggi di questa versione (${f.punteggi.length})</h2><div class="scroll"><table>
           <thead><tr><th>Codice</th><th>Protocollo</th><th>Domande</th><th>Con punteggi</th><th>V</th><th>I</th><th>S</th><th>Senza protocollo</th><th>Esito</th><th>Verificato il</th></tr></thead><tbody>
           ${f.punteggi.map(p => `<tr><td>${esc(p.codice)}</td><td>${esc(p.protocollo)}</td><td>${esc(p.domande)}</td><td>${esc(p.con_punteggi)}</td><td>${esc(p.vincitori)}</td><td>${esc(p.idonei)}</td><td>${esc(p.scorrimento)}</td><td>${esc(p.senza_protocollo)}</td><td>${esc(p.esito)}</td><td>${ora(p.verificato_il)}</td></tr>`).join("")
             || `<tr><td colspan="10" class="muted">Nessuna verifica salvata.</td></tr>`}
@@ -192,11 +209,20 @@
         <section><h2>Storico</h2>${f.eventi.map(e => `<div class="small">${ora(e.quando)}: ${esc(e.azione)} da ${esc(e.autore)}</div>`).join("")}
           <div class="azioni solo-admin"><button type="button" id="riapri">Riapri il monitoraggio</button></div>
           <div class="errore" id="errore" role="alert" hidden></div></section>`;
+      const errore = (err) => { $("errore").hidden = false; $("errore").textContent = err.message; };
       $("riapri").onclick = async () => {
-        if (!confirm("Riaprire il monitoraggio? La nuova chiusura sostituirà i dati salvati.")) return;
-        try { disegna(await chiama(`/api/monitoraggi/${m.mese}/riapri`, { method: "POST" })); }
-        catch (err) { $("errore").hidden = false; $("errore").textContent = err.message; }
+        if (!confirm("Riaprire il monitoraggio? Potrai di nuovo modificarlo e inviare email. Le versioni salvate restano.")) return;
+        try { disegna(await chiama(`/api/monitoraggi/${m.mese}/riapri`, { method: "POST" })); } catch (err) { errore(err); }
       };
+      $("nuova-versione").onclick = async () => {
+        const motivo = prompt("Motivo della nuova versione (facoltativo):", "");
+        if (motivo === null) return;
+        try { disegna(await chiama(`/api/monitoraggi/${m.mese}/nuova-versione`, jsonPost("POST", { motivo }))); } catch (err) { errore(err); }
+      };
+      document.querySelectorAll("[data-versione]").forEach(a => a.onclick = async (e) => {
+        e.preventDefault();
+        try { disegna(await chiama(`/api/monitoraggi/${m.mese}?versione=${a.dataset.versione}`)); } catch (err) { errore(err); }
+      });
     }
     const dettaglio = async () => disegna(await chiama(`/api/monitoraggi/${meseScelto}`));
     (meseScelto ? dettaglio() : elenco()).catch(err => { $("contenuto").innerHTML = `<div class="errore" role="alert">${esc(err.message)}</div>`; });

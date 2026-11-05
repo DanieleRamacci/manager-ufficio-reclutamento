@@ -448,7 +448,7 @@ def test_chiuso_non_si_modifica_finche_non_si_riapre(ambiente, db, monkeypatch):
     assert admin.post(f"/api/monitoraggi/{mese}/email-compilazione/invia").status_code == 409
     assert inviati == []
     d = admin.post(f"/api/monitoraggi/{mese}/riapri").get_json()
-    assert d["stato"] == "aperto" and d["fotografia"]["totale"] == 1  # resta fino alla nuova chiusura
+    assert d["stato"] == "aperto" and d["fotografia"]["totale"] == 1  # le versioni restano
     assert admin.put(f"/api/monitoraggi/{mese}", json={"mese_dati": "2026-04"}).status_code == 200
     assert admin.post(f"/api/monitoraggi/{mese}/chiudi").get_json()["fotografia"]["totale"] == 1
     assert [e["azione"] for e in admin.get(f"/api/monitoraggi/{mese}").get_json()["fotografia"]["eventi"]] == ["chiuso", "riaperto", "chiuso", "creato"]
@@ -526,3 +526,80 @@ def test_i_dati_sincronizzati_non_dipendono_dalla_chiusura(db):
     assert db.execute("SELECT COUNT(*) FROM monitoraggio_riga").fetchone()[0] == 0  # nessuna chiusura: i dati ci sono già
     mensile.segna(db, "2026-05", "367.479 CTER", "inviata_a_mano", "x")
     assert len(mensile.solleciti(db, "2026-05")) == 1
+
+
+def test_nuova_versione_dopo_la_correzione_su_sol(ambiente, db):
+    from monitoraggio import collegamento
+    admin, mese = _mese_con_dati(ambiente, db)
+    uno = admin.post(f"/api/monitoraggi/{mese}/chiudi").get_json()["fotografia"]
+    assert (uno["versione"], uno["ultima"], uno["difformi"], uno["dati_piu_recenti"]) == (1, 1, 1, [])
+    assert admin.post(f"/api/monitoraggi/{mese}/riapri").status_code == 200
+    assert admin.post(f"/api/monitoraggi/{mese}/nuova-versione").status_code == 409  # da aperto si chiude
+    admin.post(f"/api/monitoraggi/{mese}/chiudi")
+    # correggono SOL, si rilegge e si genera la nuova versione senza riaprire
+    salva(db, "sol", [scheda("sol", "s1", "367.479 CTER", "367.479", documenti=[doc("g1", "graduatoria", "1002", "2026-04-12")])])
+    collegamento.collega(db)
+    db.execute("INSERT INTO raccolta (fonte, modalita, inizio, fine, esito) VALUES ('sol', 'manuale', '2030-01-01T00:00:00Z', "
+               "'2030-01-01T00:00:00Z', 'completata')")
+    assert admin.get(f"/api/monitoraggi/{mese}").get_json()["fotografia"]["dati_piu_recenti"] == ["raccolta dei dati"]
+    d = admin.post(f"/api/monitoraggi/{mese}/nuova-versione", json={"motivo": "SOL corretto"}).get_json()
+    f = d["fotografia"]
+    assert d["stato"] == "chiuso" and f["versione"] == f["ultima"] == 3
+    assert f["difformi"] == 0 and f["righe"][0]["sol_protocollo"] == "1002"
+    assert [(v["versione"], v["difformi"], v["motivo"]) for v in f["versioni"]] == [(3, 0, "SOL corretto"), (2, 1, None), (1, 1, None)]
+    # le versioni precedenti restano uguali
+    vecchia = admin.get(f"/api/monitoraggi/{mese}?versione=1").get_json()["fotografia"]
+    assert vecchia["versione"] == 1 and vecchia["righe"][0]["sol_protocollo"] == "1001" and vecchia["difformi"] == 1
+    assert admin.get(f"/api/monitoraggi/{mese}?versione=99").get_json()["fotografia"]["versione"] == 3
+
+
+def test_verifica_punteggi_dopo_la_versione_viene_segnalata(ambiente, db):
+    admin, mese = _mese_con_dati(ambiente, db)
+    admin.post(f"/api/monitoraggi/{mese}/chiudi")
+    sid = db.execute("SELECT id FROM scheda WHERE id_esterno = 's1'").fetchone()[0]
+    db.execute("INSERT INTO punteggi_verifica (scheda_id, verificato_il, domande, con_punteggi, vincitori, idonei, scorrimento, "
+               "senza_protocollo, esito) VALUES (?, '2030-01-01T00:00:00Z', 5, 5, 1, 4, 0, 0, 'completi')", (sid,))
+    f = admin.get(f"/api/monitoraggi/{mese}").get_json()["fotografia"]
+    assert f["dati_piu_recenti"] == ["verifica dei punteggi"]
+    assert all(p["con_punteggi"] is None for p in f["punteggi"])  # la versione salvata non cambia
+    nuova = admin.post(f"/api/monitoraggi/{mese}/nuova-versione").get_json()["fotografia"]
+    assert [p["con_punteggi"] for p in nuova["punteggi"] if p["codice"] == "367.479 CTER"] == [5]
+
+
+def test_solo_amministratori_generano_versioni(ambiente, db):
+    admin, mese = _mese_con_dati(ambiente, db)
+    admin.post(f"/api/monitoraggi/{mese}/chiudi")
+    admin.post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"})
+    assert ambiente("lettore.uno").post(f"/api/monitoraggi/{mese}/nuova-versione").status_code == 403
+
+
+def test_fotografie_della_versione_9_diventano_versione_1(tmp_path, monkeypatch):
+    import sqlite3
+    from monitoraggio import config, db as dbmod
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    c = sqlite3.connect(config.db_path())
+    c.executescript("""
+        CREATE TABLE schema_version(versione INTEGER); INSERT INTO schema_version VALUES (9);
+        CREATE TABLE monitoraggio_mese (mese TEXT PRIMARY KEY, mese_dati TEXT NOT NULL, link_scorrimenti TEXT, link_graduatorie TEXT,
+            oggetto TEXT, testo TEXT, creato_da TEXT, creato_il TEXT NOT NULL, stato TEXT NOT NULL DEFAULT 'aperto', chiuso_da TEXT, chiuso_il TEXT);
+        INSERT INTO monitoraggio_mese VALUES ('2026-10','2026-09',NULL,NULL,NULL,NULL,'x','2026-10-01T00:00:00Z','chiuso','capo','2026-10-30T00:00:00Z');
+        CREATE TABLE monitoraggio_riga (id INTEGER PRIMARY KEY, mese TEXT NOT NULL, numero_bando TEXT, codice TEXT, titolo_bando TEXT, tipologia TEXT,
+            atto TEXT NOT NULL, sottotipo TEXT, data TEXT, protocollo TEXT, sol_stato TEXT, sol_protocollo TEXT, urp_stato TEXT, urp_protocollo TEXT,
+            segreteria_stato TEXT, segreteria_protocollo TEXT, rdp TEXT, note TEXT, difforme INTEGER NOT NULL DEFAULT 0,
+            sollecito_stato TEXT, sollecito_autore TEXT, sollecito_quando TEXT);
+        INSERT INTO monitoraggio_riga (mese, codice, atto, difforme) VALUES ('2026-10', 'X', 'graduatoria', 1);
+        CREATE TABLE monitoraggio_punteggi (id INTEGER PRIMARY KEY, mese TEXT NOT NULL, numero_bando TEXT, codice TEXT, protocollo TEXT, data TEXT,
+            domande INTEGER, con_punteggi INTEGER, vincitori INTEGER, idonei INTEGER, scorrimento INTEGER, senza_protocollo INTEGER, esito TEXT,
+            verificato_il TEXT, difformita TEXT);
+        CREATE TABLE monitoraggio_fonte (mese TEXT NOT NULL, fonte TEXT NOT NULL, ultima_raccolta TEXT, PRIMARY KEY (mese, fonte));
+        INSERT INTO monitoraggio_fonte VALUES ('2026-10', 'sol', '2026-10-29T00:00:00Z');
+    """)
+    c.commit()
+    c.close()
+    conn = dbmod.connetti()
+    dbmod.inizializza(conn)
+    dbmod.inizializza(conn)  # idempotente
+    f = mensile.fotografia(conn, "2026-10")
+    assert f["versione"] == 1 and f["totale"] == 1 and f["versioni"][0]["creata_da"] == "capo"
+    assert f["fonti"] == [{"fonte": "sol", "ultima_raccolta": "2026-10-29T00:00:00Z"}]
+    assert conn.execute("SELECT versione FROM schema_version").fetchone()[0] == dbmod.SCHEMA_VERSION

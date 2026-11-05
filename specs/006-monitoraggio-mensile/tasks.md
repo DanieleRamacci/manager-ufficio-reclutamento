@@ -12,4 +12,5 @@
 - [X] T010 Test in tests/test_mensile.py
 - [X] T012 [US1] Accesso del visualizzatore con link via email in monitoraggio/accesso.py e pulsante in monitoraggio/static/accesso.html
 - [X] T013 [US6] Chiusura e riapertura con fotografia nel database in monitoraggio/mensile.py; avviso per il volume mancante
+- [X] T014 [US6] Versioni del monitoraggio chiuso, con migrazione delle fotografie esistenti
 - [ ] T011 Verifica manuale nell'app in esecuzione e invio reale dal server di produzione
