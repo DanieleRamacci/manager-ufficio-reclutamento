@@ -4,7 +4,7 @@ import sqlite3
 
 from . import config
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -505,9 +505,11 @@ def inizializza(conn: sqlite3.Connection) -> None:
                 conn.execute(f"ALTER TABLE punteggi_verifica ADD COLUMN {colonna} {tipo}")
         if "email" not in {r[1] for r in conn.execute("PRAGMA table_info(utente)")}:  # versione 8
             conn.execute("ALTER TABLE utente ADD COLUMN email TEXT")
-        if riga["versione"] < 15:  # le categorie protette non fanno parte del monitoraggio
-            fuori = ("FROM difformita WHERE tipologia = 'categorie_protette' OR numero_bando IN "
-                     "(SELECT numero_bando FROM bando WHERE tipologia = 'categorie_protette')")
-            conn.execute(f"DELETE FROM difformita_evento WHERE difformita_id IN (SELECT id {fuori})")
-            conn.execute(f"DELETE {fuori}")
+        for versione, tipi in ((15, ("categorie_protette",)), (16, ("reclutamento_speciale", "comando"))):
+            if riga["versione"] < versione:  # tipologie escluse dal monitoraggio mensile
+                elenco = ", ".join(f"'{t}'" for t in tipi)
+                fuori = (f"FROM difformita WHERE tipologia IN ({elenco}) OR numero_bando IN "
+                         f"(SELECT numero_bando FROM bando WHERE tipologia IN ({elenco}))")
+                conn.execute(f"DELETE FROM difformita_evento WHERE difformita_id IN (SELECT id {fuori})")
+                conn.execute(f"DELETE {fuori}")
         conn.execute("UPDATE schema_version SET versione = ?", (SCHEMA_VERSION,))

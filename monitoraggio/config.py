@@ -41,7 +41,7 @@ SOL_TIPI = {
 }
 # Tipologie del monitoraggio mensile. Le categorie protette si raccolgono per le pagine URP e lo stato
 # complessivo, ma non entrano nel monitoraggio.
-TIPOLOGIE_MONITORATE = {"TI": ("tempo_indeterminato", "reclutamento_speciale"), "MOB": ("mobilita", "comando")}
+TIPOLOGIE_MONITORATE = {"TI": ("tempo_indeterminato",), "MOB": ("mobilita",)}
 # finestra dei bandi "attivi" per la raccolta incrementale degli allegati (research R8)
 SOL_MESI_ATTIVI = 36
 

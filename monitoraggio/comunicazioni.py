@@ -141,7 +141,7 @@ def messaggio(conn, monitoraggio: dict, codice: str) -> dict | None:
         voci.append("\n".join([testa, *[f"   – {t}" for t in r["rilievi"]]]))
     saluto = f"Gentile {referenti[0]['nome']}," if len(referenti) == 1 and referenti[0]["nome"] else "Gentili tutte e tutti,"
     titolo = f" – {r0['titolo_bando']}" if r0.get("titolo_bando") else ""
-    corpo = (f"{saluto}\n\nnell'ambito del monitoraggio mensile di {mese_testo} (rif. {id_m}), per il bando {codice}{titolo} "
+    corpo = (f"{saluto}\n\nnell'ambito del monitoraggio mensile di {mese_testo}, per il bando {codice}{titolo} "
              f"risultano le seguenti difformità tra le fonti:\n\n" + "\n\n".join(voci))
     istruzioni = istruzioni_email(righe)
     if istruzioni:

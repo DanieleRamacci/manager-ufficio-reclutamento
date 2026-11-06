@@ -192,7 +192,7 @@ def test_download_vuoti_rinominati(ambiente):
 
 def test_graduatorie_con_dati_e_giallo(db, monkeypatch):
     salva(db, "sol", [scheda("sol", "s1", "367.1 CTER", "367.1", data="2026-04-10", documenti=[doc("g", "graduatoria", "11", "2026-04-20")]),
-                      scheda("sol", "s2", "01-COMANDO", "01", data="2026-04-11", tipologia="comando",
+                      scheda("sol", "s2", "01-MOBILITA", "01", data="2026-04-11", tipologia="mobilita",
                              documenti=[doc("h", "graduatoria", "12", "2026-04-21")])])
     sid = db.execute("SELECT id FROM scheda WHERE id_esterno = 's1'").fetchone()[0]
     monkeypatch.setattr(punteggi, "_candidati", {sid: {"candidati": [
@@ -201,7 +201,7 @@ def test_graduatorie_con_dati_e_giallo(db, monkeypatch):
     wb = openpyxl.load_workbook(io.BytesIO(excel_mese.excel_graduatorie(db, "2026-04-01", "2026-04-30")))
     bandi, mobilita = wb["Bandi pubblicati"], wb["Mobilità pubblicate"]
     assert [bandi.cell(2, 1).value, bandi.cell(3, 1).value, bandi.cell(3, 7).value] == ["Codice bando", "367.1 CTER", "10/04/2026"]
-    assert mobilita.cell(3, 1).value == "01-COMANDO" and bandi.cell(4, 1).value is None
+    assert mobilita.cell(3, 1).value == "01-MOBILITA" and bandi.cell(4, 1).value is None
     grad = wb["Graduatorie pubblicate"]
     assert [c.value for c in grad[2]][:2] == ["Codice bando", "Sede di lavoro"] and len(list(grad[2])) >= 20
     assert grad.cell(3, 7).value == "ROSSI" and grad.cell(3, 1).fill.fgColor.rgb != "00" + punteggi.GIALLO_EXCEL
@@ -1054,7 +1054,7 @@ def test_messaggio_standard_per_codice(ambiente, db):
     m = admin.get(url + "/messaggio").get_json()
     assert m["destinatari"] == ["rdp@cnr.it"] and m["referenti"][0]["nome"] == "Anna Bianchi"
     assert m["oggetto"] == f"Monitoraggio aprile 2026. Bando n° 367.479 CTER: Aggiornamento Dati – Rif. {m['n_gestione']}" and len(m["n_gestione"]) == 4
-    assert m["corpo"].startswith("Gentile Anna Bianchi,") and "(rif. MON-04.2026)" in m["corpo"]
+    assert m["corpo"].startswith("Gentile Anna Bianchi,") and "(rif." not in m["corpo"]
     assert "1) Graduatoria del 12/04/2026" in m["corpo"] and "protocollo diverso: SOL 1001, URP 1002" in m["corpo"]
     assert "Cordiali saluti," in m["corpo"] and m["stato"] == "da_inviare"
     assert admin.get(f"/api/monitoraggi/{mese}/comunicazioni/inesistente/messaggio").status_code == 404
@@ -1390,4 +1390,18 @@ def test_cc_ufficio_multiplo_e_testo_di_riscontro(ambiente, db, monkeypatch):
     posta.salva_email({"prova_attiva": False, "ufficiali_attive": True}, "t")
     admin.post(url + "/invia", json={"modo": "ufficiale"})
     assert inviati[-1]["Cc"] == "ufficio@esempio.it, uno@cnr.it, due@cnr.it"  # ufficio sempre primo, senza doppioni
+
+
+def test_aggiornamento_toglie_reclutamento_speciale_e_comandi(db):
+    from monitoraggio import db as dbm
+    db.execute("INSERT INTO monitoraggio_mese (mese, mese_dati, creato_il, creato_da) VALUES ('2026-11', '2026-10', 'x', 'x')")
+    for numero, tipologia in (("c1", "comando"), ("r1", "reclutamento_speciale"), ("m1", "mobilita"), ("t1", "tempo_indeterminato"), ("x1", None)):
+        cur = db.execute("INSERT INTO difformita (mese, numero_bando, codice, tipologia, atto, rilievi_iniziali, rilievi_attuali, stato, "
+                         "prima_rilevata_il, ultimo_controllo_il) VALUES ('2026-11', ?, ?, ?, 'graduatoria', '[]', '[]', 'aperta', 'x', 'x')",
+                         (numero, numero, tipologia))
+        db.execute("INSERT INTO difformita_evento (difformita_id, tipo, quando, origine) VALUES (?, 'rilevata', 'x', 'x')", (cur.lastrowid,))
+    db.execute("UPDATE schema_version SET versione = 15")
+    dbm.inizializza(db)
+    assert {r[0] for r in db.execute("SELECT numero_bando FROM difformita")} == {"m1", "t1", "x1"}  # via comando e reclutamento speciale
+    assert db.execute("SELECT COUNT(*) FROM difformita_evento").fetchone()[0] == 3
 
