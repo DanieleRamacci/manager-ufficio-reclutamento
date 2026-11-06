@@ -171,10 +171,10 @@ def test_conteggio_utilizzi_per_codice_nel_rilievo(db):
     collegamento.collega(db)
     righe = {(r["atto"], r["protocollo"]): r for r in atti.elenco_atti(db, "2026-07-01", "2026-10-31")}
     mancante = righe[("scorrimento", "200")]
-    assert mancante["utilizzi_codice"] == {"totale": 2, "su_sol": 1}
+    assert mancante["utilizzi_sol_codice"] == 1  # su SOL c'è già l'utilizzo prot. 100 per questo codice
     testi = difformita.rilievi(mancante)
     assert any("(prot. 200) non risulta tra i dati attualmente disponibili da Selezioni Online "
-               "(per questo codice risultano 2 utilizzi, 1 su Selezioni Online)" in t for t in testi), testi
+               "(per questo codice su Selezioni Online risulta già 1 utilizzo)" in t for t in testi), testi
     # quello presente su SOL non porta il conteggio
-    assert all("risultano" not in t for t in difformita.rilievi(righe[("scorrimento", "100")]))
+    assert all("risulta già" not in t for t in difformita.rilievi(righe[("scorrimento", "100")]))
 

@@ -170,8 +170,8 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
         stato = punteggi.stato_scorrimento({"data": r["data"], "protocolli": set(r.get("_protocolli") or [])}, sol)
         if stato["registrato"] is False:
             rif = f" (prot. {r['protocollo']})" if r.get("protocollo") else ""
-            c = r.get("utilizzi_codice") or {}
-            extra = f" (per questo codice risultano {c['totale']} utilizzi, {c['su_sol']} presenti su SOL)" if c.get("totale", 0) > 1 else ""
+            n = r.get("utilizzi_sol_codice") or 0
+            extra = (f" (per questo codice su SOL risulta{'no' if n > 1 else ''} già {n} utilizz{'i' if n > 1 else 'o'})") if n else ""
             if r.get("fonti", {}).get("sol", {}).get("stato") == PRESENTE:
                 return [f"provvedimento di assunzione idoneo{rif} presente tra gli allegati SOL ma non risulta nei punteggi: nessun candidato S con questo protocollo{extra}"]
             return [f"provvedimento di assunzione idoneo{rif} non presente tra gli allegati SOL e nessun candidato S con questo protocollo nei punteggi{extra}"]
@@ -282,16 +282,18 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
                           "fonti": {f: cella(f, gruppo.get(f), urp_ok, categoria, data) for f in FONTI},
                           "note": note, "_protocolli": [p for p in protocolli.values() if p]})
 
-    # quanti utilizzi risultano per lo stesso bando/codice e quanti sono presenti su SOL
-    utilizzi = defaultdict(lambda: {"totale": 0, "su_sol": 0})
+    # utilizzi di scorrimento presenti su SOL per bando/codice, su tutto il periodo (non solo il mese):
+    # così un utilizzo nuovo mancante non sembra un falso allarme quando SOL ne ha già altri per quel codice
+    sol_utilizzi: dict = defaultdict(set)
+    for d in conn.execute(
+            "SELECT s.bando_id, s.codice_sotto AS sotto, d.titolo, d.protocollo FROM documento d "
+            "JOIN scheda s ON s.id = d.scheda_id WHERE s.fonte = 'sol' AND s.presente = 1 AND d.presente = 1 "
+            "AND d.categoria = 'scorrimento' AND d.protocollo IS NOT NULL AND s.bando_id IS NOT NULL"):
+        sol_utilizzi[(d["bando_id"], d["sotto"] or codice_sotto(d["titolo"]))].add(d["protocollo"])
     for r in righe:
         if r["atto"] == "scorrimento":
-            g = utilizzi[(r["bando_id"], r.get("codice_sotto"))]
-            g["totale"] += 1
-            g["su_sol"] += r["fonti"]["sol"]["stato"] == PRESENTE
-    for r in righe:
-        if r["atto"] == "scorrimento":
-            r["utilizzi_codice"] = dict(utilizzi[(r["bando_id"], r.get("codice_sotto"))])
+            altri = sol_utilizzi.get((r["bando_id"], r.get("codice_sotto")), set()) - ({r["protocollo"]} if r.get("protocollo") else set())
+            r["utilizzi_sol_codice"] = len(altri)
 
     for r in righe:
         if r["bando_id"] is not None:

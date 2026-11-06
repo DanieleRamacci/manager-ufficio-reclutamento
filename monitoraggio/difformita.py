@@ -30,12 +30,12 @@ def rilievi(riga: dict) -> list[str]:
     atto = "la graduatoria" if riga["atto"] == "graduatoria" else "il provvedimento di assunzione idoneo (scorrimento/utilizzo della graduatoria)"
     testi = list(riga.get("note") or [])
     rif = f" (prot. {riga['protocollo']})" if riga.get("protocollo") else ""
-    conteggio = riga.get("utilizzi_codice") or {}
+    n_sol = riga.get("utilizzi_sol_codice") or 0
     for chiave, nome in FONTI.items():
         if (riga.get("fonti") or {}).get(chiave, {}).get("stato") == atti.MANCANTE:
             testo = f"{atto}{rif} non risulta tra i dati attualmente disponibili da {nome}"
-            if chiave == "sol" and conteggio.get("totale", 0) > 1:
-                testo += f" (per questo codice risultano {conteggio['totale']} utilizzi, {conteggio['su_sol']} su Selezioni Online)"
+            if chiave == "sol" and n_sol:
+                testo += f" (per questo codice su Selezioni Online risulta{'no' if n_sol > 1 else ''} già {n_sol} utilizz{'i' if n_sol > 1 else 'o'})"
             testi.append(testo)
     return list(dict.fromkeys(t for t in testi if t))
 
