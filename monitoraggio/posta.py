@@ -72,12 +72,18 @@ def salva_email(dati: dict, autore: str | None) -> dict:
     if not isinstance(prova, bool) or not isinstance(ufficiali, bool):
         raise ValueError("Indica quali email sono abilitate")
     voci = [("email_prova_attiva", "1" if prova else "0"), ("email_ufficiali_attive", "1" if ufficiali else "0")]
-    for campo, chiave in (("indirizzo_prova", "email_prova_indirizzo"), ("mittente", "email_mittente"), ("cc", "email_cc")):
+    for campo, chiave in (("indirizzo_prova", "email_prova_indirizzo"), ("mittente", "email_mittente")):
         if campo in dati:
             indirizzo = (dati[campo] or "").strip().lower()
             if indirizzo and indirizzi_non_validi([indirizzo]):
                 raise ValueError(f"Indirizzo non valido: {indirizzo}")
             voci.append((chiave, indirizzo or None))
+    if "cc" in dati:
+        indirizzi = lista_indirizzi(dati["cc"])
+        sbagliati = indirizzi_non_validi(indirizzi)
+        if sbagliati:
+            raise ValueError("Indirizzi in copia non validi: " + ", ".join(sbagliati))
+        voci.append(("email_cc", ", ".join(indirizzi) or None))
     if "firma" in dati:
         voci.append(("email_firma", (dati["firma"] or "").strip() or None))
     nuovi = dict(voci)
@@ -103,6 +109,22 @@ def stato() -> dict:
     return {**{k: e[k] for k in ("prova_attiva", "ufficiali_attive", "indirizzo_prova", "mittente", "cc", "firma")},
             "configurata": configurata(), "prova": (e["indirizzo_prova"] or "indirizzo non impostato") if e["prova_attiva"] else None,
             "risposta": os.environ.get("MAIL_REPLY_TO")}
+
+
+def lista_indirizzi(testo: str | None) -> list[str]:
+    """Più indirizzi separati da virgola o punto e virgola, normalizzati e senza doppioni."""
+    visti, fuori = set(), []
+    for a in re.split(r"[;,]", testo or ""):
+        a = a.strip().lower()
+        if a and a not in visti:
+            visti.add(a)
+            fuori.append(a)
+    return fuori
+
+
+def contatto_ufficio() -> str | None:
+    """Indirizzo dell'ufficio, sempre in copia alle email ufficiali e a cui rispondono i referenti."""
+    return (os.environ.get("MAIL_REPLY_TO") or "").strip().lower() or None
 
 
 def indirizzi_non_validi(indirizzi: list[str]) -> list[str]:
@@ -134,8 +156,13 @@ def invia(destinatari: list[str], oggetto: str, corpo: str, sempre_reale: bool =
     messaggio["Subject"] = f"[PROVA] {oggetto}" if prova else oggetto
     if os.environ.get("MAIL_REPLY_TO"):
         messaggio["Reply-To"] = os.environ["MAIL_REPLY_TO"]
-    if modo == "ufficiale" and e["cc"]:
-        messaggio["Cc"] = e["cc"]
+    if modo == "ufficiale":
+        cc = lista_indirizzi(e["cc"])
+        contatto = contatto_ufficio()
+        if contatto and contatto not in cc:
+            cc.insert(0, contatto)
+        if cc:
+            messaggio["Cc"] = ", ".join(cc)
     messaggio.set_content(f"[Modalità di prova. Destinatari reali: {', '.join(destinatari)}]\n\n{corpo}" if prova else corpo)
     try:
         with smtplib.SMTP(os.environ["SMTP_SERVER"], int(os.environ.get("SMTP_PORT") or 25), timeout=30) as smtp:

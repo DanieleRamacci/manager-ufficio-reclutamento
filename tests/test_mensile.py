@@ -1076,7 +1076,7 @@ def test_prova_e_ufficiale_sono_separate(ambiente, db, monkeypatch):
     posta.salva_email({"prova_attiva": False, "ufficiali_attive": True, "cc": "cc@cnr.it"}, "t")
     assert admin.post(url + "/invia", json={"modo": "prova"}).status_code == 502
     r = admin.post(url + "/invia", json={"modo": "ufficiale", "oggetto": "Oggetto mio"}).get_json()
-    assert r["prova"] is False and inviati[-1]["To"] == "rdp@cnr.it" and inviati[-1]["Subject"] == "Oggetto mio" and inviati[-1]["Cc"] == "cc@cnr.it"
+    assert r["prova"] is False and inviati[-1]["To"] == "rdp@cnr.it" and inviati[-1]["Subject"] == "Oggetto mio" and inviati[-1]["Cc"] == "ufficio@esempio.it, cc@cnr.it"
     a = admin.get(f"/api/monitoraggi/{mese}/atti").get_json()
     assert a["righe"][0]["comunicazione"]["stato"] == "inviata" and a["conteggi"]["inviate"] == 1
     assert admin.post(url + "/invia", json={"modo": "ufficiale"}).status_code == 409
@@ -1373,4 +1373,21 @@ def test_pagina_riservata_aperta_da_chi_e_in_sola_lettura(ambiente, db):
     r = lettore.get("/monitoraggio/impostazioni")
     assert r.status_code == 403 and "riservata agli amministratori" in r.get_data(as_text=True) and 'href="/monitoraggio"' in r.get_data(as_text=True)
     assert lettore.get("/api/impostazioni/attivita").get_json()["error"] == "Operazione riservata agli amministratori"
+
+
+def test_cc_ufficio_multiplo_e_testo_di_riscontro(ambiente, db, monkeypatch):
+    inviati = []
+    _configura_posta(monkeypatch, inviati, MAIL_PROVA="prova@cnr.it")
+    admin, mese, url = _mese_con_rdp(ambiente, db)
+    posta.salva_email({"cc": "Uno@cnr.it, due@cnr.it ; uno@cnr.it"}, "t")  # doppioni e spazi
+    assert posta.impostazioni_email()["cc"] == "uno@cnr.it, due@cnr.it"
+    with pytest.raises(ValueError):
+        posta.salva_email({"cc": "nonvalido"}, "t")
+    assert posta.impostazioni_email()["cc"] == "uno@cnr.it, due@cnr.it"  # non sovrascritto dall'errore
+    m = admin.get(url + "/messaggio").get_json()
+    assert "Una volta completato l'aggiornamento dei dati" in m["corpo"]
+    assert "rispondendo a questa email (lasciando in copia ufficio@esempio.it)" in m["corpo"]
+    posta.salva_email({"prova_attiva": False, "ufficiali_attive": True}, "t")
+    admin.post(url + "/invia", json={"modo": "ufficiale"})
+    assert inviati[-1]["Cc"] == "ufficio@esempio.it, uno@cnr.it, due@cnr.it"  # ufficio sempre primo, senza doppioni
 

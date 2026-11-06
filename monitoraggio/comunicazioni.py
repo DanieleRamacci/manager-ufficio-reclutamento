@@ -38,6 +38,7 @@ def righe_mese(conn, monitoraggio: dict, tipologie: list[str] | None = None) -> 
         c = inviate.get(chiave(r)) or inviate.get(r.get("numero_bando") or "")
         righe.append({**r, "chiave": chiave(r), "n_gestione": mensile.numero_gestione(conn, chiave(r)) if chiave(r) else None,
                       "gruppo_tipologia": gruppo, "rilievi": testi, "con_difformita": bool(testi),
+                      "sblocco_graduatoria": da_sbloccare({**r, "rilievi": testi}),
                       "comunicazione": {"stato": "in_attesa"} if in_attesa else {"stato": "in_regola"} if not testi else (
                           {k: c.get(k) for k in ("stato", "quando", "id", "canale")} if c else {"stato": "da_inviare"})})
     righe.sort(key=lambda r: (not r["con_difformita"], tuple(-ord(x) for x in (r.get("data") or ""))))
@@ -79,6 +80,43 @@ def anteprima(conn, mese_dati: str) -> dict:
             "esistente": next((r["mese"] for r in conn.execute("SELECT mese FROM monitoraggio_mese WHERE mese_dati = ?", (mese_dati,))), None)}
 
 
+# rilievi dei punteggi che indicano: graduatoria già su SOL ma dati da completare (caso A)
+_RILIEVI_PUNTEGGI = ("mancano i punteggi", "esito (V/I", "protocollo graduatoria non valorizzato",
+                     "punteggi su SOL solo per", "nessuna domanda inviata su SOL")
+
+ISTRUZIONE_A = ("Graduatoria già presente su Selezioni Online: inserite i punteggi e gli esiti (V/I/R/S) di ogni "
+                "candidato, poi premete in alto il pulsante che valorizza automaticamente il numero di protocollo della "
+                "graduatoria. Se il pulsante non funziona, rispondete a questa email segnalando che avete aggiornato i "
+                "dati ma non riuscite a valorizzare il protocollo: provvederemo noi a sbloccare la graduatoria.")
+ISTRUZIONE_B = ("Graduatoria non ancora su Selezioni Online: compilate prima i punteggi e gli esiti, poi caricate la "
+                "graduatoria come allegato di tipo «graduatoria» indicando data e numero di protocollo; i campi si "
+                "valorizzeranno in automatico.")
+ISTRUZIONE_C = ("Provvedimento di assunzione idoneo / scorrimento: va inserito a mano su Selezioni Online, con la "
+                "relativa data e numero di protocollo.")
+
+
+def _graduatoria_su_sol(r: dict) -> bool:
+    return (r.get("fonti") or {}).get("sol", {}).get("stato") != atti.MANCANTE
+
+
+def da_sbloccare(riga: dict) -> bool:
+    """La graduatoria è su SOL ma il protocollo non è valorizzato: potrebbe servire lo sblocco manuale."""
+    return riga.get("atto") == "graduatoria" and any("protocollo graduatoria non valorizzato" in t for t in riga.get("rilievi") or [])
+
+
+def istruzioni_email(righe: list[dict]) -> list[str]:
+    """Le indicazioni su come procedere, solo per i casi presenti tra le difformità del messaggio."""
+    out = []
+    if any(r["atto"] == "graduatoria" and _graduatoria_su_sol(r)
+           and any(any(k in t for k in _RILIEVI_PUNTEGGI) for t in r["rilievi"]) for r in righe):
+        out.append(ISTRUZIONE_A)
+    if any(r["atto"] == "graduatoria" and not _graduatoria_su_sol(r) for r in righe):
+        out.append(ISTRUZIONE_B)
+    if any(r["atto"] == "scorrimento" for r in righe):
+        out.append(ISTRUZIONE_C)
+    return out
+
+
 def messaggio(conn, monitoraggio: dict, codice: str) -> dict | None:
     """Il messaggio standard per un codice: i soli rilievi e i soli RdP di quel codice."""
     righe = [r for r in righe_mese(conn, monitoraggio) if r["chiave"] == codice and r["con_difformita"]]
@@ -104,10 +142,13 @@ def messaggio(conn, monitoraggio: dict, codice: str) -> dict | None:
     saluto = f"Gentile {referenti[0]['nome']}," if len(referenti) == 1 and referenti[0]["nome"] else "Gentili tutte e tutti,"
     titolo = f" – {r0['titolo_bando']}" if r0.get("titolo_bando") else ""
     corpo = (f"{saluto}\n\nnell'ambito del monitoraggio mensile di {mese_testo} (rif. {id_m}), per il bando {codice}{titolo} "
-             f"risultano le seguenti difformità tra le fonti:\n\n" + "\n\n".join(voci) +
-             "\n\nVi chiediamo di provvedere all'inserimento o alla correzione sulle piattaforme indicate, utilizzando lo stesso "
-             "numero di protocollo, e di darne riscontro rispondendo a questa email.\n\nCordiali saluti,\n"
-             f"{posta.impostazioni_email()['firma']}\n")
+             f"risultano le seguenti difformità tra le fonti:\n\n" + "\n\n".join(voci))
+    istruzioni = istruzioni_email(righe)
+    if istruzioni:
+        corpo += "\n\nCome procedere:\n" + "\n".join(f"- {x}" for x in istruzioni)
+    copia = f" (lasciando in copia {posta.contatto_ufficio()})" if posta.contatto_ufficio() else ""
+    corpo += (f"\n\nUna volta completato l'aggiornamento dei dati, vi chiediamo di darne riscontro rispondendo a questa "
+              f"email{copia}.\n\nCordiali saluti,\n{posta.impostazioni_email()['firma']}\n")
     if r0.get("link_codice"):
         corpo += f"\nScheda su Selezioni Online: {r0['link_codice']}\n"
     return {"chiave": codice, "n_gestione": r0.get("n_gestione"), "numero_bando": r0.get("numero_bando"), "titolo_bando": r0.get("titolo_bando"), "referenti": referenti,
