@@ -170,9 +170,11 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
         stato = punteggi.stato_scorrimento({"data": r["data"], "protocolli": set(r.get("_protocolli") or [])}, sol)
         if stato["registrato"] is False:
             rif = f" (prot. {r['protocollo']})" if r.get("protocollo") else ""
+            c = r.get("utilizzi_codice") or {}
+            extra = f" (per questo codice risultano {c['totale']} utilizzi, {c['su_sol']} presenti su SOL)" if c.get("totale", 0) > 1 else ""
             if r.get("fonti", {}).get("sol", {}).get("stato") == PRESENTE:
-                return [f"provvedimento di assunzione idoneo{rif} presente tra gli allegati SOL ma non risulta nei punteggi: nessun candidato S con questo protocollo"]
-            return [f"provvedimento di assunzione idoneo{rif} non presente tra gli allegati SOL e nessun candidato S con questo protocollo nei punteggi"]
+                return [f"provvedimento di assunzione idoneo{rif} presente tra gli allegati SOL ma non risulta nei punteggi: nessun candidato S con questo protocollo{extra}"]
+            return [f"provvedimento di assunzione idoneo{rif} non presente tra gli allegati SOL e nessun candidato S con questo protocollo nei punteggi{extra}"]
         d = []
         if stato["data_diversa"]:
             d.append("data assunzione idoneo diversa su SOL")
@@ -279,6 +281,17 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
                           "persone": gruppo.get("segreteria", {}).get("persone"),
                           "fonti": {f: cella(f, gruppo.get(f), urp_ok, categoria, data) for f in FONTI},
                           "note": note, "_protocolli": [p for p in protocolli.values() if p]})
+
+    # quanti utilizzi risultano per lo stesso bando/codice e quanti sono presenti su SOL
+    utilizzi = defaultdict(lambda: {"totale": 0, "su_sol": 0})
+    for r in righe:
+        if r["atto"] == "scorrimento":
+            g = utilizzi[(r["bando_id"], r.get("codice_sotto"))]
+            g["totale"] += 1
+            g["su_sol"] += r["fonti"]["sol"]["stato"] == PRESENTE
+    for r in righe:
+        if r["atto"] == "scorrimento":
+            r["utilizzi_codice"] = dict(utilizzi[(r["bando_id"], r.get("codice_sotto"))])
 
     for r in righe:
         if r["bando_id"] is not None:

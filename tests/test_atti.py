@@ -159,3 +159,22 @@ def test_rdp_e_link_del_codice_specifico(db):
     assert [p["nome"] for p in righe["500"]["rdp"]] == ["Roma"] and righe["500"]["rdp_origine"] == "codice"
     assert [p["nome"] for p in righe["501"]["rdp"]] == ["Napoli"]
     assert righe["500"]["link_codice"] == "http://sol/c13"  # pagina SOL del codice 13
+
+
+def test_conteggio_utilizzi_per_codice_nel_rilievo(db):
+    from monitoraggio import difformita
+    # due utilizzi per lo stesso bando: uno su SOL+URP (prot 100), uno solo su URP (prot 200)
+    salva(db, "sol", [scheda("sol", "s1", "367.524 CTER", "367.524",
+                             documenti=[doc("u1", "scorrimento", "100", "2026-07-31")])])
+    salva(db, "urp", [scheda("urp", "/n/1", "367.524 CTER", "367.524",
+                             documenti=[doc("u1u", "scorrimento", "100", "2026-07-31"), doc("u2", "scorrimento", "200", "2026-10-19")])])
+    collegamento.collega(db)
+    righe = {(r["atto"], r["protocollo"]): r for r in atti.elenco_atti(db, "2026-07-01", "2026-10-31")}
+    mancante = righe[("scorrimento", "200")]
+    assert mancante["utilizzi_codice"] == {"totale": 2, "su_sol": 1}
+    testi = difformita.rilievi(mancante)
+    assert any("(prot. 200) non risulta tra i dati attualmente disponibili da Selezioni Online "
+               "(per questo codice risultano 2 utilizzi, 1 su Selezioni Online)" in t for t in testi), testi
+    # quello presente su SOL non porta il conteggio
+    assert all("risultano" not in t for t in difformita.rilievi(righe[("scorrimento", "100")]))
+
