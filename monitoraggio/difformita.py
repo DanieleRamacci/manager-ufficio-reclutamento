@@ -29,9 +29,10 @@ def rilievi(riga: dict) -> list[str]:
     """Come rilievi() in solleciti.js."""
     atto = "la graduatoria" if riga["atto"] == "graduatoria" else "il provvedimento di assunzione idoneo (scorrimento/utilizzo della graduatoria)"
     testi = list(riga.get("note") or [])
+    rif = f" (prot. {riga['protocollo']})" if riga.get("protocollo") else ""
     for chiave, nome in FONTI.items():
         if (riga.get("fonti") or {}).get(chiave, {}).get("stato") == atti.MANCANTE:
-            testi.append(f"{atto} non risulta tra i dati attualmente disponibili da {nome}")
+            testi.append(f"{atto}{rif} non risulta tra i dati attualmente disponibili da {nome}")
     return list(dict.fromkeys(t for t in testi if t))
 
 

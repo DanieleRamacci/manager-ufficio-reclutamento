@@ -178,7 +178,7 @@ def test_scorrimenti_candidati_s(db, client_finto):
     from monitoraggio import atti
     righe = {(a["atto"], a["protocollo"]): a for a in atti.elenco_atti(db, "2026-10-01", "2026-10-31")}
     assert righe[("scorrimento", "600")]["note"][-1].startswith(
-        "provvedimento di assunzione idoneo non presente tra gli allegati SOL")
+        "provvedimento di assunzione idoneo (prot. 600) non presente tra gli allegati SOL")
     assert righe[("scorrimento", "600")]["difforme"]
     assert "data assunzione idoneo diversa su SOL" in righe[("scorrimento", "500")]["note"]
     assert righe[("scorrimento", "500")]["url_punteggi"].endswith("callId=k")

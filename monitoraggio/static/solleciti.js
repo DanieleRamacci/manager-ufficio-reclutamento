@@ -4,10 +4,11 @@
   function rilievi(riga) {
     const atto = riga.atto === "graduatoria" ? "la graduatoria" : "il provvedimento di assunzione idoneo (scorrimento/utilizzo della graduatoria)";
     const rilievi = [...(riga.note || [])];
+    const rif = riga.protocollo ? ` (prot. ${riga.protocollo})` : "";
     const fonti = { sol: "Selezioni Online", urp: "URP", segreteria: "file di riepilogo della segreteria" };
     Object.entries(fonti).forEach(([chiave, nome]) => {
       if (riga.fonti?.[chiave]?.stato !== "mancante") return;
-      rilievi.push(`${atto} non risulta tra i dati attualmente disponibili da ${nome}`);
+      rilievi.push(`${atto}${rif} non risulta tra i dati attualmente disponibili da ${nome}`);
     });
     return [...new Set(rilievi.filter(Boolean))];
   }

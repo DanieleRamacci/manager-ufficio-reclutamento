@@ -169,9 +169,10 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
         sol = v.get("scorrimenti_sol")
         stato = punteggi.stato_scorrimento({"data": r["data"], "protocolli": set(r.get("_protocolli") or [])}, sol)
         if stato["registrato"] is False:
+            rif = f" (prot. {r['protocollo']})" if r.get("protocollo") else ""
             if r.get("fonti", {}).get("sol", {}).get("stato") == PRESENTE:
-                return ["provvedimento di assunzione idoneo presente tra gli allegati SOL ma non risulta nei punteggi: nessun candidato S con questo protocollo"]
-            return ["provvedimento di assunzione idoneo non presente tra gli allegati SOL e nessun candidato S con questo protocollo nei punteggi"]
+                return [f"provvedimento di assunzione idoneo{rif} presente tra gli allegati SOL ma non risulta nei punteggi: nessun candidato S con questo protocollo"]
+            return [f"provvedimento di assunzione idoneo{rif} non presente tra gli allegati SOL e nessun candidato S con questo protocollo nei punteggi"]
         d = []
         if stato["data_diversa"]:
             d.append("data assunzione idoneo diversa su SOL")
