@@ -1405,3 +1405,106 @@ def test_aggiornamento_toglie_reclutamento_speciale_e_comandi(db):
     assert {r[0] for r in db.execute("SELECT numero_bando FROM difformita")} == {"m1", "t1", "x1"}  # via comando e reclutamento speciale
     assert db.execute("SELECT COUNT(*) FROM difformita_evento").fetchone()[0] == 3
 
+
+
+# --- referenti tolti e persone aggiunte in copia al singolo messaggio
+
+def _due_rdp(ambiente, db):
+    admin, mese, url = _mese_con_rdp(ambiente, db, "anna@cnr.it")
+    sid = db.execute("SELECT id FROM scheda WHERE id_esterno = 's1'").fetchone()[0]
+    db.execute("INSERT INTO referente (scheda_id, chiave, nome, cognome, email, username, attivo, prima_rilevazione, "
+               "ultima_rilevazione) VALUES (?, 'b', 'Bruno', 'Verdi', 'bruno@cnr.it', 'b', 1, 'x', 'x')", (sid,))
+    return admin, mese, url
+
+
+def test_togliere_un_referente_e_aggiungere_cc(ambiente, db, monkeypatch):
+    inviati = []
+    _configura_posta(monkeypatch, inviati)
+    posta.salva_email({"prova_attiva": False, "ufficiali_attive": True, "cc": "fisso@cnr.it"}, "t")
+    admin, mese, url = _due_rdp(ambiente, db)
+    d = admin.get(url + "/messaggio").get_json()
+    assert set(d["destinatari"]) == {"anna@cnr.it", "bruno@cnr.it"} and d["corpo"].startswith("Gentili tutte e tutti,")
+    assert d["cc"] == ["ufficio@esempio.it", "fisso@cnr.it"]
+
+    r = admin.put(url + "/indirizzi", json={"esclusi": ["bruno@cnr.it"], "cc": ["Extra@cnr.it, due@cnr.it; fisso@cnr.it"]}).get_json()
+    assert r["destinatari"] == ["anna@cnr.it"] and r["corpo"].startswith("Gentile Anna Bianchi,")
+    assert r["cc"] == ["ufficio@esempio.it", "fisso@cnr.it", "extra@cnr.it", "due@cnr.it"]
+    assert {x["email"]: x["escluso"] for x in r["referenti"]} == {"anna@cnr.it": False, "bruno@cnr.it": True}
+    # la scelta resta riaprendo il messaggio
+    assert admin.get(url + "/messaggio").get_json()["destinatari"] == ["anna@cnr.it"]
+
+    assert admin.post(url + "/invia", json={"modo": "ufficiale"}).status_code == 200
+    assert inviati[-1]["To"] == "anna@cnr.it" and inviati[-1]["Cc"] == "ufficio@esempio.it, fisso@cnr.it, extra@cnr.it, due@cnr.it"
+    voce = admin.get(f"/api/comunicazioni?mese={mese}").get_json()["comunicazioni"][0]
+    assert voce["destinatari"] == ["anna@cnr.it"] and "extra@cnr.it" in voce["cc"]
+
+    # rimettendolo torna destinatario e il saluto torna al plurale
+    r = admin.put(url + "/indirizzi", json={"esclusi": [], "cc": []}).get_json()
+    assert len(r["destinatari"]) == 2 and r["corpo"].startswith("Gentili tutte e tutti,") and r["cc"] == ["ufficio@esempio.it", "fisso@cnr.it"]
+
+
+def test_invia_tutte_rispetta_le_scelte_del_messaggio(ambiente, db, monkeypatch):
+    inviati = []
+    _configura_posta(monkeypatch, inviati)
+    admin, mese, url = _due_rdp(ambiente, db)
+    admin.put(url + "/indirizzi", json={"esclusi": ["bruno@cnr.it"], "cc": ["extra@cnr.it"]})
+    r = admin.post(f"/api/monitoraggi/{mese}/comunicazioni-invia-tutti").get_json()
+    assert r["inviate"] == 1 and inviati[-1]["To"] == "anna@cnr.it" and "extra@cnr.it" in inviati[-1]["Cc"]
+
+
+def test_anche_il_vecchio_invio_rispetta_le_esclusioni(ambiente, db, monkeypatch):
+    inviati = []
+    _configura_posta(monkeypatch, inviati)
+    admin, mese, url = _due_rdp(ambiente, db)
+    admin.put(url + "/indirizzi", json={"esclusi": ["bruno@cnr.it"], "cc": ["extra@cnr.it"]})
+    r = admin.post(f"/api/monitoraggi/{mese}/solleciti/invia", json=_sollecito("367.479 CTER", ["anna@cnr.it", "bruno@cnr.it"]))
+    assert r.status_code == 200 and inviati[-1]["To"] == "anna@cnr.it" and "extra@cnr.it" in inviati[-1]["Cc"]
+
+
+def test_tutti_i_referenti_tolti_non_si_invia(ambiente, db, monkeypatch):
+    inviati = []
+    _configura_posta(monkeypatch, inviati)
+    admin, mese, url = _due_rdp(ambiente, db)
+    admin.put(url + "/indirizzi", json={"esclusi": ["anna@cnr.it", "bruno@cnr.it"], "cc": []})
+    r = admin.post(url + "/invia", json={"modo": "ufficiale"})
+    assert r.status_code == 400 and "rimettine" in r.get_json()["error"] and inviati == []
+
+
+def test_cc_del_messaggio_in_prova_solo_nel_testo(ambiente, db, monkeypatch):
+    inviati = []
+    _configura_posta(monkeypatch, inviati, MAIL_PROVA="prova@cnr.it")
+    admin, mese, url = _due_rdp(ambiente, db)
+    admin.put(url + "/indirizzi", json={"esclusi": ["bruno@cnr.it"], "cc": ["extra@cnr.it"]})
+    assert admin.post(url + "/invia", json={"modo": "prova"}).get_json()["prova"] is True
+    assert inviati[-1]["To"] == "prova@cnr.it" and inviati[-1]["Cc"] is None
+    testo = inviati[-1].get_content()
+    assert "Destinatari reali: anna@cnr.it" in testo and "extra@cnr.it" in testo and "bruno@cnr.it" not in testo.split("]")[0]
+
+
+def test_copia_manuale_registra_il_cc(ambiente, db):
+    admin, mese, url = _due_rdp(ambiente, db)
+    admin.put(url + "/indirizzi", json={"esclusi": ["bruno@cnr.it"], "cc": ["extra@cnr.it"]})
+    assert admin.post(url + "/traccia", json={"canale": "Copia manuale"}).status_code == 200
+    voce = admin.get(f"/api/comunicazioni?mese={mese}").get_json()["comunicazioni"][0]
+    assert voce["destinatari"] == ["anna@cnr.it"] and "extra@cnr.it" in voce["cc"]
+
+
+def test_indirizzi_controlli(ambiente, db):
+    admin, mese, url = _due_rdp(ambiente, db)
+    for sbagliato in ("non-email", "a(b@cnr.it", "a@b"):
+        r = admin.put(url + "/indirizzi", json={"esclusi": [], "cc": [sbagliato]})
+        assert r.status_code == 400 and "non validi" in r.get_json()["error"], sbagliato
+    assert admin.get(url + "/messaggio").get_json()["cc_aggiunti"] == []
+    assert admin.put(f"/api/monitoraggi/{mese}/comunicazioni/inesistente/indirizzi", json={}).status_code == 404
+    admin.post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"})
+    assert ambiente("lettore.uno").put(url + "/indirizzi", json={"esclusi": ["bruno@cnr.it"], "cc": []}).status_code == 403
+    assert admin.post(f"/api/monitoraggi/{mese}/chiudi", json={}).status_code == 200
+    assert admin.put(url + "/indirizzi", json={"esclusi": ["bruno@cnr.it"], "cc": []}).status_code == 409
+
+
+def test_oggetto_con_a_capo_non_rompe_l_invio(monkeypatch, ambiente):
+    inviati = []
+    _configura_posta(monkeypatch, inviati)
+    ambiente()
+    assert posta.invia(["a@cnr.it"], "riga uno\nriga due", "testo", modo="ufficiale") is False
+    assert inviati[-1]["Subject"] == "riga uno riga due"

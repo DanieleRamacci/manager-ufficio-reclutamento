@@ -378,12 +378,32 @@ def nuovo_id_comunicazione(conn, monitoraggio: dict, chiave: str, numero_bando: 
 
 def registra_comunicazione(conn, mese: str, chiave: str, numero_bando: str | None, canale: str, stato: str, utente: str | None,
                            destinatari: list[str] | None = None, oggetto: str | None = None, corpo: str | None = None,
-                           n_difformita: int | None = None) -> str:
+                           n_difformita: int | None = None, cc: list[str] | None = None) -> str:
     id_c = nuovo_id_comunicazione(conn, leggi(conn, mese), chiave, numero_bando)
-    conn.execute("INSERT INTO comunicazione (id, mese, chiave, numero_bando, codice, destinatari, oggetto, corpo, n_difformita, canale, stato, data, utente) "
-                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                 (id_c, mese, chiave, numero_bando, chiave, json.dumps(destinatari or []), oggetto, corpo, n_difformita, canale, stato, _adesso(), utente))
+    conn.execute("INSERT INTO comunicazione (id, mese, chiave, numero_bando, codice, destinatari, cc, oggetto, corpo, n_difformita, canale, stato, data, utente) "
+                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 (id_c, mese, chiave, numero_bando, chiave, json.dumps(destinatari or []), json.dumps(cc or []), oggetto, corpo, n_difformita, canale, stato, _adesso(), utente))
     return id_c
+
+
+def indirizzi_messaggio(conn, mese: str, chiave: str) -> dict:
+    """Le scelte per il messaggio di un codice: referenti tolti e persone aggiunte in copia."""
+    r = conn.execute("SELECT esclusi, cc FROM comunicazione_indirizzi WHERE mese = ? AND chiave = ?", (mese, chiave)).fetchone()
+    return {"esclusi": json.loads(r["esclusi"]), "cc": json.loads(r["cc"])} if r else {"esclusi": [], "cc": []}
+
+
+def salva_indirizzi_messaggio(conn, mese: str, chiave: str, dati: dict, autore: str | None) -> None:
+    def elenco(campo):
+        valore = dati.get(campo) or []
+        return dividi_indirizzi(",".join(str(x) for x in valore) if isinstance(valore, list) else str(valore))
+    esclusi, cc = elenco("esclusi"), elenco("cc")
+    sbagliati = posta.indirizzi_non_validi(cc)
+    if sbagliati:
+        raise ValueError("Indirizzi in copia non validi: " + ", ".join(sbagliati))
+    conn.execute("INSERT INTO comunicazione_indirizzi (mese, chiave, esclusi, cc, modificata_da, modificata_il) VALUES (?, ?, ?, ?, ?, ?) "
+                 "ON CONFLICT(mese, chiave) DO UPDATE SET esclusi = excluded.esclusi, cc = excluded.cc, "
+                 "modificata_da = excluded.modificata_da, modificata_il = excluded.modificata_il",
+                 (mese, chiave, json.dumps(esclusi), json.dumps(cc), autore, _adesso()))
 
 
 def segna(conn, mese: str, numero_bando: str, stato: str, autore: str | None, destinatari: list[str] | None = None,
@@ -414,7 +434,7 @@ def registro_comunicazioni(conn, mese: str | None = None, chiave: str | None = N
         argomenti.append(chiave)
     righe = conn.execute(f"SELECT c.*, m.mese_dati, g.numero AS gestione FROM comunicazione c JOIN monitoraggio_mese m ON m.mese = c.mese "
                          f"LEFT JOIN gestione g ON g.chiave = c.chiave WHERE {' AND '.join(condizioni)} ORDER BY c.data DESC, c.rowid DESC", argomenti)
-    return [{**dict(r), "destinatari": json.loads(r["destinatari"] or "[]"), "monitoraggio": id_monitoraggio({"mese_dati": r["mese_dati"]}),
+    return [{**dict(r), "destinatari": json.loads(r["destinatari"] or "[]"), "cc": json.loads(r["cc"] or "[]"), "monitoraggio": id_monitoraggio({"mese_dati": r["mese_dati"]}),
              "n_gestione": f"{r['gestione']:04d}" if r["gestione"] else None} for r in righe]
 
 

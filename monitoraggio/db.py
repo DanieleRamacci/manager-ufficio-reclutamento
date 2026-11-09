@@ -4,7 +4,7 @@ import sqlite3
 
 from . import config
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -268,6 +268,16 @@ CREATE TABLE IF NOT EXISTS comunicazione (
 );
 CREATE INDEX IF NOT EXISTS idx_comunicazione_mese ON comunicazione (mese, chiave, data);
 
+CREATE TABLE IF NOT EXISTS comunicazione_indirizzi (
+    mese TEXT NOT NULL REFERENCES monitoraggio_mese(mese),
+    chiave TEXT NOT NULL,
+    esclusi TEXT NOT NULL DEFAULT '[]',
+    cc TEXT NOT NULL DEFAULT '[]',
+    modificata_da TEXT,
+    modificata_il TEXT,
+    PRIMARY KEY (mese, chiave)
+);
+
 CREATE TABLE IF NOT EXISTS attivita (
     chiave TEXT PRIMARY KEY,
     orario TEXT,
@@ -488,6 +498,8 @@ def inizializza(conn: sqlite3.Connection) -> None:
     for colonna in ("letti", "totale"):  # versione 14
         if colonna not in colonne_referenti:
             conn.execute(f"ALTER TABLE referenti_aggiornamento ADD COLUMN {colonna} INTEGER")
+    if "cc" not in {r[1] for r in conn.execute("PRAGMA table_info(comunicazione)")}:  # versione 17
+        conn.execute("ALTER TABLE comunicazione ADD COLUMN cc TEXT")
     _migra_versioni(conn)
     _migra_comunicazioni(conn)
     riga = conn.execute("SELECT versione FROM schema_version").fetchone()

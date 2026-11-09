@@ -117,21 +117,25 @@ def istruzioni_email(righe: list[dict]) -> list[str]:
     return out
 
 
-def messaggio(conn, monitoraggio: dict, codice: str) -> dict | None:
-    """Il messaggio standard per un codice: i soli rilievi e i soli RdP di quel codice."""
-    righe = [r for r in righe_mese(conn, monitoraggio) if r["chiave"] == codice and r["con_difformita"]]
-    tutte = [r for r in righe_mese(conn, monitoraggio) if r["chiave"] == codice]
+def messaggio(conn, monitoraggio: dict, codice: str, righe_del_mese: list[dict] | None = None) -> dict | None:
+    """Il messaggio standard per un codice: i soli rilievi e i soli RdP di quel codice, tolti quelli esclusi a mano.
+    `righe_del_mese` evita di ricalcolare il mese quando si preparano più messaggi."""
+    tutte = [r for r in (righe_mese(conn, monitoraggio) if righe_del_mese is None else righe_del_mese) if r["chiave"] == codice]
     if not tutte:
         return None
+    righe = [r for r in tutte if r["con_difformita"]]
     r0 = (righe or tutte)[0]
+    scelte = mensile.indirizzi_messaggio(conn, monitoraggio["mese"], codice)
     referenti, visti = [], set()
     for r in righe or tutte:
         for p in r.get("rdp") or []:
             email = (p.get("email") or "").strip().lower()
             if email and email not in visti:
                 visti.add(email)
-                referenti.append({"nome": " ".join(x for x in (p.get("nome"), p.get("cognome")) if x), "email": email})
-    id_m = mensile.id_monitoraggio(monitoraggio)
+                referenti.append({"nome": " ".join(x for x in (p.get("nome"), p.get("cognome")) if x), "email": email,
+                                  "escluso": email in scelte["esclusi"]})
+    attivi = [p for p in referenti if not p["escluso"]]
+    destinatari = [p["email"] for p in attivi]
     mese_testo = titolo_mese(monitoraggio["mese_dati"])
     n = sum(len(r["rilievi"]) for r in righe)
     voci = []
@@ -139,7 +143,7 @@ def messaggio(conn, monitoraggio: dict, codice: str) -> dict | None:
         tipo = {"graduatoria": "Graduatoria", "scorrimento": "Provvedimento di assunzione idoneo / scorrimento"}.get(r["atto"], r["atto"])
         testa = f"{i}) {tipo} del {_data_it(r.get('data'))}" + (f" – prot. {r['protocollo']}" if r.get("protocollo") else "")
         voci.append("\n".join([testa, *[f"   – {t}" for t in r["rilievi"]]]))
-    saluto = f"Gentile {referenti[0]['nome']}," if len(referenti) == 1 and referenti[0]["nome"] else "Gentili tutte e tutti,"
+    saluto = f"Gentile {attivi[0]['nome']}," if len(attivi) == 1 and attivi[0]["nome"] else "Gentili tutte e tutti,"
     titolo = f" – {r0['titolo_bando']}" if r0.get("titolo_bando") else ""
     corpo = (f"{saluto}\n\nnell'ambito del monitoraggio mensile di {mese_testo}, per il bando {codice}{titolo} "
              f"risultano le seguenti difformità tra le fonti:\n\n" + "\n\n".join(voci))
@@ -152,7 +156,8 @@ def messaggio(conn, monitoraggio: dict, codice: str) -> dict | None:
     if r0.get("link_codice"):
         corpo += f"\nScheda su Selezioni Online: {r0['link_codice']}\n"
     return {"chiave": codice, "n_gestione": r0.get("n_gestione"), "numero_bando": r0.get("numero_bando"), "titolo_bando": r0.get("titolo_bando"), "referenti": referenti,
-            "destinatari": [p["email"] for p in referenti], "oggetto": f"Monitoraggio {mese_testo}. Bando n° {codice}: Aggiornamento Dati – Rif. {r0.get('n_gestione')}",
+            "destinatari": destinatari, "esclusi": scelte["esclusi"], "cc_ufficio": posta.copia_fissa(), "cc_aggiunti": scelte["cc"],
+            "cc": posta.copia_effettiva(destinatari, scelte["cc"]), "oggetto": f"Monitoraggio {mese_testo}. Bando n° {codice}: Aggiornamento Dati – Rif. {r0.get('n_gestione')}",
             "corpo": corpo, "n_difformita": n, "stato": (righe or tutte)[0]["comunicazione"]["stato"],
             "storico": mensile.registro_comunicazioni(conn, monitoraggio["mese"], codice), "posta": posta.stato()}
 

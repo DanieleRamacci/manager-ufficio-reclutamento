@@ -34,7 +34,7 @@
   function disegna() {
     const f = { stato: $("f-stato").value, canale: $("f-canale").value, q: $("f-q").value.toLowerCase() };
     const righe = dati.filter(c => (!f.stato || c.stato === f.stato) && (!f.canale || c.canale === f.canale)
-      && (!f.q || `${c.id} ${c.chiave} ${c.destinatari.join(" ")}`.toLowerCase().includes(f.q)));
+      && (!f.q || `${c.id} ${c.chiave} ${c.destinatari.join(" ")} ${c.cc.join(" ")}`.toLowerCase().includes(f.q)));
     $("tabella").innerHTML = `<thead><tr><th>ID comunicazione</th><th>Data</th><th>Monitoraggio</th><th>N. bando</th><th>N. gestione</th><th>Codice</th><th>Destinatari</th><th>Oggetto</th><th>Difformità</th><th>Canale</th><th>Stato</th><th></th></tr></thead><tbody>` +
       (righe.map((c, i) => `<tr class="cliccabile" data-i="${dati.indexOf(c)}"><td class="mono small">${esc(c.id)}</td><td>${ora(c.data)}</td><td class="mono small">${esc(c.monitoraggio)}</td><td>${esc(c.numero_bando)}</td><td class="mono small">${esc(c.n_gestione)}</td><td>${esc(c.chiave)}</td>
         <td title="${esc(c.destinatari.join(", "))}">${esc(brevi(c.destinatari))}</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.oggetto)}">${esc(c.oggetto)}</td>
@@ -44,7 +44,7 @@
   }
   function apri(c) {
     const o = apriFinestra(`<header><div><b>Comunicazione</b> <span class="mono small">${esc(c.id)}</span></div><span class="pillola ${PILLOLE[c.stato][0]}">${PILLOLE[c.stato][1]}</span></header>
-      <div class="corpo"><div class="small"><b>A:</b> ${esc(c.destinatari.join(", ")) || "–"}<br><b>Oggetto:</b> ${esc(c.oggetto)}<br><b>Canale:</b> ${esc(c.canale)} · ${ora(c.data)}${c.utente ? ` · ${esc(c.utente)}` : ""}</div>
+      <div class="corpo"><div class="small"><b>A:</b> ${esc(c.destinatari.join(", ")) || "–"}${c.cc.length ? `<br><b>Cc:</b> ${esc(c.cc.join(", "))}` : ""}<br><b>Oggetto:</b> ${esc(c.oggetto)}<br><b>Canale:</b> ${esc(c.canale)} · ${ora(c.data)}${c.utente ? ` · ${esc(c.utente)}` : ""}</div>
       <div class="anteprima-testo">${esc(c.corpo) || "Testo non disponibile."}</div></div>
       <footer><span></span><button type="button" id="chiudi">Chiudi</button></footer>`);
     o.querySelector("#chiudi").onclick = chiudiFinestra;

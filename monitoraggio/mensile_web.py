@@ -393,8 +393,32 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         finally:
             conn.close()
 
-    def _invia_messaggio(conn, m: dict, codice: str, modo: str, oggetto: str | None = None, corpo: str | None = None, conferma: bool = False):
-        messaggio = comunicazioni.messaggio(conn, m, codice)
+    @bp.put("/api/monitoraggi/<mese>/comunicazioni/<path:codice>/indirizzi")
+    @protezione
+    @solo_admin
+    def api_messaggio_indirizzi(mese: str, codice: str):
+        """Referenti tolti e persone aggiunte in copia per questo messaggio: valgono anche per «Invia tutte»."""
+        conn = _conn()
+        try:
+            m = _trova(conn, mese)
+            if not m:
+                return jsonify({"error": "Monitoraggio non trovato"}), 404
+            mensile.verifica_aperto(conn, mese)
+            righe = comunicazioni.righe_mese(conn, m)
+            if not any(r["chiave"] == codice for r in righe):
+                return jsonify({"error": "Comunicazione non trovata"}), 404
+            mensile.salva_indirizzi_messaggio(conn, mese, codice, request.get_json(silent=True) or {}, utente_corrente())
+            return jsonify({**comunicazioni.messaggio(conn, m, codice, righe), "id_monitoraggio": mensile.id_monitoraggio(m), "chiuso": False})
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except mensile.MeseChiuso as e:
+            return jsonify({"error": str(e)}), 409
+        finally:
+            conn.close()
+
+    def _invia_messaggio(conn, m: dict, codice: str, modo: str, oggetto: str | None = None, corpo: str | None = None, conferma: bool = False,
+                         righe: list[dict] | None = None):
+        messaggio = comunicazioni.messaggio(conn, m, codice, righe)
         if not messaggio:
             return {"error": "Comunicazione non trovata"}, 404
         if not messaggio["n_difformita"]:
@@ -403,18 +427,19 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         if comunicazioni.contiene_dati_candidati(oggetto, testo):
             return {"error": "Il testo sembra contenere un codice fiscale: invio bloccato"}, 400
         if not messaggio["destinatari"]:
-            return {"error": "Nessuna email RdP disponibile per questo bando"}, 400
+            return {"error": "Tutti i referenti sono stati tolti da questa email: rimettine almeno uno" if messaggio["referenti"]
+                    else "Nessuna email RdP disponibile per questo bando"}, 400
         if modo == "ufficiale" and messaggio["stato"] in ("inviata", "inviata_a_mano") and not conferma:
             return {"error": "Comunicazione già inviata", "gia_inviata": True}, 409
         try:
-            prova = posta.invia(messaggio["destinatari"], oggetto, testo, modo=modo)
+            prova = posta.invia(messaggio["destinatari"], oggetto, testo, modo=modo, cc=messaggio["cc_aggiunti"])
         except posta.PostaErrore as e:
             mensile.registra_invio(conn, "sollecito", m["mese"], codice, utente_corrente(), messaggio["destinatari"], oggetto, "errore", str(e))
             return {"error": str(e)}, 502
         mensile.registra_invio(conn, "sollecito", m["mese"], codice, utente_corrente(), messaggio["destinatari"], oggetto, "prova" if prova else "inviata")
         id_c = mensile.registra_comunicazione(conn, m["mese"], codice, messaggio["numero_bando"], "Email di prova" if prova else "Casella ufficio",
                                               "prova" if prova else "inviata", utente_corrente(), messaggio["destinatari"],
-                                              f"[PROVA] {oggetto}" if prova else oggetto, testo, messaggio["n_difformita"])
+                                              f"[PROVA] {oggetto}" if prova else oggetto, testo, messaggio["n_difformita"], messaggio["cc"])
         return {"ok": True, "prova": prova, "id": id_c}, 200
 
     @bp.post("/api/monitoraggi/<mese>/comunicazioni/<path:codice>/invia")
@@ -457,7 +482,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             mensile.verifica_aperto(conn, mese)
             id_c = mensile.registra_comunicazione(conn, mese, codice, messaggio["numero_bando"], corpo["canale"], "da confermare", utente_corrente(),
                                                   messaggio["destinatari"], corpo.get("oggetto") or messaggio["oggetto"],
-                                                  corpo.get("corpo") or messaggio["corpo"], messaggio["n_difformita"])
+                                                  corpo.get("corpo") or messaggio["corpo"], messaggio["n_difformita"], messaggio["cc"])
             return jsonify({"ok": True, "id": id_c})
         except mensile.MeseChiuso as e:
             return jsonify({"error": str(e)}), 409
@@ -483,7 +508,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             codici = list(dict.fromkeys(r["chiave"] for r in righe if r["con_difformita"] and r["comunicazione"]["stato"] == "da_inviare"))
             inviate, errori = 0, []
             for codice in codici:
-                esito, codice_http = _invia_messaggio(conn, m, codice, "ufficiale")
+                esito, codice_http = _invia_messaggio(conn, m, codice, "ufficiale", righe=righe)
                 if codice_http == 200:
                     inviate += 1
                 else:
@@ -637,9 +662,9 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         finally:
             conn.close()
 
-    def _invia(conn, tipo, mese, numero_bando, destinatari, oggetto, corpo):
+    def _invia(conn, tipo, mese, numero_bando, destinatari, oggetto, corpo, cc=None):
         try:
-            prova = posta.invia(destinatari, oggetto, corpo)
+            prova = posta.invia(destinatari, oggetto, corpo, cc=cc)
         except posta.PostaErrore as e:
             mensile.registra_invio(conn, tipo, mese, numero_bando, utente_corrente(), destinatari, oggetto, "errore", str(e))
             return jsonify({"error": str(e)}), 502
@@ -680,6 +705,8 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             mensile.verifica_aperto(conn, mese)
             if not numero or not oggetto or not testo.strip():
                 return jsonify({"error": "Bando, oggetto e testo sono obbligatori"}), 400
+            scelte = mensile.indirizzi_messaggio(conn, mese, numero)  # chi è stato tolto dal messaggio non lo riceve neanche da qui
+            destinatari = [d for d in destinatari if d not in scelte["esclusi"]]
             if not destinatari:
                 return jsonify({"error": "Nessuna email RdP disponibile per questo bando"}), 400
             estranei = sorted(set(destinatari) - mensile.email_rdp(conn, numero))
@@ -689,7 +716,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
                 return jsonify({"error": "Il testo sembra contenere un codice fiscale: invio bloccato"}), 400
             if numero in mensile.solleciti(conn, mese) and not corpo.get("conferma"):
                 return jsonify({"error": "Sollecito già segnato come inviato", "gia_inviato": True}), 409
-            return _invia(conn, "sollecito", mese, numero, destinatari, oggetto, testo)
+            return _invia(conn, "sollecito", mese, numero, destinatari, oggetto, testo, cc=scelte["cc"])
         except mensile.MeseChiuso as e:
             return jsonify({"error": str(e)}), 409
         finally:

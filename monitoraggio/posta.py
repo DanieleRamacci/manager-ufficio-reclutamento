@@ -12,7 +12,7 @@ from email.message import EmailMessage
 from . import db
 
 log = logging.getLogger(__name__)
-_EMAIL = re.compile(r"[^@\s;,<>]+@[^@\s;,<>]+\.[^@\s;,<>]+")
+_EMAIL = re.compile(r"[a-z0-9._%+'-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+", re.I)
 
 
 class PostaErrore(Exception):
@@ -127,18 +127,31 @@ def contatto_ufficio() -> str | None:
     return (os.environ.get("MAIL_REPLY_TO") or "").strip().lower() or None
 
 
+def copia_fissa() -> list[str]:
+    """Sempre in copia alle email ufficiali: il contatto dell'ufficio e gli indirizzi delle Impostazioni."""
+    contatto = contatto_ufficio()
+    return list(dict.fromkeys([*([contatto] if contatto else []), *lista_indirizzi(impostazioni_email()["cc"])]))
+
+
+def copia_effettiva(destinatari: list[str], aggiunti: list[str] | None = None) -> list[str]:
+    """Chi riceve davvero in copia: gli indirizzi fissi e quelli del singolo messaggio, senza chi è già tra i destinatari."""
+    return [a for a in dict.fromkeys([*copia_fissa(), *(aggiunti or [])]) if a not in destinatari]
+
+
 def indirizzi_non_validi(indirizzi: list[str]) -> list[str]:
     return [i for i in indirizzi if not _EMAIL.fullmatch(i)]
 
 
-def invia(destinatari: list[str], oggetto: str, corpo: str, sempre_reale: bool = False, modo: str | None = None) -> bool:
+def invia(destinatari: list[str], oggetto: str, corpo: str, sempre_reale: bool = False, modo: str | None = None,
+          cc: list[str] | None = None) -> bool:
     """Invia l'email. Ritorna True se è andata in prova; solleva PostaErrore se non parte. `modo`: "prova" o "ufficiale";
-    senza, vale la prova se è attiva. `sempre_reale`: per le email che devono arrivare alla persona, come i link di accesso."""
+    senza, vale la prova se è attiva. `sempre_reale`: per le email che devono arrivare alla persona, come i link di accesso.
+    `cc`: indirizzi in copia aggiunti per questo messaggio, oltre a quelli fissi."""
     if not configurata():
         raise PostaErrore("Invio email non configurato")
     if not destinatari:
         raise PostaErrore("Nessun destinatario")
-    sbagliati = indirizzi_non_validi(destinatari)
+    sbagliati = indirizzi_non_validi([*destinatari, *(cc or [])])
     if sbagliati:
         raise PostaErrore("Indirizzi non validi: " + ", ".join(sbagliati))
     e = impostazioni_email()
@@ -150,20 +163,18 @@ def invia(destinatari: list[str], oggetto: str, corpo: str, sempre_reale: bool =
     if modo == "ufficiale" and not e["ufficiali_attive"]:
         raise PostaErrore("Le email ufficiali sono disattivate")
     prova = e["indirizzo_prova"] if modo == "prova" else None
+    copia = copia_effettiva(destinatari, cc) if modo != "reale" else []
+    oggetto = " ".join(oggetto.split())  # un a capo nell'intestazione farebbe fallire la costruzione dell'email
     messaggio = EmailMessage()
     messaggio["From"] = e["mittente"]
     messaggio["To"] = prova or ", ".join(destinatari)
     messaggio["Subject"] = f"[PROVA] {oggetto}" if prova else oggetto
     if os.environ.get("MAIL_REPLY_TO"):
         messaggio["Reply-To"] = os.environ["MAIL_REPLY_TO"]
-    if modo == "ufficiale":
-        cc = lista_indirizzi(e["cc"])
-        contatto = contatto_ufficio()
-        if contatto and contatto not in cc:
-            cc.insert(0, contatto)
-        if cc:
-            messaggio["Cc"] = ", ".join(cc)
-    messaggio.set_content(f"[Modalità di prova. Destinatari reali: {', '.join(destinatari)}]\n\n{corpo}" if prova else corpo)
+    if modo == "ufficiale" and copia:
+        messaggio["Cc"] = ", ".join(copia)
+    in_copia = f". In copia: {', '.join(copia)}" if copia else ""
+    messaggio.set_content(f"[Modalità di prova. Destinatari reali: {', '.join(destinatari)}{in_copia}]\n\n{corpo}" if prova else corpo)
     try:
         with smtplib.SMTP(os.environ["SMTP_SERVER"], int(os.environ.get("SMTP_PORT") or 25), timeout=30) as smtp:
             if (os.environ.get("SMTP_STARTTLS") or "").lower() in ("1", "true", "yes"):

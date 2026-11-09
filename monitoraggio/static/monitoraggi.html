@@ -256,7 +256,7 @@
       const msg = await Promise.all(codici.map(c => chiama(`/api/monitoraggi/${m.mese}/comunicazioni/${encodeURIComponent(c)}/messaggio`)));
       const o = apriFinestra(`<header><b>Invio dalla casella dell'ufficio</b></header><div class="corpo">
         ${p.ufficiali_attive ? `<div class="avviso">Le email partono ai destinatari veri.</div>` : `<div class="errore">Le email ufficiali sono disattivate. <a href="/monitoraggio/impostazioni#email">Impostazioni</a></div>`}
-        <div class="scroll"><table><thead><tr><th>Bando</th><th>Destinatari</th><th>Difformità</th></tr></thead><tbody>${msg.map(x => `<tr><td>${esc(x.chiave)}</td><td class="small">${esc(x.destinatari.join(", ")) || `<span class="etichetta">nessuna email RdP</span>`}</td><td>${x.n_difformita}</td></tr>`).join("")}</tbody></table></div></div>
+        <div class="scroll"><table><thead><tr><th>Bando</th><th>Destinatari</th><th>Difformità</th></tr></thead><tbody>${msg.map(x => `<tr><td>${esc(x.chiave)}</td><td class="small">${esc(x.destinatari.join(", ")) || `<span class="etichetta">nessuna email RdP</span>`}${x.cc.length ? `<div class="muted">Cc: ${esc(x.cc.join(", "))}</div>` : ""}</td><td>${x.n_difformita}</td></tr>`).join("")}</tbody></table></div></div>
         <footer><button type="button" id="no">Annulla</button><button class="primario" type="button" id="si"${p.ufficiali_attive ? "" : " disabled"}>Invia ${msg.length} email</button></footer>`);
       o.querySelector("#no").onclick = chiudiFinestra;
       o.querySelector("#si").onclick = async () => {
@@ -276,8 +276,9 @@
       const PILL = { da_inviare: ["p-ko", "da inviare"], da_confermare: ["p-warn", "da confermare"], inviata: ["p-ok", "inviata"], inviata_a_mano: ["p-ok", "inviata"], in_regola: ["p-na", "in regola"] }[d.stato];
       const o = apriFinestra(`<header><div><b>Comunicazione difformità · bando ${esc(codice)}</b><div class="mono small muted">${esc(d.id_monitoraggio)}/${esc(d.numero_bando || codice)}/${esc(d.n_gestione)}</div></div><span class="pillola ${PILL[0]}">${PILL[1]}</span></header>
         <div class="corpo">
-          <div class="small"><b>Da:</b> Ufficio Reclutamento &lt;${esc(p.mittente || "non impostata")}&gt; · casella dell'ufficio${p.cc ? `<br><b>Cc:</b> ${esc(p.cc)}` : ""}</div>
-          <div class="small"><b>A:</b> ${d.referenti.map(r => `<span class="chip t-altro">${esc(r.nome)} &lt;${esc(r.email)}&gt;</span>`).join(" ") || `<span class="etichetta">nessuna email RdP disponibile</span>`}</div>
+          <div class="small"><b>Da:</b> Ufficio Reclutamento &lt;${esc(p.mittente || "non impostata")}&gt; · casella dell'ufficio</div>
+          <div class="small" id="area-a"></div>
+          <div class="small" id="area-cc"></div>
           <div class="schede" style="align-self:flex-start"><button type="button" id="v-ant" aria-selected="true">Anteprima</button><button type="button" id="v-mod" aria-selected="false">Modifica testo</button></div>
           <div id="area-testo"></div>
           ${d.storico.length ? `<details><summary class="small">Storico (${d.storico.length})</summary>${d.storico.map(s => `<div class="small">${ora(s.data)} · ${esc(s.canale)} · ${esc(s.stato)} · <span class="mono">${esc(s.id)}</span></div>`).join("")}</details>` : ""}
@@ -287,6 +288,49 @@
           <div class="riga solo-admin" style="align-items:center">${chiuso ? "" : `${p.prova_attiva ? `<button type="button" class="prova" id="invia-prova">Invia prova</button>` : ""}
             ${p.ufficiali_attive ? `<button class="primario" type="button" id="invia-uff">Invia dalla casella dell'ufficio</button>` : `<a class="small" href="/monitoraggio/impostazioni#email">Email ufficiali disattivate · impostazioni</a>`}`}
             <button type="button" id="chiudi-msg">Chiudi</button></div></footer>`);
+      const areaA = o.querySelector("#area-a"), areaCc = o.querySelector("#area-cc");
+      const bottone = (azione, email, testo, etichetta) => chiuso ? "" : `<button type="button" class="togli solo-admin" data-azione="${azione}" data-email="${esc(email)}" aria-label="${esc(etichetta)}">${testo}</button>`;
+      function indirizzi() {
+        areaA.innerHTML = `<b>A:</b> ` + (d.referenti.map(r => r.escluso
+          ? `<span class="chip chip-tolta"><s>${esc(r.nome)} &lt;${esc(r.email)}&gt;</s>${bottone("rimetti", r.email, "rimetti", `Rimetti ${r.email}`)}</span>`
+          : `<span class="chip t-altro">${esc(r.nome)} &lt;${esc(r.email)}&gt;${bottone("togli", r.email, "×", `Togli ${r.email} dai destinatari`)}</span>`).join(" ") || `<span class="etichetta">nessuna email RdP disponibile</span>`);
+        const aggiunti = d.cc_aggiunti.filter(x => d.cc.includes(x) && !d.cc_ufficio.includes(x));
+        areaCc.innerHTML = `<b>Cc:</b> ` + d.cc_ufficio.map(x => `<span class="chip t-altro" title="Sempre in copia: si cambia da Impostazioni">${esc(x)}</span>`).join(" ") + " " +
+          aggiunti.map(x => `<span class="chip t-altro">${esc(x)}${bottone("togli-cc", x, "×", `Togli ${x} dalla copia`)}</span>`).join(" ") +
+          (chiuso ? "" : ` <span class="solo-admin"><input type="text" id="nuovo-cc" size="30" autocomplete="off" aria-label="Aggiungi in copia" placeholder="altre email, separate da virgola"> <button type="button" class="piccolo" id="aggiungi-cc">Aggiungi in copia</button></span>`);
+        const nuovo = areaCc.querySelector("#nuovo-cc");
+        if (!nuovo) return;
+        const aggiungi = () => { if (nuovo.value.trim()) salvaIndirizzi({ esclusi: d.esclusi, cc: [...d.cc_aggiunti, nuovo.value] }); };
+        areaCc.querySelector("#aggiungi-cc").onclick = aggiungi;
+        nuovo.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); aggiungi(); } };
+      }
+      // Si salva a ogni modifica: così le scelte valgono anche se la finestra si chiude e per «Invia tutte».
+      let salvataggio = Promise.resolve();
+      const salvaIndirizzi = (scelte) => (salvataggio = salvataggio.then(async () => {
+        try {
+          const n = await chiama(`/api/monitoraggi/${m.mese}/comunicazioni/${encodeURIComponent(codice)}/indirizzi`, corpoJson("PUT", scelte));
+          const prima = d.corpo.split("\n")[0], dopo = n.corpo.split("\n")[0];
+          if (prima !== dopo && lavoro.corpo.startsWith(prima + "\n")) { lavoro.corpo = dopo + lavoro.corpo.slice(prima.length); testo(); }
+          Object.assign(d, n);
+          indirizzi();
+        } catch (err) { toast(err.message); }
+      }));
+      const clicIndirizzo = (e) => {
+        const b = e.target.closest("button[data-azione]");
+        if (!b) return;
+        const { azione, email } = b.dataset;
+        if (azione === "togli-cc") return salvaIndirizzi({ esclusi: d.esclusi, cc: d.cc_aggiunti.filter(x => x !== email) });
+        if (azione === "togli" && d.destinatari.length === 1) return toast("Deve restare almeno un referente tra i destinatari");
+        salvaIndirizzi({ esclusi: azione === "togli" ? [...d.esclusi, email] : d.esclusi.filter(x => x !== email), cc: d.cc_aggiunti });
+      };
+      areaA.onclick = clicIndirizzo; areaCc.onclick = clicIndirizzo;
+      // Prima di ogni uscita: niente modifiche in sospeso e nessun indirizzo scritto ma non aggiunto.
+      async function pronto() {
+        await salvataggio;
+        if (!o.querySelector("#nuovo-cc")?.value.trim()) return true;
+        toast("C'è un indirizzo scritto ma non aggiunto: premi «Aggiungi in copia» oppure cancellalo");
+        return false;
+      }
       const area = o.querySelector("#area-testo");
       function testo() {
         area.innerHTML = lavoro.modifica
@@ -297,12 +341,13 @@
         o.querySelector("#v-mod").setAttribute("aria-selected", String(lavoro.modifica));
       }
       testo();
+      indirizzi();
       o.querySelector("#v-ant").onclick = () => { lavoro.modifica = false; testo(); };
       o.querySelector("#v-mod").onclick = () => { lavoro.modifica = true; testo(); };
       o.querySelector("#chiudi-msg").onclick = chiudiFinestra;
       const traccia = (canale) => chiuso ? Promise.resolve() : chiama(`/api/monitoraggi/${m.mese}/comunicazioni/${encodeURIComponent(codice)}/traccia`, corpoJson("POST", { canale, oggetto: lavoro.oggetto, corpo: lavoro.corpo })).catch(() => {});
-      o.querySelector("#copia-msg").onclick = async () => { if (await copia(`A: ${d.destinatari.join("; ")}\nOggetto: ${lavoro.oggetto}\n\n${lavoro.corpo}`, "Messaggio copiato")) { await traccia("Copia manuale"); await dettaglio(); } };
-      o.querySelector("#apri-client").onclick = async (e) => { e.preventDefault(); location.href = `mailto:${d.destinatari.join(",")}?subject=${encodeURIComponent(lavoro.oggetto)}&body=${encodeURIComponent(lavoro.corpo)}`; await traccia("Client email"); await dettaglio(); };
+      o.querySelector("#copia-msg").onclick = async () => { if (await pronto() && await copia(`A: ${d.destinatari.join("; ")}${d.cc.length ? `\nCc: ${d.cc.join("; ")}` : ""}\nOggetto: ${lavoro.oggetto}\n\n${lavoro.corpo}`, "Messaggio copiato")) { await traccia("Copia manuale"); await dettaglio(); } };
+      o.querySelector("#apri-client").onclick = async (e) => { e.preventDefault(); if (!await pronto()) return; location.href = `mailto:${d.destinatari.join(",")}?${d.cc.length ? `cc=${encodeURIComponent(d.cc.join(","))}&` : ""}subject=${encodeURIComponent(lavoro.oggetto)}&body=${encodeURIComponent(lavoro.corpo)}`; await traccia("Client email"); await dettaglio(); };
       const spunta = o.querySelector("#spunta");
       if (spunta) spunta.onchange = async () => { try { await chiama(`/api/monitoraggi/${m.mese}/solleciti/${encodeURIComponent(codice)}`, corpoJson("PUT", { inviata: spunta.checked })); toast("Stato aggiornato"); await dettaglio(); } catch (err) { toast(err.message); } };
       async function invia(modo, conferma = false) {
@@ -317,8 +362,8 @@
         }
       }
       const bp = o.querySelector("#invia-prova"), bu = o.querySelector("#invia-uff");
-      if (bp) bp.onclick = () => invia("prova");
-      if (bu) bu.onclick = () => { if (confirm(`INVIO REALE a:\n${d.destinatari.join(", ")}\n\nProcedere?`)) invia("ufficiale"); };
+      if (bp) bp.onclick = async () => { if (await pronto()) invia("prova"); };
+      if (bu) bu.onclick = async () => { if (await pronto() && confirm(`INVIO REALE a:\n${d.destinatari.join(", ")}${d.cc.length ? `\n\nIn copia:\n${d.cc.join(", ")}` : ""}\n\nProcedere?`)) invia("ufficiale"); };
     }
 
     // --- correzioni
