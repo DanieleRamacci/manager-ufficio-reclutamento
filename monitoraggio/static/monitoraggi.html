@@ -120,6 +120,7 @@
         ["scorrimento", "Scorrimenti", conta(r => r.atto === "scorrimento"), contaD(r => r.atto === "scorrimento")],
         ["subentro", "Subentri", conta(r => r.sottotipo === "subentro"), contaD(r => r.sottotipo === "subentro")],
         ["correzioni", "Correzioni", null, 0], ["comunicazioni", "Comunicazioni", null, 0],
+        ...(m.segnalazioni.totali || m.posta.portale_referenti ? [["segnalazioni", "Segnalazioni", m.segnalazioni.totali, m.segnalazioni.aperte]] : []),
         ["preparazione", "File ed email", null, 0], ["versioni", chiuso ? "Dati salvati" : "Versioni", m.fotografia.versioni.length, 0]];
       $("contenuto").innerHTML = `
         <div class="small"><a href="/monitoraggio/mensili">← Monitoraggi</a> <span class="muted">/ <span class="mono">${esc(m.id)}</span></span></div>
@@ -163,6 +164,7 @@
       if (["difformita", "bando", "graduatoria", "scorrimento", "subentro"].includes(s)) return schedaAtti();
       if (s === "correzioni") return schedaCorrezioni();
       if (s === "comunicazioni") return schedaComunicazioni();
+      if (s === "segnalazioni") return schedaSegnalazioni();
       if (s === "preparazione") return schedaPreparazione();
       schedaVersioni();
     }
@@ -414,6 +416,19 @@
     }
 
     // --- comunicazioni del monitoraggio
+    async function schedaSegnalazioni() {
+      const m = stato.m, chiuso = m.stato === "chiuso";
+      $("corpo-scheda").innerHTML = `<section><p class="muted">Caricamento…</p></section>`;
+      const { segnalazioni: s } = await chiama(`/api/monitoraggi/${m.mese}/segnalazioni`);
+      $("corpo-scheda").innerHTML = `<section><p class="muted small">Falsi positivi segnalati dai referenti dall'area referenti. Segnarne una come gestita non cambia le difformità: serve solo a tenere traccia.</p>
+        <div class="scroll"><table style="min-width:900px"><thead><tr><th>Data</th><th>Bando</th><th>Atto</th><th>Difformità</th><th>Motivo</th><th>Referente</th><th>Stato</th></tr></thead><tbody>
+        ${s.map(x => `<tr><td style="white-space:nowrap">${ora(x.quando)}</td><td>${esc(x.chiave)}</td><td class="small">${esc(ATTI[x.atto] || x.atto)}${x.protocollo ? `<div class="mono">${esc(x.protocollo)}</div>` : ""}</td><td class="small">${esc(x.rilievo)}</td><td class="small">${esc(x.nota)}</td><td class="small">${esc(x.email)}</td>
+          <td><span class="pillola ${x.stato === "gestita" ? "p-ok" : "p-warn"}">${x.stato === "gestita" ? "gestita" : "da vedere"}</span>${chiuso ? "" : `<div class="solo-admin" style="margin-top:5px"><button type="button" class="piccolo" data-gestita="${x.id}" data-valore="${x.stato !== "gestita"}">${x.stato === "gestita" ? "Riapri" : "Segna gestita"}</button></div>`}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Nessuna segnalazione.</td></tr>`}</tbody></table></div></section>`;
+      document.querySelectorAll("[data-gestita]").forEach(b => b.onclick = async () => {
+        try { await chiama(`/api/monitoraggi/${m.mese}/segnalazioni/${b.dataset.gestita}`, corpoJson("PUT", { gestita: b.dataset.valore === "true" })); await dettaglio(); }
+        catch (err) { toast(err.message); }
+      });
+    }
     async function schedaComunicazioni() {
       const P = { inviata: "p-ok", "da confermare": "p-warn", prova: "p-test", annullata: "p-na" };
       $("corpo-scheda").innerHTML = `<section><p class="muted">Caricamento…</p></section>`;
@@ -429,10 +444,10 @@
       const m = stato.m, e = m.email, p = m.posta, chiuso = m.stato === "chiuso";
       $("corpo-scheda").innerHTML = `
         <section class="solo-admin"><h2>File Excel</h2>
-          <div class="riga"><a class="pulsante primario" href="/api/monitoraggi/${m.mese}/excel/scorrimenti">${esc(m.file_scorrimenti)}</a><a class="pulsante primario" href="/api/monitoraggi/${m.mese}/excel/graduatorie">${esc(m.file_graduatorie)}</a></div>
-          <p class="muted small">Sono vuoti e già rinominati: caricali sulla cartella condivisa.</p>
-          <details><summary class="small">Graduatorie con i dati raccolti</summary><p class="small"><a href="/api/monitoraggi/${m.mese}/excel/graduatorie-con-dati">Scarica il file compilato con i dati di ${esc(m.etichetta_dati)}</a></p>
-            ${m.graduatorie_senza_elenco ? `<div class="avviso">${m.graduatorie_senza_elenco} graduatorie senza elenco dei candidati: lancia prima la verifica dei punteggi.</div>` : ""}<p class="muted small">Contiene dati personali dei candidati, se la verifica è stata eseguita.</p></details></section>
+          <div class="riga"><a class="pulsante primario" href="/api/monitoraggi/${m.mese}/excel/scorrimenti">${esc(m.file_scorrimenti)}</a><a class="pulsante primario" id="scarica-graduatorie" href="/api/monitoraggi/${m.mese}/excel/graduatorie-con-dati">${esc(m.file_graduatorie)}</a>${p.cartella_onedrive ? `<a class="pulsante" id="apri-onedrive" href="${esc(p.cartella_onedrive)}" target="_blank" rel="noopener">Apri la cartella su OneDrive ↗</a>` : `<a class="pulsante" id="imposta-onedrive" href="/monitoraggio/impostazioni#email">Imposta la cartella OneDrive</a>`}</div>
+          <p class="muted small">Scorrimenti: vuoto, lo compilano i colleghi. Graduatorie: già compilato con i dati di ${esc(m.etichetta_dati)} da Selezioni Online e con i dati personali dei candidati, se la verifica è stata eseguita. Caricali su OneDrive nella cartella dell'anno e del mese, poi incolla qui sotto i due link.</p>
+          ${m.graduatorie_senza_elenco ? `<div class="avviso">${m.graduatorie_senza_elenco} graduatorie senza elenco dei candidati: lancia prima la verifica dei punteggi.</div>` : ""}
+          <details><summary class="small">File graduatorie vuoto</summary><p class="small"><a id="scarica-graduatorie-vuoto" href="/api/monitoraggi/${m.mese}/excel/graduatorie">Scarica il modello con le sole intestazioni</a></p></details></section>
         <section class="solo-admin"><h2>Email di richiesta di compilazione</h2>
           <div class="griglia2"><label class="campo-largo">Link del file scorrimenti <input id="link-scorrimenti" type="url" value="${esc(m.link_scorrimenti)}" placeholder="https://"></label><label class="campo-largo">Link del file graduatorie <input id="link-graduatorie" type="url" value="${esc(m.link_graduatorie)}" placeholder="https://"></label></div>
           <div class="riga" style="margin-top:8px"><button type="button" id="salva-link"${chiuso ? " disabled" : ""}>Salva i link</button></div>

@@ -316,7 +316,12 @@ def email_compilazione(conn, monitoraggio: dict) -> dict:
                 if "{" + nome + "}" in testo and not valori[nome]]
     if not generale["destinatari"]:
         mancanti.append("destinatari")
-    return {"oggetto": _sostituisci(oggetto, valori), "corpo": _sostituisci(testo, valori),
+    corpo = _sostituisci(testo, valori)
+    area = posta.testo_area_referenti()
+    if area:  # prima del saluto finale, se il testo ne ha uno
+        fine = corpo.rfind("\n\nCiao,")
+        corpo = f"{corpo[:fine]}\n\n{area}{corpo[fine:]}" if fine >= 0 else f"{corpo.rstrip()}\n\n{area}"
+    return {"oggetto": _sostituisci(oggetto, valori), "corpo": corpo,
             "modello_oggetto": oggetto, "modello_testo": testo, "personalizzato": bool(monitoraggio.get("testo")),
             "destinatari": generale["destinatari"], "mancanti": mancanti}
 

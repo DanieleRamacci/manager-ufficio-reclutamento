@@ -8,7 +8,7 @@ import pytest
 from flask import Flask, session
 from flask_session import Session
 
-from monitoraggio import excel_mese, mensile, posta, punteggi, utenti
+from monitoraggio import excel_mese, mensile, portale, posta, punteggi, utenti
 from monitoraggio import web as web_modulo
 from monitoraggio.mensile_web import crea_blueprint_mensile
 from monitoraggio.web import crea_blueprint, crea_blueprint_pagine_esistenti
@@ -37,6 +37,7 @@ def ambiente(db, tmp_path, monkeypatch):
                                           utente_corrente=utenti.corrente))
     app.register_blueprint(crea_blueprint_pagine_esistenti(protezione=protezione, solo_admin=solo_admin))
     app.register_blueprint(crea_blueprint_mensile(protezione=protezione, solo_admin=solo_admin, utente_corrente=utenti.corrente))
+    app.register_blueprint(portale.bp)
 
     def client(nome="capo.ufficio"):
         c = app.test_client()
@@ -186,7 +187,7 @@ def test_download_vuoti_rinominati(ambiente):
     assert f"MODELLO-Graduatorie-e-bandi-pubblicati-aprile-{aa}.xlsx" in r.headers["Content-Disposition"]
     wb = openpyxl.load_workbook(io.BytesIO(r.data))
     assert wb.sheetnames == ["Bandi pubblicati", "Graduatorie pubblicate", "Mobilità pubblicate", "Graduatorie mobilità"]
-    assert all(c.value is None for ws in wb.worksheets for riga in ws.iter_rows(min_row=2) for c in riga)
+    assert all(c.value is None for ws in wb.worksheets for riga in ws.iter_rows(min_row=3) for c in riga)
     assert admin.get(f"/api/monitoraggi/{mese}/excel/altro").status_code == 404
 
 
@@ -680,7 +681,7 @@ def test_orario_e_giorno_dalle_impostazioni(ambiente, monkeypatch):
     monkeypatch.setenv("RACCOLTA_ORARIO", "02:30")
     admin = ambiente()
     d = admin.get("/api/impostazioni/aggiornamenti").get_json()
-    assert d["orario"] == "02:30" and d["giorno_completa"] == "dom" and d["avviso_modo"] == "completi"
+    assert d["orario"] == "02:30" and d["giorno_completa"] == "dom" and d["avviso_modo"] == "tutti"
     d = admin.put("/api/impostazioni/aggiornamenti", json={"orario": "21:15", "giorno_completa": "lun"}).get_json()
     assert d["orario"] == "21:15" and d["giorno_completa"] == "lun"
     assert impostazioni.orario_raccolta() == (21, 15)
@@ -1508,3 +1509,71 @@ def test_oggetto_con_a_capo_non_rompe_l_invio(monkeypatch, ambiente):
     ambiente()
     assert posta.invia(["a@cnr.it"], "riga uno\nriga due", "testo", modo="ufficiale") is False
     assert inviati[-1]["Subject"] == "riga uno riga due"
+
+
+def test_cartella_onedrive_dalle_impostazioni(ambiente):
+    admin = ambiente()
+    posta.salva_email({"prova_attiva": False, "ufficiali_attive": False}, "t")
+    mese = admin.post("/api/monitoraggi", json={"numero_mese": 5}).get_json()["mese"]
+    assert admin.get(f"/api/monitoraggi/{mese}").get_json()["posta"]["cartella_onedrive"] is None
+    assert admin.put("/api/impostazioni/posta", json={"cartella_onedrive": "javascript:alert(1)"}).status_code == 400
+    assert admin.put("/api/impostazioni/posta", json={"cartella_onedrive": "https://esempio.it/cartella"}).status_code == 200
+    assert admin.get(f"/api/monitoraggi/{mese}").get_json()["posta"]["cartella_onedrive"] == "https://esempio.it/cartella"
+    assert admin.put("/api/impostazioni/posta", json={"cartella_onedrive": ""}).status_code == 200
+    assert admin.get(f"/api/monitoraggi/{mese}").get_json()["posta"]["cartella_onedrive"] is None
+
+
+def test_graduatorie_vuoto_ha_tutte_le_intestazioni():
+    wb = openpyxl.load_workbook(io.BytesIO(excel_mese.excel_graduatorie_vuoto()))
+    attese = {"Bandi pubblicati": excel_mese.INTESTAZIONI_BANDI, "Mobilità pubblicate": excel_mese.INTESTAZIONI_BANDI,
+              "Graduatorie pubblicate": punteggi.INTESTAZIONI_EXCEL, "Graduatorie mobilità": punteggi.INTESTAZIONI_EXCEL}
+    assert set(wb.sheetnames) == set(attese)
+    for foglio, intestazioni in attese.items():
+        ws = wb[foglio]
+        assert [ws.cell(2, c + 1).value for c in range(len(intestazioni))] == intestazioni, foglio
+        assert all(c.value is None for riga in ws.iter_rows(min_row=3) for c in riga), foglio
+
+
+def _raccolta(db, fonte, esito, errori=()):
+    from monitoraggio import raccolta
+    rid = db.execute("INSERT INTO raccolta (fonte, modalita, inizio, fine, esito, bandi_trovati, documenti_trovati) "
+                     "VALUES (?, 'manuale', 'x', '2026-11-09T13:22:00Z', ?, 10, 20)", (fonte, esito)).lastrowid
+    raccolta.registra_errori(db, rid, list(errori))
+    return rid
+
+
+def test_avviso_con_tutte_e_due_le_fonti_e_gli_errori(ambiente, db, monkeypatch):
+    from monitoraggio import notifiche
+    inviati = []
+    _configura_posta(monkeypatch, inviati)
+    ambiente().put("/api/impostazioni/aggiornamenti", json={"avviso_indirizzo": "admin@cnr.it", "avviso_modo": "tutti"})
+    _raccolta(db, "sol", "completata")
+    _raccolta(db, "urp", "completata_con_errori", [("archivio-vecchio", "HTTP 404"), ("/bando/7", "HTTP 500")])
+    assert notifiche.dopo_aggiornamento({"urp": {"esito": "completata_con_errori"}}, "manuale") is True
+    corpo = inviati[0].get_content()
+    assert "con errori" in inviati[0]["Subject"] and "Selezioni Online: completata, 10 bandi" in corpo and "URP: completata con errori" in corpo
+    assert "Errori di URP:" in corpo and "archivio-vecchio: HTTP 404" in corpo and "/bando/7: HTTP 500" in corpo and "Errori di Selezioni" not in corpo
+
+
+def test_avviso_aspetta_la_fonte_ancora_in_corso(ambiente, db, monkeypatch):
+    from monitoraggio import notifiche
+    inviati = []
+    _configura_posta(monkeypatch, inviati)
+    ambiente().put("/api/impostazioni/aggiornamenti", json={"avviso_indirizzo": "admin@cnr.it", "avviso_modo": "tutti"})
+    _raccolta(db, "urp", "completata")
+    sol = _raccolta(db, "sol", "in_corso")
+    assert notifiche.dopo_aggiornamento({"urp": {"esito": "completata"}}, "manuale") is False and inviati == []
+    db.execute("UPDATE raccolta SET esito = 'fallita', messaggio = 'SOL non risponde' WHERE id = ?", (sol,))
+    assert notifiche.dopo_aggiornamento({"sol": {"esito": "fallita"}}, "manuale") is True
+    assert "NON riuscito" in inviati[0]["Subject"] and "SOL non risponde" in inviati[0].get_content()
+
+
+def test_avviso_limita_gli_errori_elencati(ambiente, db, monkeypatch):
+    from monitoraggio import notifiche
+    inviati = []
+    _configura_posta(monkeypatch, inviati)
+    ambiente().put("/api/impostazioni/aggiornamenti", json={"avviso_indirizzo": "admin@cnr.it", "avviso_modo": "tutti"})
+    _raccolta(db, "sol", "completata_con_errori", [(f"/b/{i}", "HTTP 500") for i in range(25)])
+    assert notifiche.dopo_aggiornamento({"sol": {"esito": "completata_con_errori"}}, "manuale") is True
+    corpo = inviati[0].get_content()
+    assert "/b/19:" in corpo and "/b/20:" not in corpo and "e altri 5" in corpo and "URP: non eseguita" in corpo

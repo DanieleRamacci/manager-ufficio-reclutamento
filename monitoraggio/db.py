@@ -4,7 +4,7 @@ import sqlite3
 
 from . import config
 
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -267,6 +267,23 @@ CREATE TABLE IF NOT EXISTS comunicazione (
     utente TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_comunicazione_mese ON comunicazione (mese, chiave, data);
+
+CREATE TABLE IF NOT EXISTS segnalazione (
+    id INTEGER PRIMARY KEY,
+    mese TEXT NOT NULL REFERENCES monitoraggio_mese(mese),
+    chiave TEXT NOT NULL,
+    atto TEXT NOT NULL,
+    protocollo TEXT NOT NULL DEFAULT '',
+    data TEXT NOT NULL DEFAULT '',
+    rilievo TEXT NOT NULL,
+    nota TEXT NOT NULL,
+    email TEXT NOT NULL,
+    quando TEXT NOT NULL,
+    stato TEXT NOT NULL DEFAULT 'aperta' CHECK (stato IN ('aperta', 'gestita')),
+    gestita_da TEXT,
+    gestita_il TEXT,
+    UNIQUE (mese, chiave, atto, protocollo, data, rilievo, email)
+);
 
 CREATE TABLE IF NOT EXISTS comunicazione_indirizzi (
     mese TEXT NOT NULL REFERENCES monitoraggio_mese(mese),

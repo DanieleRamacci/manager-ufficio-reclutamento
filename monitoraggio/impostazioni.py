@@ -46,7 +46,7 @@ def giorno_completa() -> int:
 
 
 def modo_avviso() -> str:
-    return _leggi("avviso_modo", "completi")
+    return _leggi("avviso_modo", "tutti")
 
 
 def indirizzo_avviso() -> str | None:

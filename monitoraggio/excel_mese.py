@@ -71,7 +71,12 @@ def excel_scorrimenti() -> bytes:
 
 
 def excel_graduatorie_vuoto() -> bytes:
-    return (MODELLI / MODELLO_GRADUATORIE).read_bytes()
+    """Il modello con tutte le intestazioni, da compilare a mano: stesse colonne del file con i dati."""
+    wb = openpyxl.load_workbook(MODELLI / MODELLO_GRADUATORIE)
+    for foglio, intestazioni in (("Bandi pubblicati", INTESTAZIONI_BANDI), ("Mobilità pubblicate", INTESTAZIONI_BANDI),
+                                 ("Graduatorie pubblicate", punteggi.INTESTAZIONI_EXCEL), ("Graduatorie mobilità", punteggi.INTESTAZIONI_EXCEL)):
+        _compila(wb[foglio], intestazioni, [])
+    return _salva(wb)
 
 
 def _compila(ws, intestazioni: list[str], righe: list[tuple[list, bool]]) -> None:
@@ -99,6 +104,11 @@ def _compila(ws, intestazioni: list[str], righe: list[tuple[list, bool]]) -> Non
                 cella.fill = giallo
     ws.freeze_panes = "A3"
     ws.auto_filter.ref = f"A2:{get_column_letter(colonne)}{max(2 + len(righe), 3)}"
+    if not righe:  # da compilare a mano: la griglia del modello si estende a tutte le colonne
+        for riga in range(3, ws.max_row + 1):
+            for colonna in range(1, colonne + 1):
+                _copia_stile(stile_dato, ws.cell(riga, colonna))
+        ws.auto_filter.ref = f"A2:{get_column_letter(colonne)}{ws.max_row}"
 
 
 def _bandi(conn, dal: str, al: str) -> list:

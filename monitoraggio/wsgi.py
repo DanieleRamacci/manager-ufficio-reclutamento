@@ -7,7 +7,7 @@ from flask import Flask, redirect, session
 from flask_session import Session
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from . import accesso, attivita, collegamento, config, db, scheduler, sol_sessione, utenti
+from . import accesso, attivita, collegamento, config, db, portale, scheduler, sol_sessione, utenti
 from .mensile_web import crea_blueprint_mensile
 from .web import PAGINE_LOCALI, crea_blueprint, crea_blueprint_pagine_esistenti
 
@@ -66,6 +66,7 @@ def crea_app() -> Flask:
 
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
     app.register_blueprint(blueprint_accesso)
+    app.register_blueprint(portale.bp)
     if config.avviso_dati_non_persistenti():
         logging.getLogger(__name__).error(config.avviso_dati_non_persistenti())
     app.register_blueprint(crea_blueprint(protezione=protezione, solo_admin=solo_admin, ruolo_corrente=utenti.ruolo_corrente,

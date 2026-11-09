@@ -9,7 +9,7 @@ import smtplib
 from datetime import datetime, timezone
 from email.message import EmailMessage
 
-from . import db
+from . import config, db
 
 log = logging.getLogger(__name__)
 _EMAIL = re.compile(r"[a-z0-9._%+'-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+", re.I)
@@ -39,6 +39,8 @@ def impostazioni_email() -> dict:
     return {"prova_attiva": prova, "indirizzo_prova": valore("email_prova_indirizzo") or predefinito, "ufficiali_attive": ufficiali,
             "mittente": valore("email_mittente") or (os.environ.get("MAIL_SENDER") or "").strip() or None,
             "cc": valore("email_cc"), "firma": valore("email_firma") or "Ufficio Reclutamento",
+            "cartella_onedrive": valore("email_cartella_onedrive"),
+            "portale_referenti": "email_portale_referenti" in v and v["email_portale_referenti"]["valore"] == "1",
             "modificata_da": v["email_prova_attiva"]["modificata_da"] if "email_prova_attiva" in v else None,
             "modificata_il": v["email_prova_attiva"]["modificata_il"] if "email_prova_attiva" in v else None}
 
@@ -86,6 +88,15 @@ def salva_email(dati: dict, autore: str | None) -> dict:
         voci.append(("email_cc", ", ".join(indirizzi) or None))
     if "firma" in dati:
         voci.append(("email_firma", (dati["firma"] or "").strip() or None))
+    if "cartella_onedrive" in dati:
+        cartella = (dati["cartella_onedrive"] or "").strip()
+        if cartella and not cartella.lower().startswith("https://"):
+            raise ValueError("L'indirizzo della cartella OneDrive deve iniziare con https://")
+        voci.append(("email_cartella_onedrive", cartella or None))
+    if "portale_referenti" in dati:
+        if not isinstance(dati["portale_referenti"], bool):
+            raise ValueError("Indica se l'area referenti è attiva")
+        voci.append(("email_portale_referenti", "1" if dati["portale_referenti"] else "0"))
     nuovi = dict(voci)
     if prova and not (nuovi.get("email_prova_indirizzo") or (attuali["indirizzo_prova"] if "indirizzo_prova" not in dati else None)):
         raise ValueError("Per le email di prova serve un indirizzo")
@@ -106,7 +117,7 @@ def salva_prova(attiva: bool, indirizzo: str | None, autore: str | None) -> dict
 
 def stato() -> dict:
     e = impostazioni_email()
-    return {**{k: e[k] for k in ("prova_attiva", "ufficiali_attive", "indirizzo_prova", "mittente", "cc", "firma")},
+    return {**{k: e[k] for k in ("prova_attiva", "ufficiali_attive", "indirizzo_prova", "mittente", "cc", "firma", "portale_referenti", "cartella_onedrive")},
             "configurata": configurata(), "prova": (e["indirizzo_prova"] or "indirizzo non impostato") if e["prova_attiva"] else None,
             "risposta": os.environ.get("MAIL_REPLY_TO")}
 
@@ -120,6 +131,15 @@ def lista_indirizzi(testo: str | None) -> list[str]:
             visti.add(a)
             fuori.append(a)
     return fuori
+
+
+def testo_area_referenti() -> str | None:
+    """Il paragrafo sull'area referenti per le email, solo se l'area è attiva."""
+    if not impostazioni_email()["portale_referenti"]:
+        return None
+    return (f"Se siete referenti di un bando, potete vedere le difformità che vi riguardano e segnalare eventuali falsi positivi "
+            f"su {config.sito_url()}/referenti: inserite l'indirizzo email con cui risultate referenti su Selezioni Online e "
+            f"riceverete un link personale di accesso.")
 
 
 def contatto_ufficio() -> str | None:

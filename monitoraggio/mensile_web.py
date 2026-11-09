@@ -6,7 +6,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, redirect, request, send_file, send_from_directory
 
-from . import atti, attivita, comunicazioni, db, difformita, excel_mese, impostazioni, mensile, posta, punteggi, referenti, sol_sessione, utenti
+from . import atti, attivita, comunicazioni, db, difformita, excel_mese, impostazioni, mensile, portale, posta, punteggi, referenti, sol_sessione, utenti
 
 STATIC = Path(__file__).resolve().parent / "static"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -28,6 +28,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         dal, al = mensile.periodo_dati(m)
         return {**m, "etichetta": mensile.etichetta(m["mese_dati"]), "etichetta_dati": mensile.etichetta(m["mese_dati"]),
                 "dal": dal, "al": al, "link_vista": mensile.link_vista(m),
+                "segnalazioni": portale.conteggi(conn, m["mese"]),
                 "file_scorrimenti": excel_mese.nome_scorrimenti(m["mese_dati"]), "file_graduatorie": excel_mese.nome_graduatorie(m["mese_dati"]),
                 "graduatorie_senza_elenco": excel_mese.graduatorie_senza_elenco(conn, dal, al),
                 "email": mensile.email_compilazione(conn, m), "posta": posta.stato(),
@@ -484,6 +485,30 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
                                                   messaggio["destinatari"], corpo.get("oggetto") or messaggio["oggetto"],
                                                   corpo.get("corpo") or messaggio["corpo"], messaggio["n_difformita"], messaggio["cc"])
             return jsonify({"ok": True, "id": id_c})
+        except mensile.MeseChiuso as e:
+            return jsonify({"error": str(e)}), 409
+        finally:
+            conn.close()
+
+    @bp.get("/api/monitoraggi/<mese>/segnalazioni")
+    @protezione
+    def api_segnalazioni(mese: str):
+        conn = _conn()
+        try:
+            return jsonify({"segnalazioni": portale.elenco(conn, mese)}) if _trova(conn, mese) else (jsonify({"error": "Monitoraggio non trovato"}), 404)
+        finally:
+            conn.close()
+
+    @bp.put("/api/monitoraggi/<mese>/segnalazioni/<int:id_segnalazione>")
+    @protezione
+    @solo_admin
+    def api_segnalazione_gestita(mese: str, id_segnalazione: int):
+        conn = _conn()
+        try:
+            mensile.verifica_aperto(conn, mese)
+            if not portale.imposta_gestita(conn, mese, id_segnalazione, bool((request.get_json(silent=True) or {}).get("gestita")), utente_corrente()):
+                return jsonify({"error": "Segnalazione non trovata"}), 404
+            return jsonify({"ok": True})
         except mensile.MeseChiuso as e:
             return jsonify({"error": str(e)}), 409
         finally:

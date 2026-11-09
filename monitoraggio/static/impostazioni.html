@@ -46,6 +46,9 @@
               <p class="muted small" style="margin:4px 0 0">Il contatto dell'ufficio è sempre in copia; qui puoi aggiungere altre persone.</p></div>
           </div>
           <label class="campo-largo" style="margin-top:12px">Firma <textarea id="firma" style="min-height:70px"></textarea></label>
+          <label class="campo-largo" style="margin-top:12px">Cartella OneDrive degli Excel <input type="url" id="cartella-onedrive" autocomplete="off" placeholder="https://"></label>
+          <div class="scelta" style="margin-top:12px"><label class="spunta"><input type="checkbox" id="portale"> <b>Area referenti attiva</b></label>
+            <p class="muted small" style="margin:4px 0 0">Ogni referente entra da <a href="/referenti" target="_blank" rel="noopener">/referenti</a> con un link inviato alla sua casella, vede solo i propri bandi e può segnalare falsi positivi. Attivandola, le email ai referenti e ai colleghi spiegano come accedere.</p></div>
           <div class="riga" style="margin-top:10px;align-items:center"><button class="primario" type="submit">Salva</button><span class="muted small" id="esito-email" aria-live="polite"></span></div>
         </form>
         <p class="muted small">Le prove vanno solo all'indirizzo di prova, con [PROVA] nell'oggetto, e non cambiano lo stato della comunicazione. Con le ufficiali disattivate l'invio dalla casella è bloccato. L'email con il link di accesso per i colleghi e l'avviso agli amministratori arrivano sempre alla persona.</p>
@@ -118,7 +121,7 @@
   // --- email
   function mostraEmail(d) {
     $("prova").checked = d.prova_attiva; $("indirizzo-prova").value = d.indirizzo_prova || ""; $("ufficiali").checked = d.ufficiali_attive;
-    $("mittente").value = d.mittente || ""; $("cc").value = d.cc || ""; $("firma").value = d.firma || "";
+    $("mittente").value = d.mittente || ""; $("cc").value = d.cc || ""; $("firma").value = d.firma || ""; $("portale").checked = d.portale_referenti; $("cartella-onedrive").value = d.cartella_onedrive || "";
     $("server-posta").innerHTML = `Server di posta: ${d.configurata ? "configurato" : `<span class="etichetta">non configurato: serve SMTP_SERVER nelle variabili di Coolify</span>`} · risposte a ${esc(d.risposta) || "–"}`;
     aspettoEmail();
   }
@@ -137,7 +140,7 @@
     errore("errore-email");
     if ($("ufficiali").checked && !confirm("Con le email ufficiali abilitate i messaggi possono partire ai destinatari veri. Confermi?")) return;
     try {
-      mostraEmail(await chiama("/api/impostazioni/posta", json("PUT", { prova_attiva: $("prova").checked, indirizzo_prova: $("indirizzo-prova").value, ufficiali_attive: $("ufficiali").checked, mittente: $("mittente").value, cc: $("cc").value, firma: $("firma").value })));
+      mostraEmail(await chiama("/api/impostazioni/posta", json("PUT", { prova_attiva: $("prova").checked, indirizzo_prova: $("indirizzo-prova").value, ufficiali_attive: $("ufficiali").checked, mittente: $("mittente").value, cc: $("cc").value, firma: $("firma").value, portale_referenti: $("portale").checked, cartella_onedrive: $("cartella-onedrive").value })));
       $("esito-email").textContent = "Salvato.";
     } catch (err) { errore("errore-email", err.message); }
   };

@@ -24,7 +24,7 @@ URP_TIPOLOGIA = {
 }
 
 URP_ARCHIVIO_BASE = "https://archivio.urp.cnr.it/"
-URP_ARCHIVIO_PAGINA = "page_lv_3_pg_157_o_4_db_1.html?level=3&pg=157&Org=4&db=1"
+URP_ARCHIVIO_PAGINA = "page.php?level=3&pg=157&Org=4&db=1"
 URP_ARCHIVIO_SEZIONE = "archivio-vecchio"  # solo per le pagine URP, come le sezioni senza tipologia
 URP_PERCORSI = {"borse-ricerca": "borse-di-ricerca"}  # nome usato dalle pagine -> percorso su URP
 
@@ -61,6 +61,7 @@ def _env(nome: str, predefinito: str) -> str:
 def sito_url() -> str:
     """Indirizzo pubblico per i link nelle email: mai dagli header della richiesta, che si possono falsificare."""
     return _env("SITO_URL", "https://monitoraggio.concorsi.cnr.it").rstrip("/")
+
 
 
 def data_dir() -> Path:
