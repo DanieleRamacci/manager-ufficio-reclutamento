@@ -106,11 +106,12 @@ def _chiave_atto(riga: dict) -> tuple[str, str, str]:
 
 
 def _righe_di(conn, monitoraggio: dict, email: str) -> list[dict]:
-    """Gli atti seguiti dei bandi di cui è RdP, tolti quelli da cui un amministratore l'ha escluso."""
+    """Gli atti seguiti di cui è RdP, tolti quelli da cui un amministratore l'ha escluso. Se il codice non ha RdP propri
+    l'elenco contiene quelli di tutti i codici del bando: non si sa di chi sia l'atto, quindi non si mostra."""
     esclusi = {r["chiave"]: json.loads(r["esclusi"])
                for r in conn.execute("SELECT chiave, esclusi FROM comunicazione_indirizzi WHERE mese = ?", (monitoraggio["mese"],))}
     return [r for r in comunicazioni.righe_mese(conn, monitoraggio)
-            if r["atto"] in difformita.ATTI_SEGUITI
+            if r["atto"] in difformita.ATTI_SEGUITI and r.get("rdp_origine") != "tutti i codici"
             and email in {(p.get("email") or "").strip().lower() for p in r.get("rdp") or []}
             and email not in esclusi.get(r["chiave"], [])]
 

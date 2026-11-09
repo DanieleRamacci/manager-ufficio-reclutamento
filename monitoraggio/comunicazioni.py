@@ -150,9 +150,6 @@ def messaggio(conn, monitoraggio: dict, codice: str, righe_del_mese: list[dict] 
     istruzioni = istruzioni_email(righe)
     if istruzioni:
         corpo += "\n\nCome procedere:\n" + "\n".join(f"- {x}" for x in istruzioni)
-    area = posta.testo_area_referenti()
-    if area:
-        corpo += f"\n\n{area}"
     copia = f" (lasciando in copia {posta.contatto_ufficio()})" if posta.contatto_ufficio() else ""
     corpo += (f"\n\nUna volta completato l'aggiornamento dei dati, vi chiediamo di darne riscontro rispondendo a questa "
               f"email{copia}.\n\nCordiali saluti,\n{posta.impostazioni_email()['firma']}\n")

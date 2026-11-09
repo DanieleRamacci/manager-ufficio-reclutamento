@@ -162,12 +162,43 @@ def test_non_si_segnala_sui_bandi_altrui_o_con_dati_personali(area):
     assert admin.get(f"/api/monitoraggi/{mese}").get_json()["segnalazioni"]["totali"] == 0
 
 
-def test_spiegazione_nelle_email_solo_se_attiva(area):
+def test_spiegazione_solo_nell_email_ai_colleghi(area):
     admin, mese, _ = area
     url = f"/api/monitoraggi/{mese}/comunicazioni/{CODICE_A}/messaggio"
-    assert "/referenti" in admin.get(url).get_json()["corpo"]
-    corpo = admin.get(f"/api/monitoraggi/{mese}").get_json()["email"]["corpo"]
-    assert corpo.index("/referenti") < corpo.rindex("Ciao,")
-    posta.salva_email({"portale_referenti": False}, "t")
     assert "/referenti" not in admin.get(url).get_json()["corpo"]
+    corpo = admin.get(f"/api/monitoraggi/{mese}").get_json()["email"]["corpo"]
+    assert corpo.index("/referenti") < corpo.index("Per altro sono a disposizione") < corpo.rindex("Ciao,")
+    posta.salva_email({"portale_referenti": False}, "t")
     assert "/referenti" not in admin.get(f"/api/monitoraggi/{mese}").get_json()["email"]["corpo"]
+
+
+def test_bando_con_piu_referenti_visto_da_ciascuno_senza_vedere_gli_altri(area, db):
+    admin, mese, inviati = area
+    _referente(db, "s1", "c", "carla@cnr.it")
+    for email in (ANNA, "carla@cnr.it"):
+        r = _entra(admin, inviati, email).get("/api/area-referenti/bandi")
+        assert {x["chiave"] for x in r.get_json()["monitoraggi"][0]["bandi"]} == {CODICE_A}
+        altro = "carla@cnr.it" if email == ANNA else ANNA
+        assert altro not in r.get_data(as_text=True)
+
+
+def test_atto_senza_rdp_propri_non_si_mostra(db, monkeypatch):
+    riga = {"chiave": "367.1 CTER", "atto": "graduatoria", "rilievi": ["x"], "rdp": [{"email": ANNA}]}
+    monkeypatch.setattr(portale.comunicazioni, "righe_mese", lambda conn, m: [{**riga, "rdp_origine": "codice"}, {**riga, "rdp_origine": "tutti i codici"}])
+    db.execute("INSERT INTO monitoraggio_mese (mese, mese_dati, creato_il) VALUES ('2026-05', '2026-04', 'x')")
+    assert [r["rdp_origine"] for r in portale._righe_di(db, {"mese": "2026-05"}, ANNA)] == ["codice"]
+
+
+def test_il_referente_apre_una_sola_pagina(area):
+    admin, mese, inviati = area
+    c = _entra(admin, inviati, ANNA)
+    ammesse = {"/referenti", "/api/area-referenti/bandi", "/monitoraggio/app.css"}
+    aperte = []
+    for regola in admin.application.url_map.iter_rules():
+        if "GET" in regola.methods and regola.endpoint != "static":
+            url = regola.rule
+            for nome in regola.arguments:
+                url = re.sub(rf"<[^>]*{nome}>", {"mese": mese, "codice": CODICE_A}.get(nome, "1"), url)
+            if url not in ammesse and c.get(url).status_code not in (302, 401, 403):
+                aperte.append(url)
+    assert aperte == []
