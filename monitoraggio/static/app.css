@@ -11,7 +11,7 @@
 * { box-sizing: border-box; }
 html, body { background: var(--bg); }
 body { margin: 0; color: var(--text); font: 14px/1.45 var(--font); font-variant-numeric: tabular-nums; }
-main { max-width: 1680px; margin: 0 auto; padding: 16px 24px 40px; display: flex; flex-direction: column; gap: 14px; }
+main { width: 100%; box-sizing: border-box; margin: 0; padding: 16px 16px 40px; display: flex; flex-direction: column; gap: 14px; }
 @media (max-width: 700px) { main { padding: 12px 16px 32px; } }
 h1 { font-size: 22px; font-weight: 600; margin: 0; } h2 { font-size: 17px; font-weight: 600; margin: 0 0 10px; } h3 { font-size: 14px; font-weight: 600; margin: 14px 0 6px; }
 a { color: var(--primary); }
