@@ -7,7 +7,7 @@ window.App = (() => {
   const MESI = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
   const TIPOLOGIE = { TI: "Tempo indeterminato", MOB: "Mobilità" };
   const NOMI_TIPOLOGIA = { tempo_indeterminato: "Tempo indeterminato", reclutamento_speciale: "Reclutamento speciale", categorie_protette: "Categorie protette", mobilita: "Mobilità", comando: "Comando" };
-  const ATTI = { bando: "Bando", graduatoria: "Graduatoria", scorrimento: "Scorrimento", rettifica: "Rettifica" };
+  const ATTI = { bando: "Bando", graduatoria: "Graduatoria pubblica (oscurata)", scorrimento: "Scorrimento", rettifica: "Rettifica" };
 
   async function chiama(url, opzioni) {
     const r = await fetch(url, { cache: "no-store", ...opzioni });

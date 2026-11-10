@@ -105,7 +105,9 @@ def dimentica() -> None:
 
 
 def _mostra(errore: str | None = None, codice: int = 200, messaggio: str | None = None, codice_link: str | None = None):
+    indicato = utenti.normalizza(request.args.get("utente"))
     return render_template_string(_PAGINA.read_text(encoding="utf-8"), errore=errore, messaggio=messaggio,
+                                  utente=indicato if re.fullmatch(r"[\w.\-]{2,100}", indicato) else "",
                                   codice_link=codice_link, sol_login=f"{sol_sessione.base_url()}/sso/login",
                                   next=_next_sicuro(request.values.get("next")),
                                   pagina_richiesta=_next_sicuro(request.values.get("next")) != PAGINA_INIZIALE), codice
@@ -235,9 +237,11 @@ def entra_con_link():
 def programma():
     """Il programma per Mac, in uno zip che conserva il permesso di esecuzione. Contiene solo l'indirizzo del sito."""
     script = _PROGRAMMA.read_text(encoding="utf-8").replace("__SERVER__", request.host_url.rstrip("/"))
-    comando = ("#!/bin/sh\ncommand -v python3 >/dev/null 2>&1 || { echo 'Serve Python 3: incolla il ticket nella "
-               "pagina di accesso.'; exit 1; }\nexec python3 - <<'COLLEGA_SOL'\n" + script + "\nCOLLEGA_SOL\n")
-    voce = zipfile.ZipInfo("Collega-SOL.command", date_time=(2026, 1, 1, 0, 0, 0))
+    comando = ("#!/bin/sh\ncommand -v python3 >/dev/null 2>&1 || { echo 'Serve Python 3: installalo "
+               "e avvia di nuovo il programma.'; exit 1; }\nexec python3 - <<'COLLEGA_SOL'\n" + script + "\nCOLLEGA_SOL\n")
+    # un nome sempre diverso: il browser e il Mac non chiedono di sostituire o duplicare quello scaricato prima
+    nome = f"Collega-SOL-{_adesso().strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}"
+    voce = zipfile.ZipInfo(f"{nome}.command", date_time=(2026, 1, 1, 0, 0, 0))
     voce.create_system = 3  # Unix: senza tipo di file e sistema, Archive Utility toglie il permesso di esecuzione
     voce.external_attr = (stat.S_IFREG | 0o755) << 16
     voce.compress_type = zipfile.ZIP_DEFLATED
@@ -245,7 +249,7 @@ def programma():
     with zipfile.ZipFile(contenuto, "w") as archivio:
         archivio.writestr(voce, comando)
     contenuto.seek(0)
-    return send_file(contenuto, mimetype="application/zip", as_attachment=True, download_name="Collega-SOL.zip")
+    return send_file(contenuto, mimetype="application/zip", as_attachment=True, download_name=f"{nome}.zip")
 
 
 @bp.get("/logout")

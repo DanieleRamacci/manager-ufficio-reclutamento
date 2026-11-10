@@ -84,12 +84,14 @@ def anteprima(conn, mese_dati: str) -> dict:
 _RILIEVI_PUNTEGGI = ("mancano i punteggi", "esito (V/I", "protocollo graduatoria non valorizzato",
                      "punteggi su SOL solo per", "nessuna domanda inviata su SOL")
 
-ISTRUZIONE_A = ("Graduatoria già presente su Selezioni Online: inserite i punteggi e gli esiti (V/I/R/S) di ogni "
+NOTA_GRADUATORIA = ("Per le graduatorie, il controllo riguarda la versione pubblica (oscurata) allegata su Selezioni Online "
+                    "e pubblicata su URP, non quella riservata.")
+ISTRUZIONE_A = ("Graduatoria pubblica (oscurata) già presente su Selezioni Online: inserite i punteggi e gli esiti (V/I/R/S) di ogni "
                 "candidato, poi premete in alto il pulsante che valorizza automaticamente il numero di protocollo della "
                 "graduatoria. Se il pulsante non funziona, rispondete a questa email segnalando che avete aggiornato i "
                 "dati ma non riuscite a valorizzare il protocollo: provvederemo noi a sbloccare la graduatoria.")
-ISTRUZIONE_B = ("Graduatoria non ancora su Selezioni Online: compilate prima i punteggi e gli esiti, poi caricate la "
-                "graduatoria come allegato di tipo «graduatoria» indicando data e numero di protocollo; i campi si "
+ISTRUZIONE_B = ("Graduatoria pubblica (oscurata) non ancora su Selezioni Online: compilate prima i punteggi e gli esiti, poi caricate la "
+                "graduatoria pubblica (oscurata) come allegato di tipo «graduatoria» indicando data e numero di protocollo; i campi si "
                 "valorizzeranno in automatico.")
 ISTRUZIONE_C = ("Provvedimento di assunzione idoneo / scorrimento: va inserito a mano su Selezioni Online, con la "
                 "relativa data e numero di protocollo.")
@@ -117,6 +119,13 @@ def istruzioni_email(righe: list[dict]) -> list[str]:
     return out
 
 
+def _rilievo_email(riga: dict, testo: str) -> str:
+    """Nell'email si dice quale graduatoria: il registro delle difformità conserva il testo originale."""
+    if riga["atto"] != "graduatoria":
+        return testo
+    return re.sub(r"^(la )?graduatoria\b(?! pubblica)", lambda m: f"{m.group(0)} pubblica (oscurata)", testo, flags=re.I)
+
+
 def messaggio(conn, monitoraggio: dict, codice: str, righe_del_mese: list[dict] | None = None) -> dict | None:
     """Il messaggio standard per un codice: i soli rilievi e i soli RdP di quel codice, tolti quelli esclusi a mano.
     `righe_del_mese` evita di ricalcolare il mese quando si preparano più messaggi."""
@@ -140,24 +149,28 @@ def messaggio(conn, monitoraggio: dict, codice: str, righe_del_mese: list[dict] 
     n = sum(len(r["rilievi"]) for r in righe)
     voci = []
     for i, r in enumerate(righe, 1):
-        tipo = {"graduatoria": "Graduatoria", "scorrimento": "Provvedimento di assunzione idoneo / scorrimento"}.get(r["atto"], r["atto"])
+        tipo = {"graduatoria": "Graduatoria pubblica (oscurata)", "scorrimento": "Provvedimento di assunzione idoneo / scorrimento"}.get(r["atto"], r["atto"])
         testa = f"{i}) {tipo} del {_data_it(r.get('data'))}" + (f" – prot. {r['protocollo']}" if r.get("protocollo") else "")
-        voci.append("\n".join([testa, *[f"   – {t}" for t in r["rilievi"]]]))
+        voci.append("\n".join([testa, *[f"   – {_rilievo_email(r, t)}" for t in r["rilievi"]]]))
     saluto = f"Gentile {attivi[0]['nome']}," if len(attivi) == 1 and attivi[0]["nome"] else "Gentili tutte e tutti,"
     titolo = f" – {r0['titolo_bando']}" if r0.get("titolo_bando") else ""
     corpo = (f"{saluto}\n\nnell'ambito del monitoraggio mensile di {mese_testo}, per il bando {codice}{titolo} "
              f"risultano le seguenti difformità tra le fonti:\n\n" + "\n\n".join(voci))
+    con_graduatoria = any(r["atto"] == "graduatoria" for r in righe)
+    if con_graduatoria:
+        corpo += f"\n\n{NOTA_GRADUATORIA}"
     istruzioni = istruzioni_email(righe)
     if istruzioni:
         corpo += "\n\nCome procedere:\n" + "\n".join(f"- {x}" for x in istruzioni)
     copia = f" (lasciando in copia {posta.contatto_ufficio()})" if posta.contatto_ufficio() else ""
-    corpo += (f"\n\nUna volta completato l'aggiornamento dei dati, vi chiediamo di darne riscontro rispondendo a questa "
+    aggiornamento = "l'aggiornamento della graduatoria pubblica (oscurata) e dei dati" if con_graduatoria else "l'aggiornamento dei dati"
+    corpo += (f"\n\nUna volta completato {aggiornamento}, vi chiediamo di darne riscontro rispondendo a questa "
               f"email{copia}.\n\nCordiali saluti,\n{posta.impostazioni_email()['firma']}\n")
     if r0.get("link_codice"):
         corpo += f"\nScheda su Selezioni Online: {r0['link_codice']}\n"
     return {"chiave": codice, "n_gestione": r0.get("n_gestione"), "numero_bando": r0.get("numero_bando"), "titolo_bando": r0.get("titolo_bando"), "referenti": referenti,
             "destinatari": destinatari, "esclusi": scelte["esclusi"], "cc_ufficio": posta.copia_fissa(), "cc_aggiunti": scelte["cc"],
-            "cc": posta.copia_effettiva(destinatari, scelte["cc"]), "oggetto": f"Monitoraggio {mese_testo}. Bando n° {codice}: Aggiornamento Dati – Rif. {r0.get('n_gestione')}",
+            "cc": posta.copia_effettiva(destinatari, scelte["cc"]), "oggetto": f"Monitoraggio {mese_testo}. Bando n° {codice}: Aggiornamento Dati{' Graduatoria Pubblica' if con_graduatoria else ''} – Rif. {r0.get('n_gestione')}",
             "corpo": corpo, "n_difformita": n, "stato": (righe or tutte)[0]["comunicazione"]["stato"],
             "storico": mensile.registro_comunicazioni(conn, monitoraggio["mese"], codice), "posta": posta.stato()}
 

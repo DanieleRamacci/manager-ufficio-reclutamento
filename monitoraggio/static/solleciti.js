@@ -2,7 +2,7 @@
   const emailRdp = (righe) => [...new Set(righe.flatMap(r => (r.rdp || []).map(p => (p.email || "").trim()).filter(Boolean)))];
 
   function rilievi(riga) {
-    const atto = riga.atto === "graduatoria" ? "la graduatoria" : "il provvedimento di assunzione idoneo (scorrimento/utilizzo della graduatoria)";
+    const atto = riga.atto === "graduatoria" ? "la graduatoria pubblica (oscurata)" : "il provvedimento di assunzione idoneo (scorrimento/utilizzo della graduatoria)";
     const rilievi = [...(riga.note || [])];
     const rif = riga.protocollo ? ` (prot. ${riga.protocollo})` : "";
     const fonti = { sol: "Selezioni Online", urp: "URP", segreteria: "file di riepilogo della segreteria" };
@@ -34,7 +34,7 @@
     const voci = righeBando.flatMap(r => {
       const note = rilievi(r);
       if (!note.length) return [];
-      const tipo = r.atto === "graduatoria" ? "Graduatoria" : "Provvedimento di assunzione idoneo / scorrimento";
+      const tipo = r.atto === "graduatoria" ? "Graduatoria pubblica (oscurata)" : "Provvedimento di assunzione idoneo / scorrimento";
       const riferimento = [r.codice || "", tipo, r.data ? r.data.slice(0, 10).split("-").reverse().join("/") : "", r.protocollo ? `prot. ${r.protocollo}` : ""]
         .filter(Boolean).join(" · ");
       return note.map(n => `- ${riferimento}: ${n}`);

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, redirect, request, send_file, send_from_directory
 
-from . import atti, attivita, comunicazioni, db, difformita, excel_mese, impostazioni, mensile, portale, posta, punteggi, referenti, sol_sessione, utenti
+from . import atti, attivita, comunicazioni, config, db, difformita, excel_mese, impostazioni, mensile, portale, posta, punteggi, referenti, sol_sessione, utenti
 
 STATIC = Path(__file__).resolve().parent / "static"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -123,7 +123,9 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
     def api_utenti():
         conn = _conn()
         try:
-            return jsonify({"utenti": utenti.elenco(conn), "registro": utenti.registro(conn)})
+            return jsonify({"utenti": utenti.elenco(conn), "registro": utenti.registro(conn), "coordinatori": portale.elenco_coordinatori(conn),
+                            "link_aree": {"utenti": f"{config.sito_url()}/login", "referenti": f"{config.sito_url()}{portale.PAGINA}",
+                                          "referenti_attiva": posta.impostazioni_email()["portale_referenti"]}})
         finally:
             conn.close()
 
@@ -140,6 +142,55 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             return jsonify({"error": str(e)}), 409
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
+        finally:
+            conn.close()
+
+    @bp.post("/api/coordinatori")
+    @protezione
+    @solo_admin
+    def api_coordinatore_aggiungi():
+        conn = _conn()
+        try:
+            return jsonify({"ok": True, "email": portale.aggiungi_coordinatore(conn, (request.get_json(silent=True) or {}).get("email"), utente_corrente())})
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        finally:
+            conn.close()
+
+    @bp.delete("/api/coordinatori/<email>")
+    @protezione
+    @solo_admin
+    def api_coordinatore_togli(email: str):
+        conn = _conn()
+        try:
+            return jsonify({"ok": True}) if portale.togli_coordinatore(conn, email, utente_corrente()) else (jsonify({"error": "Coordinatore non trovato"}), 404)
+        finally:
+            conn.close()
+
+    @bp.post("/api/coordinatori/<email>/invia-accesso")
+    @protezione
+    @solo_admin
+    def api_coordinatore_invia(email: str):
+        if not posta.impostazioni_email()["portale_referenti"]:
+            return jsonify({"error": "Attiva prima l'area referenti in Impostazioni, altrimenti il link non funziona"}), 409
+        conn = _conn()
+        try:
+            return jsonify({"ok": True}) if portale.invia_accesso_coordinatore(conn, email, utente_corrente()) else (jsonify({"error": "Coordinatore non trovato"}), 404)
+        except posta.PostaErrore as e:
+            return jsonify({"error": str(e)}), 502
+        finally:
+            conn.close()
+
+    @bp.post("/api/utenti/<nome>/invia-accesso")
+    @protezione
+    @solo_admin
+    def api_utenti_invia_accesso(nome: str):
+        conn = _conn()
+        try:
+            email = utenti.invia_accesso(conn, nome, utente_corrente())
+            return jsonify({"ok": True, "email": email}) if email else (jsonify({"error": "Utente non trovato"}), 404)
+        except posta.PostaErrore as e:
+            return jsonify({"error": str(e)}), 502
         finally:
             conn.close()
 

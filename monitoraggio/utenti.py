@@ -6,10 +6,11 @@ nessuno resta chiuso fuori. Il ruolo si legge a ogni richiesta: togliere qualcun
 import os
 from datetime import datetime, timezone
 from functools import wraps
+from urllib.parse import quote
 
 from flask import jsonify, request, session
 
-from . import db
+from . import config, db, posta
 
 AMMINISTRATORE, LETTURA = "amministratore", "lettura"
 
@@ -87,7 +88,31 @@ def elenco(conn) -> list[dict]:
              for u in sorted(fissi)]
     righe += [{**dict(r), "iniziale": False} for r in conn.execute("SELECT * FROM utente ORDER BY username")
               if r["username"] not in fissi]
-    return [{**r, "ultimo_accesso": accessi.get(r["username"])} for r in righe]
+    return [{**r, "ultimo_accesso": accessi.get(r["username"]), "link": link_accesso(r["username"], r["ruolo"])} for r in righe]
+
+
+def link_accesso(nome: str, ruolo_utente: str | None) -> str:
+    """Il link da dare alla persona: non contiene credenziali. Chi è in lettura trova già il suo nome utente."""
+    base = f"{config.sito_url()}/login"
+    return f"{base}?utente={quote(normalizza(nome))}" if ruolo_utente == LETTURA else base
+
+
+def invia_accesso(conn, nome: str, autore: str | None) -> str | None:
+    """Scrive alla persona come entrare. Ritorna l'indirizzo usato, None se non è tra gli utenti."""
+    nome = normalizza(nome)
+    chi = ruolo(nome)
+    if not chi:
+        return None
+    email = email_di(nome)
+    link = link_accesso(nome, chi)
+    modo = (f"Puoi consultare il monitoraggio in sola lettura. Apri questo link: riceverai nella tua casella un'email con un "
+            f"link di accesso temporaneo, valido 15 minuti.\n{link}" if chi == LETTURA else
+            f"Il tuo profilo è amministratore. Apri questo link, premi «Scarica file» in alto a destra e avvia il programma scaricato: "
+            f"entri facendo il login su Selezioni Online. La prima volta il Mac lo blocca perché non è firmato: premi Fine, apri "
+            f"Impostazioni di Sistema, Privacy e sicurezza, scegli «Apri comunque» e riavvialo.\n{link}")
+    posta.invia([email], "Accesso al monitoraggio bandi", f"Buongiorno,\n\n{modo}\n", sempre_reale=True)
+    conn.execute("INSERT INTO utente_modifica (username, azione, autore, quando) VALUES (?, 'invito_accesso', ?, ?)", (nome, autore, _adesso()))
+    return email
 
 
 def registro(conn, limite: int = 50) -> list[dict]:

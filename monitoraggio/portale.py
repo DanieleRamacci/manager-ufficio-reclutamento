@@ -2,7 +2,11 @@
 
 Chi sei lo dimostra la casella: il link monouso parte solo verso un indirizzo già presente tra gli RdP attivi,
 mai verso uno deciso da chi lo chiede. La sessione è separata da quella degli utenti del sito, quindi un referente
-non entra in nessun'altra pagina. I dati escono da un elenco esplicito di campi: niente candidati né altri RdP.
+non entra in nessun'altra pagina. I dati escono da un elenco esplicito di campi: niente altri RdP e niente dati dei candidati.
+Chi è RdP trova il link ai punteggi su Selezioni Online, dove entra con le proprie credenziali.
+
+I coordinatori usano la stessa pagina: scelgono i profili che seguono e vedono le difformità di quei bandi in sola consultazione,
+con il link ai punteggi solo per i bandi di cui sono anche RdP. Stanno in una tabella propria, non tra gli utenti del sito.
 """
 import json
 import logging
@@ -14,7 +18,7 @@ from pathlib import Path
 
 from flask import Blueprint, abort, jsonify, request, send_from_directory, session
 
-from . import atti, comunicazioni, config, db, difformita, mensile, posta
+from . import atti, comunicazioni, config, db, difformita, mensile, posta, utenti
 
 log = logging.getLogger(__name__)
 
@@ -79,8 +83,26 @@ def _senza_cache(risposta):
     return risposta
 
 
-def _e_referente(conn, email: str) -> bool:
-    return conn.execute("SELECT 1 FROM referente WHERE attivo = 1 AND lower(trim(email)) = ? LIMIT 1", (email,)).fetchone() is not None
+def _profili_coordinatore(conn, email: str) -> list[str] | None:
+    """I profili scelti dal coordinatore; None se non è un coordinatore. Letto a ogni richiesta: toglierlo ha effetto subito."""
+    riga = conn.execute("SELECT profili FROM coordinatore WHERE email = ?", (email,)).fetchone()
+    return json.loads(riga["profili"]) if riga else None
+
+
+def _puo_entrare(conn, email: str) -> bool:
+    return (_profili_coordinatore(conn, email) is not None
+            or conn.execute("SELECT 1 FROM referente WHERE attivo = 1 AND lower(trim(email)) = ? LIMIT 1", (email,)).fetchone() is not None)
+
+
+def _profili_schede(conn) -> tuple[dict, dict, list[str]]:
+    """Il profilo di Selezioni Online per scheda e per bando, e l'elenco dei profili tra cui scegliere."""
+    per_scheda, per_bando = {}, {}
+    for s in conn.execute("SELECT id, bando_id, tipologia, dati_extra FROM scheda WHERE fonte = 'sol' AND presente = 1 AND dati_extra IS NOT NULL"):
+        profilo = json.loads(s["dati_extra"]).get("profilo")
+        if profilo and config.nel_monitoraggio(s["tipologia"]):
+            per_scheda[s["id"]] = profilo
+            per_bando.setdefault(s["bando_id"], profilo)
+    return per_scheda, per_bando, sorted({*per_scheda.values()})
 
 
 def _troppe_richieste(ip: str, ora: datetime) -> bool:
@@ -105,32 +127,42 @@ def _chiave_atto(riga: dict) -> tuple[str, str, str]:
     return riga["atto"], riga.get("protocollo") or "", riga.get("data") or ""
 
 
-def _righe_di(conn, monitoraggio: dict, email: str) -> list[dict]:
+def _righe_di(conn, monitoraggio: dict, email: str, tutte: list[dict] | None = None) -> list[dict]:
     """Gli atti seguiti di cui è RdP, tolti quelli da cui un amministratore l'ha escluso. Se il codice non ha RdP propri
     l'elenco contiene quelli di tutti i codici del bando: non si sa di chi sia l'atto, quindi non si mostra."""
     esclusi = {r["chiave"]: json.loads(r["esclusi"])
                for r in conn.execute("SELECT chiave, esclusi FROM comunicazione_indirizzi WHERE mese = ?", (monitoraggio["mese"],))}
-    return [r for r in comunicazioni.righe_mese(conn, monitoraggio)
+    return [r for r in (comunicazioni.righe_mese(conn, monitoraggio) if tutte is None else tutte)
             if r["atto"] in difformita.ATTI_SEGUITI and r.get("rdp_origine") != "tutti i codici"
             and email in {(p.get("email") or "").strip().lower() for p in r.get("rdp") or []}
             and email not in esclusi.get(r["chiave"], [])]
 
 
-def _vista(conn, monitoraggio: dict, email: str) -> dict:
+def _vista(conn, monitoraggio: dict, email: str, profili: list[str], schede_profilo: tuple[dict, dict]) -> dict:
     fatte = {(s["chiave"], s["atto"], s["protocollo"], s["data"], s["rilievo"]): s
              for s in conn.execute("SELECT * FROM segnalazione WHERE mese = ? AND email = ?", (monitoraggio["mese"], email))}
+    tutte = comunicazioni.righe_mese(conn, monitoraggio)
+    mie = _righe_di(conn, monitoraggio, email, tutte)
+    gia = {id(r) for r in mie}
+    per_scheda, per_bando = schede_profilo
+    profilo_di = lambda r: per_scheda.get(r.get("scheda_sol_id")) or per_bando.get(r.get("bando_id"))  # noqa: E731
+    seguite = [r for r in tutte if profili and r["atto"] in difformita.ATTI_SEGUITI and id(r) not in gia and profilo_di(r) in profili]
     bandi = []
-    for r in _righe_di(conn, monitoraggio, email):
+    for r in [*mie, *seguite]:
         atto, protocollo, data = _chiave_atto(r)
+        rdp = id(r) in gia
         rilievi = []
         for testo in r["rilievi"]:
             s = fatte.get((r["chiave"], atto, protocollo, data, testo))
             rilievi.append({"testo": testo, "segnalazione": {"stato": s["stato"], "quando": s["quando"], "nota": s["nota"]} if s else None})
         bandi.append({"chiave": r["chiave"], "titolo_bando": r.get("titolo_bando"), "atto": atto, "protocollo": protocollo, "data": data,
                       "fonti": {f: (r.get("fonti") or {}).get(f, {}).get("stato") for f in ("sol", "urp", "segreteria")},
-                      "link_sol": r.get("link_codice"), "rilievi": rilievi})
+                      "link_sol": r.get("link_codice"), "rilievi": rilievi, "rdp": rdp, "profilo": profilo_di(r),
+                      "verifica_punteggi": (r.get("punteggi") or {}).get("verificato_il"),
+                      "link_punteggi": r.get("url_punteggi") if rdp else None})
     bandi.sort(key=lambda b: (not b["rilievi"], b["chiave"]))
-    return {"mese": monitoraggio["mese"], "titolo": comunicazioni.titolo_mese(monitoraggio["mese_dati"]), "bandi": bandi}
+    aggiornamenti = [{k: f[k] for k in ("fonte", "nome", "aggiornata_il")} for f in comunicazioni.allineamento(conn, monitoraggio["mese_dati"])]
+    return {"mese": monitoraggio["mese"], "titolo": comunicazioni.titolo_mese(monitoraggio["mese_dati"]), "aggiornamenti": aggiornamenti, "bandi": bandi}
 
 
 @bp.get(PAGINA)
@@ -150,7 +182,7 @@ def chiedi_link():
         return risposta
     conn = _conn()
     try:
-        riconosciuta = _e_referente(conn, email)
+        riconosciuta = _puo_entrare(conn, email)
     finally:
         conn.close()
     if not riconosciuta:
@@ -177,7 +209,7 @@ def entra():
         return jsonify({"error": "Il link è scaduto o è già stato usato: chiedine uno nuovo."}), 401
     conn = _conn()
     try:
-        if not _e_referente(conn, voce[0]):
+        if not _puo_entrare(conn, voce[0]):
             return jsonify({"error": "Questo indirizzo non risulta più tra i referenti."}), 403
     finally:
         conn.close()
@@ -201,10 +233,34 @@ def bandi():
     email = _referente()
     conn = _conn()
     try:
+        scelti = _profili_coordinatore(conn, email)
+        per_scheda, per_bando, disponibili = _profili_schede(conn)
+        base = {"email": email, "coordinatore": scelti is not None, "profili": scelti or [],
+                "profili_disponibili": disponibili if scelti is not None else []}
         if atti.fonti_in_attesa(conn):  # finché SOL e URP non concludono le difformità non sono affidabili
-            return _senza_cache(jsonify({"email": email, "in_aggiornamento": True, "monitoraggi": []}))
+            return _senza_cache(jsonify({**base, "in_aggiornamento": True, "monitoraggi": []}))
         aperti = [mensile.leggi(conn, r["mese"]) for r in conn.execute("SELECT mese FROM monitoraggio_mese WHERE stato = 'aperto' ORDER BY mese DESC").fetchall()]
-        return _senza_cache(jsonify({"email": email, "in_aggiornamento": False, "monitoraggi": [_vista(conn, m, email) for m in aperti]}))
+        return _senza_cache(jsonify({**base, "in_aggiornamento": False,
+                                     "monitoraggi": [_vista(conn, m, email, scelti or [], (per_scheda, per_bando)) for m in aperti]}))
+    finally:
+        conn.close()
+
+
+@bp.post("/api/area-referenti/profili")
+@_solo_se_attiva
+@_serve_referente
+def salva_profili():
+    """I profili restano salvati per il coordinatore: li ritrova a ogni accesso."""
+    email = _referente()
+    scelti = (request.get_json(silent=True) or {}).get("profili")
+    conn = _conn()
+    try:
+        if _profili_coordinatore(conn, email) is None:
+            return jsonify({"error": "Riservato ai coordinatori"}), 403
+        if not isinstance(scelti, list) or not set(map(str, scelti)) <= set(_profili_schede(conn)[2]):
+            return jsonify({"error": "Profili non validi: ricarica la pagina"}), 400
+        conn.execute("UPDATE coordinatore SET profili = ? WHERE email = ?", (json.dumps(sorted(set(map(str, scelti)))), email))
+        return jsonify({"ok": True})
     finally:
         conn.close()
 
@@ -242,6 +298,45 @@ def segnala():
 
 
 # --- per gli amministratori
+def elenco_coordinatori(conn) -> list[dict]:
+    return [{**dict(r), "profili": json.loads(r["profili"])} for r in conn.execute("SELECT * FROM coordinatore ORDER BY email")]
+
+
+def _traccia(conn, email: str, azione: str, autore: str | None, ruolo: str | None = None) -> None:
+    conn.execute("INSERT INTO utente_modifica (username, azione, ruolo, autore, quando) VALUES (?, ?, ?, ?, ?)",
+                 (email, azione, ruolo, autore, _adesso().strftime("%Y-%m-%dT%H:%M:%SZ")))
+
+
+def aggiungi_coordinatore(conn, nome_o_email: str | None, autore: str | None) -> str:
+    valore = (nome_o_email or "").strip().lower()
+    email = valore if "@" in valore or not valore else utenti.email_di(valore)
+    if not email or posta.indirizzi_non_validi([email]):
+        raise ValueError("Scrivi nome.cognome o un indirizzo email valido")
+    conn.execute("INSERT OR IGNORE INTO coordinatore (email, aggiunto_da, aggiunto_il) VALUES (?, ?, ?)",
+                 (email, autore, _adesso().strftime("%Y-%m-%dT%H:%M:%SZ")))
+    _traccia(conn, email, "imposta", autore, "coordinatore")
+    return email
+
+
+def togli_coordinatore(conn, email: str, autore: str | None) -> bool:
+    email = email.strip().lower()
+    tolti = conn.execute("DELETE FROM coordinatore WHERE email = ?", (email,)).rowcount
+    if tolti:
+        _traccia(conn, email, "togli", autore)
+    return bool(tolti)
+
+
+def invia_accesso_coordinatore(conn, email: str, autore: str | None) -> bool:
+    email = email.strip().lower()
+    if _profili_coordinatore(conn, email) is None:
+        return False
+    posta.invia([email], "Accesso al monitoraggio bandi",
+                "Buongiorno,\n\npuoi vedere lo stato dei bandi dei profili che coordini. Apri questo link e inserisci questo "
+                f"indirizzo email: riceverai un link personale di accesso.\n{config.sito_url()}{PAGINA}\n", sempre_reale=True)
+    _traccia(conn, email, "invito_accesso", autore)
+    return True
+
+
 def conteggi(conn, mese: str) -> dict:
     r = conn.execute("SELECT COUNT(*) AS totali, COALESCE(SUM(stato = 'aperta'), 0) AS aperte FROM segnalazione WHERE mese = ?", (mese,)).fetchone()
     return {"totali": r["totali"], "aperte": r["aperte"]}

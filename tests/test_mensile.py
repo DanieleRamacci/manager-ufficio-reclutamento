@@ -9,6 +9,7 @@ from flask import Flask, session
 from flask_session import Session
 
 from monitoraggio import excel_mese, mensile, portale, posta, punteggi, utenti
+from monitoraggio.comunicazioni import NOTA_GRADUATORIA as comunicazioni_nota
 from monitoraggio import web as web_modulo
 from monitoraggio.mensile_web import crea_blueprint_mensile
 from monitoraggio.web import crea_blueprint, crea_blueprint_pagine_esistenti
@@ -1054,9 +1055,9 @@ def test_messaggio_standard_per_codice(ambiente, db):
     admin, mese, url = _mese_con_rdp(ambiente, db)
     m = admin.get(url + "/messaggio").get_json()
     assert m["destinatari"] == ["rdp@cnr.it"] and m["referenti"][0]["nome"] == "Anna Bianchi"
-    assert m["oggetto"] == f"Monitoraggio aprile 2026. Bando n° 367.479 CTER: Aggiornamento Dati – Rif. {m['n_gestione']}" and len(m["n_gestione"]) == 4
+    assert m["oggetto"] == f"Monitoraggio aprile 2026. Bando n° 367.479 CTER: Aggiornamento Dati Graduatoria Pubblica – Rif. {m['n_gestione']}" and len(m["n_gestione"]) == 4
     assert m["corpo"].startswith("Gentile Anna Bianchi,") and "(rif." not in m["corpo"]
-    assert "1) Graduatoria del 12/04/2026" in m["corpo"] and "protocollo diverso: SOL 1001, URP 1002" in m["corpo"]
+    assert "1) Graduatoria pubblica (oscurata) del 12/04/2026" in m["corpo"] and comunicazioni_nota in m["corpo"] and "protocollo diverso: SOL 1001, URP 1002" in m["corpo"]
     assert "Cordiali saluti," in m["corpo"] and m["stato"] == "da_inviare"
     assert admin.get(f"/api/monitoraggi/{mese}/comunicazioni/inesistente/messaggio").status_code == 404
 
@@ -1069,7 +1070,7 @@ def test_prova_e_ufficiale_sono_separate(ambiente, db, monkeypatch):
     r = admin.post(url + "/invia", json={"modo": "ufficiale"})
     assert r.status_code == 502 and "disattivate" in r.get_json()["error"] and inviati == []
     r = admin.post(url + "/invia", json={"modo": "prova"}).get_json()
-    assert r["prova"] is True and inviati[0]["To"] == "prova@cnr.it" and inviati[0]["Subject"].startswith("[PROVA] Monitoraggio aprile 2026. Bando n° 367.479 CTER: Aggiornamento Dati – Rif. ")
+    assert r["prova"] is True and inviati[0]["To"] == "prova@cnr.it" and inviati[0]["Subject"].startswith("[PROVA] Monitoraggio aprile 2026. Bando n° 367.479 CTER: Aggiornamento Dati Graduatoria Pubblica – Rif. ")
     a = admin.get(f"/api/monitoraggi/{mese}/atti").get_json()
     assert a["righe"][0]["comunicazione"]["stato"] == "da_inviare"  # la prova non cambia lo stato
     registro = admin.get(f"/api/comunicazioni?mese={mese}").get_json()["comunicazioni"]
@@ -1386,7 +1387,7 @@ def test_cc_ufficio_multiplo_e_testo_di_riscontro(ambiente, db, monkeypatch):
         posta.salva_email({"cc": "nonvalido"}, "t")
     assert posta.impostazioni_email()["cc"] == "uno@cnr.it, due@cnr.it"  # non sovrascritto dall'errore
     m = admin.get(url + "/messaggio").get_json()
-    assert "Una volta completato l'aggiornamento dei dati" in m["corpo"]
+    assert "Una volta completato l'aggiornamento della graduatoria pubblica (oscurata) e dei dati" in m["corpo"]
     assert "rispondendo a questa email (lasciando in copia ufficio@esempio.it)" in m["corpo"]
     posta.salva_email({"prova_attiva": False, "ufficiali_attive": True}, "t")
     admin.post(url + "/invia", json={"modo": "ufficiale"})
@@ -1577,3 +1578,62 @@ def test_avviso_limita_gli_errori_elencati(ambiente, db, monkeypatch):
     assert notifiche.dopo_aggiornamento({"sol": {"esito": "completata_con_errori"}}, "manuale") is True
     corpo = inviati[0].get_content()
     assert "/b/19:" in corpo and "/b/20:" not in corpo and "e altri 5" in corpo and "URP: non eseguita" in corpo
+
+
+def test_link_di_accesso_nella_pagina_utenti(ambiente, monkeypatch):
+    monkeypatch.setenv("SITO_URL", "https://sito.esempio")
+    admin = ambiente()
+    admin.post("/api/utenti", json={"username": "dirigente.uno", "ruolo": "lettura"})
+    d = admin.get("/api/utenti").get_json()
+    assert d["link_aree"] == {"utenti": "https://sito.esempio/login", "referenti": "https://sito.esempio/referenti", "referenti_attiva": False}
+    link = {u["username"]: u["link"] for u in d["utenti"]}
+    assert link["dirigente.uno"] == "https://sito.esempio/login?utente=dirigente.uno" and link["capo.ufficio"] == "https://sito.esempio/login"
+
+
+def test_invio_del_link_di_accesso_a_un_utente(ambiente, monkeypatch):
+    inviati = []
+    _configura_posta(monkeypatch, inviati, MAIL_PROVA="prova@cnr.it")  # deve arrivare alla persona anche in prova
+    admin = ambiente()
+    admin.post("/api/utenti", json={"username": "dirigente.uno", "ruolo": "lettura", "email": "dirigente@cnr.it"})
+    r = admin.post("/api/utenti/dirigente.uno/invia-accesso").get_json()
+    assert r == {"ok": True, "email": "dirigente@cnr.it"} and inviati[-1]["To"] == "dirigente@cnr.it" and inviati[-1]["Cc"] is None
+    corpo = inviati[-1].get_content()
+    assert "sola lettura" in corpo and "/login?utente=dirigente.uno" in corpo and "codice=" not in corpo
+    assert any(x["azione"] == "invito_accesso" and x["username"] == "dirigente.uno" and x["autore"] == "capo.ufficio" for x in admin.get("/api/utenti").get_json()["registro"])
+    assert admin.post("/api/utenti/capo.ufficio/invia-accesso").status_code == 200 and "amministratore" in inviati[-1].get_content()
+    assert admin.post("/api/utenti/sconosciuto/invia-accesso").status_code == 404
+    assert ambiente("dirigente.uno").post("/api/utenti/capo.ufficio/invia-accesso").status_code == 403
+
+
+def test_invio_del_link_senza_posta_configurata(ambiente):
+    admin = ambiente()
+    admin.post("/api/utenti", json={"username": "dirigente.uno", "ruolo": "lettura"})
+    r = admin.post("/api/utenti/dirigente.uno/invia-accesso")
+    assert r.status_code == 502 and "non configurato" in r.get_json()["error"]
+
+
+def test_nome_del_mittente(ambiente, monkeypatch):
+    inviati = []
+    _configura_posta(monkeypatch, inviati)
+    admin = ambiente()
+    posta.invia(["a@cnr.it"], "x", "y", modo="ufficiale")
+    assert inviati[-1]["From"] == "noreply@esempio.it"
+    assert admin.put("/api/impostazioni/posta", json={"nome_mittente": "  Ufficio  Più Bello\n"}).get_json()["nome_mittente"] == "Ufficio Più Bello"
+    posta.invia(["a@cnr.it"], "x", "y", modo="ufficiale")
+    assert inviati[-1]["From"].addresses[0].display_name == "Ufficio Più Bello" and inviati[-1]["From"].addresses[0].addr_spec == "noreply@esempio.it"
+    assert admin.put("/api/impostazioni/posta", json={"nome_mittente": "x" * 101}).status_code == 400
+    assert admin.put("/api/impostazioni/posta", json={"nome_mittente": ""}).get_json()["nome_mittente"] is None
+
+
+def test_reinvio_usa_il_testo_sulla_graduatoria_pubblica(ambiente, db, monkeypatch):
+    inviati = []
+    _configura_posta(monkeypatch, inviati)
+    posta.salva_email({"prova_attiva": False, "ufficiali_attive": True}, "t")
+    admin, mese, url = _mese_con_rdp(ambiente, db)
+    db.execute("INSERT INTO comunicazione (id, mese, chiave, numero_bando, codice, destinatari, oggetto, corpo, canale, stato, data) "
+               "VALUES ('VECCHIA', ?, '367.479 CTER', '367.479', '367.479 CTER', '[]', 'Aggiornamento Dati', 'testo vecchio', 'Casella ufficio', 'inviata', '2026-01-01T00:00:00Z')", (mese,))
+    assert admin.post(url + "/invia", json={"modo": "ufficiale"}).status_code == 409  # già inviata: chiede conferma
+    assert admin.post(url + "/invia", json={"modo": "ufficiale", "conferma": True}).status_code == 200
+    m = inviati[-1]
+    assert "Aggiornamento Dati Graduatoria Pubblica" in m["Subject"] and "aggiornamento della graduatoria pubblica (oscurata)" in m.get_content()
+    assert db.execute("SELECT corpo FROM comunicazione WHERE id = 'VECCHIA'").fetchone()[0] == "testo vecchio"  # lo storico non si riscrive

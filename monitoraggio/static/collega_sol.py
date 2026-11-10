@@ -44,7 +44,7 @@ def trova_browser() -> str:
     for nome in ("google-chrome", "chromium", "chromium-browser", "microsoft-edge"):
         if shutil.which(nome):
             return shutil.which(nome)
-    raise Errore("Chrome o Edge non trovati: installane uno oppure incolla il ticket nella pagina di accesso.")
+    raise Errore("Chrome o Edge non trovati: installane uno e avvia di nuovo il programma.")
 
 
 class CanaleDevTools:

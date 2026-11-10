@@ -26,3 +26,11 @@ def test_da_sbloccare():
     assert comunicazioni.da_sbloccare(_riga("graduatoria", "presente", ["protocollo graduatoria non valorizzato su SOL (2 candidati)"]))
     assert not comunicazioni.da_sbloccare(_riga("graduatoria", "presente", ["mancano i punteggi su SOL"]))
     assert not comunicazioni.da_sbloccare(_riga("scorrimento", "mancante", ["protocollo graduatoria non valorizzato su SOL (2 candidati)"]))
+
+
+def test_rilievo_email_dice_quale_graduatoria():
+    g = {"atto": "graduatoria"}
+    assert comunicazioni._rilievo_email(g, "la graduatoria (prot. 1) non risulta tra i dati") == "la graduatoria pubblica (oscurata) (prot. 1) non risulta tra i dati"
+    assert comunicazioni._rilievo_email(g, "graduatoria non allegata su SOL") == "graduatoria pubblica (oscurata) non allegata su SOL"
+    assert comunicazioni._rilievo_email(g, "mancano i punteggi su SOL") == "mancano i punteggi su SOL"
+    assert comunicazioni._rilievo_email({"atto": "scorrimento"}, "la graduatoria x") == "la graduatoria x"

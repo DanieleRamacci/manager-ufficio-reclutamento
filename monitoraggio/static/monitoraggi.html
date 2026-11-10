@@ -116,7 +116,7 @@
       const conta = (f) => R.filter(f).length, contaD = (f) => R.filter(r => f(r) && r.con_difformita).length;
       const SCHEDE = [["difformita", "Tutte le difformità", c.difformita, c.difformita],
         ["bando", "Bandi pubblicati", conta(r => r.atto === "bando"), 0],
-        ["graduatoria", "Graduatorie", conta(r => r.atto === "graduatoria"), contaD(r => r.atto === "graduatoria")],
+        ["graduatoria", "Graduatorie pubbliche", conta(r => r.atto === "graduatoria"), contaD(r => r.atto === "graduatoria")],
         ["scorrimento", "Scorrimenti", conta(r => r.atto === "scorrimento"), contaD(r => r.atto === "scorrimento")],
         ["subentro", "Subentri", conta(r => r.sottotipo === "subentro"), contaD(r => r.sottotipo === "subentro")],
         ["correzioni", "Correzioni", null, 0], ["comunicazioni", "Comunicazioni", null, 0],
@@ -278,7 +278,7 @@
       const PILL = { da_inviare: ["p-ko", "da inviare"], da_confermare: ["p-warn", "da confermare"], inviata: ["p-ok", "inviata"], inviata_a_mano: ["p-ok", "inviata"], in_regola: ["p-na", "in regola"] }[d.stato];
       const o = apriFinestra(`<header><div><b>Comunicazione difformità · bando ${esc(codice)}</b><div class="mono small muted">${esc(d.id_monitoraggio)}/${esc(d.numero_bando || codice)}/${esc(d.n_gestione)}</div></div><span class="pillola ${PILL[0]}">${PILL[1]}</span></header>
         <div class="corpo">
-          <div class="small"><b>Da:</b> Ufficio Reclutamento &lt;${esc(p.mittente || "non impostata")}&gt; · casella dell'ufficio</div>
+          <div class="small"><b>Da:</b> ${p.nome_mittente ? `${esc(p.nome_mittente)} &lt;${esc(p.mittente || "non impostata")}&gt;` : esc(p.mittente || "non impostata")} · casella dell'ufficio</div>
           <div class="small" id="area-a"></div>
           <div class="small" id="area-cc"></div>
           <div class="schede" style="align-self:flex-start"><button type="button" id="v-ant" aria-selected="true">Anteprima</button><button type="button" id="v-mod" aria-selected="false">Modifica testo</button></div>
@@ -387,13 +387,14 @@
       let d;
       try { d = await chiama(`/api/monitoraggi/${mese}/difformita`); } catch (err) { box.innerHTML = `<div class="errore">${esc(err.message)}</div>`; return; }
       const v = d.verifica, inCorso = v.in_corso, qui = v.mese === mese, f = filtriRegistro;
-      const visibili = d.voci.filter(x => (!f.stato || x.badge === f.stato) && (!f.tipologia || !x.tipologia || (f.tipologia === "indeterminato") === INDETERMINATO.includes(x.tipologia)));
+      const visibili = d.voci.filter(x => (!f.stato || x.badge === f.stato) && (!f.inviate || (x.sollecito && x.badge !== "corretta")) && (!f.tipologia || !x.tipologia || (f.tipologia === "indeterminato") === INDETERMINATO.includes(x.tipologia)));
       box.innerHTML = `<h2>Difformità e correzioni</h2>
         <p class="muted small">Restano qui anche dopo la correzione. Ultimo controllo: ${d.ultimo_controllo ? ora(d.ultimo_controllo) : "mai"}. Si aggiornano da sole dopo ogni aggiornamento dei dati, e subito con Verifica.</p>
         ${d.fonti_in_attesa.length || d.fonti_affidabili ? "" : `<div class="avviso">L'ultima raccolta di una fonte non è riuscita o non è stata fatta: finché non riesce, nessuna difformità viene segnata come corretta.</div>`}
         <div class="conteggi"><span class="badge da_correggere">Da correggere: ${d.conteggi.da_correggere}</span><span class="badge parziale">Parziali: ${d.conteggi.parziale}</span><span class="badge corretta">Corrette: ${d.conteggi.corretta}</span>${d.conteggi.da_controllare ? `<span class="badge da_controllare">Da controllare: ${d.conteggi.da_controllare}</span>` : ""}</div>
         <div class="riga" style="margin-bottom:10px"><label>Stato <select id="r-stato"><option value="">Tutti</option>${Object.entries(BADGE).map(([k, t]) => `<option value="${k}"${f.stato === k ? " selected" : ""}>${t}</option>`).join("")}</select></label>
           <label>Tipologia <select id="r-tip"><option value="">Tutte</option><option value="indeterminato"${f.tipologia === "indeterminato" ? " selected" : ""}>Tempo indeterminato (concorsi pubblici)</option><option value="mobilita"${f.tipologia === "mobilita" ? " selected" : ""}>Mobilità e comandi</option></select></label>
+          <label class="spunta"><input type="checkbox" id="r-inviate"${f.inviate ? " checked" : ""}> Già inviate e ancora aperte</label>
           <button class="primario solo-admin" type="button" id="verifica-tutte"${inCorso || d.fonti_in_attesa.length ? " disabled" : ""}>Verifica tutte</button></div>
         ${inCorso ? `<div class="avviso" role="status">Verifica in corso${qui ? `: ${v.fatti} di ${v.totale} bandi` : " su un altro monitoraggio"}…</div>` : qui ? esitoVerifica(v) : ""}
         <div class="errore" id="errore-registro" role="alert" hidden></div>
@@ -403,10 +404,12 @@
           <td><ul class="rilievi">${x.rilievi.map(r => `<li${r.risolto ? ' class="risolto"' : ""}>${esc(r.testo)}${r.nuovo ? " (nuovo)" : ""}</li>`).join("")}</ul>
             <details><summary>Storico</summary>${x.storico.map(e => `<div class="small">${ora(e.quando)}: ${esc(EVENTI[e.tipo] || e.tipo)} (${esc(e.origine)}${e.utente ? `, ${esc(e.utente)}` : ""})</div>`).join("")}</details></td>
           <td class="small">${x.sollecito ? `${x.sollecito.stato === "da_confermare" ? "Da confermare" : x.sollecito.stato === "inviata" ? "Inviata" : "Inviata a mano"}<div class="muted">${ora(x.sollecito.quando)}</div>` : `<span class="muted">Non inviata</span>`}</td>
-          <td>${x.badge === "corretta" ? "" : `<button type="button" class="piccolo solo-admin" data-verifica="${x.id}"${inCorso || d.fonti_in_attesa.length ? " disabled" : ""}>Verifica</button>`}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">${d.totale ? "Nessuna difformità con questi filtri." : "Nessuna difformità rilevata."}</td></tr>`}
+          <td style="white-space:nowrap">${x.badge === "corretta" ? "" : `<button type="button" class="piccolo solo-admin" data-verifica="${x.id}"${inCorso || d.fonti_in_attesa.length ? " disabled" : ""}>Verifica</button> <button type="button" class="piccolo" data-messaggio="${esc(x.codice || x.numero_bando)}"${d.fonti_in_attesa.length ? " disabled" : ""}>Messaggio</button>`}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">${d.totale ? "Nessuna difformità con questi filtri." : "Nessuna difformità rilevata."}</td></tr>`}
         </tbody></table></div>`;
       $("r-stato").onchange = () => { f.stato = $("r-stato").value; caricaRegistro(); };
       $("r-tip").onchange = () => { f.tipologia = $("r-tip").value; caricaRegistro(); };
+      $("r-inviate").onchange = () => { f.inviate = $("r-inviate").checked; caricaRegistro(); };
+      box.querySelectorAll("[data-messaggio]").forEach(b => b.onclick = () => apriMessaggio(b.dataset.messaggio));
       const avvia = async (dati) => { try { await chiama(`/api/monitoraggi/${mese}/difformita/verifica`, corpoJson("POST", dati)); caricaRegistro(); } catch (err) { $("errore-registro").hidden = false; $("errore-registro").textContent = err.message; } };
       $("verifica-tutte").onclick = () => avvia({});
       box.querySelectorAll("[data-verifica]").forEach(b => b.onclick = () => avvia({ ids: [Number(b.dataset.verifica)] }));

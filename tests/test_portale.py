@@ -1,9 +1,10 @@
 """Area dei referenti: ognuno vede solo i propri bandi, con accesso dimostrato dalla casella."""
+import json
 import re
 
 import pytest
 
-from monitoraggio import collegamento, mensile, portale, posta
+from monitoraggio import collegamento, mensile, portale, posta, punteggi, utenti
 from tests.test_collegamento import doc, salva, scheda
 from tests.test_mensile import _configura_posta, ambiente  # noqa: F401
 
@@ -98,7 +99,7 @@ def test_ognuno_vede_solo_i_suoi_bandi(area):
     assert r.headers["Cache-Control"] == "no-store" and d["email"] == ANNA
     righe = d["monitoraggi"][0]["bandi"]
     assert {x["chiave"] for x in righe} == {CODICE_A} and righe[0]["rilievi"]
-    assert set(righe[0]) == {"chiave", "titolo_bando", "atto", "protocollo", "data", "fonti", "link_sol", "rilievi"}
+    assert set(righe[0]) == {"chiave", "titolo_bando", "atto", "protocollo", "data", "fonti", "link_sol", "rilievi", "rdp", "profilo", "verifica_punteggi", "link_punteggi"}
     testo = r.get_data(as_text=True)
     assert BRUNO not in testo and CODICE_B not in testo
 
@@ -202,3 +203,124 @@ def test_il_referente_apre_una_sola_pagina(area):
             if url not in ammesse and c.get(url).status_code not in (302, 401, 403):
                 aperte.append(url)
     assert aperte == []
+
+
+# --- coordinatori
+CTER, RIC = "Collaboratore tecnico VI livello", "Ricercatore III livello"
+COORD = "coord@cnr.it"
+
+
+def _profili(db):
+    for id_esterno, profilo in (("s1", CTER), ("s2", RIC)):
+        db.execute("UPDATE scheda SET dati_extra = ? WHERE id_esterno = ?", (json.dumps({"profilo": profilo}), id_esterno))
+
+
+def _coordinatore(admin, db, inviati):
+    _profili(db)
+    assert admin.post("/api/coordinatori", json={"email": COORD.upper()}).get_json() == {"ok": True, "email": COORD}
+    return _entra(admin, inviati, COORD)
+
+
+def test_coordinatore_vede_i_profili_salvati_in_sola_consultazione(area, db):
+    admin, mese, inviati = area
+    c = _coordinatore(admin, db, inviati)
+    d = c.get("/api/area-referenti/bandi").get_json()
+    assert d["coordinatore"] is True and d["profili"] == [] and d["profili_disponibili"] == [CTER, RIC] and d["monitoraggi"][0]["bandi"] == []
+    assert c.post("/api/area-referenti/profili", json={"profili": [CTER]}).get_json() == {"ok": True}
+    r = c.get("/api/area-referenti/bandi")
+    righe = r.get_json()["monitoraggi"][0]["bandi"]
+    assert [x["chiave"] for x in righe] == [CODICE_A] and righe[0]["rdp"] is False and righe[0]["profilo"] == CTER and righe[0]["rilievi"]
+    assert ANNA not in r.get_data(as_text=True)
+    # i profili restano al prossimo accesso
+    portale._ultima_email.clear()
+    assert _entra(admin, inviati, COORD).get("/api/area-referenti/bandi").get_json()["profili"] == [CTER]
+    # e si possono cambiare, ma solo tra quelli esistenti
+    assert c.post("/api/area-referenti/profili", json={"profili": ["inventato"]}).status_code == 400
+    assert c.post("/api/area-referenti/profili", json={"profili": "x"}).status_code == 400
+
+
+def test_coordinatore_non_segnala_sui_bandi_altrui(area, db):
+    admin, mese, inviati = area
+    c = _coordinatore(admin, db, inviati)
+    c.post("/api/area-referenti/profili", json={"profili": [CTER]})
+    riga = c.get("/api/area-referenti/bandi").get_json()["monitoraggi"][0]["bandi"][0]
+    assert c.post("/api/area-referenti/segnala", json=_segnalazione(mese, riga)).status_code == 404
+
+
+def test_coordinatore_apre_una_sola_pagina_e_non_e_utente_del_sito(area, db):
+    admin, mese, inviati = area
+    c = _coordinatore(admin, db, inviati)
+    assert utenti.ruolo(COORD) is None
+    ammesse = {"/referenti", "/api/area-referenti/bandi", "/monitoraggio/app.css"}
+    aperte = []
+    for regola in admin.application.url_map.iter_rules():
+        if "GET" in regola.methods and regola.endpoint != "static":
+            url = regola.rule
+            for nome in regola.arguments:
+                url = re.sub(rf"<[^>]*{nome}>", {"mese": mese, "codice": CODICE_A}.get(nome, "1"), url)
+            if url not in ammesse and c.get(url).status_code not in (302, 401, 403):
+                aperte.append(url)
+    assert aperte == []
+    for metodo, url in (("post", f"/api/monitoraggi/{mese}/comunicazioni/{CODICE_A}/invia"), ("post", f"/api/monitoraggi/{mese}/comunicazioni-invia-tutti"),
+                        ("post", "/api/coordinatori")):
+        assert getattr(c, metodo)(url, json={"modo": "ufficiale"}).status_code in (302, 401, 403), url
+
+
+def test_difformita_per_tutti_link_ai_punteggi_solo_a_chi_e_rdp(db, monkeypatch):
+    riga = {"chiave": "367.1 CTER", "atto": "graduatoria", "scheda_sol_id": 7, "rdp_origine": "codice", "fonti": {}, "url_punteggi": "https://sol.esempio/punteggi?id=7",
+            "rilievi": ["mancano i punteggi su SOL", "protocollo diverso: SOL 1, URP 2"], "punteggi": {"verificato_il": "2026-11-09T10:00:00Z"}}
+    db.execute("INSERT INTO monitoraggio_mese (mese, mese_dati, creato_il) VALUES ('2026-05', '2026-04', 'x')")
+    m = {"mese": "2026-05", "mese_dati": "2026-04"}
+    monkeypatch.setattr(portale.comunicazioni, "righe_mese", lambda conn, mm: [{**riga, "rdp": [{"email": ANNA}]}])
+    altro = portale._vista(db, m, COORD, [CTER], ({7: CTER}, {}))
+    bando = altro["bandi"][0]
+    assert len(bando["rilievi"]) == 2 and bando["rdp"] is False and bando["link_punteggi"] is None and bando["verifica_punteggi"] == "2026-11-09T10:00:00Z"
+    assert [f["fonte"] for f in altro["aggiornamenti"]] == ["sol", "urp", "segreteria"]
+    assert portale._vista(db, m, ANNA, [CTER], ({7: CTER}, {}))["bandi"][0]["link_punteggi"] == "https://sol.esempio/punteggi?id=7"
+
+
+def test_nessun_dato_dei_candidati_nell_area(area, db, monkeypatch):
+    admin, mese, inviati = area
+    sid = db.execute("SELECT id FROM scheda WHERE id_esterno = 's1'").fetchone()[0]
+    monkeypatch.setitem(punteggi._candidati, sid, {"verificato_il": "x", "candidati": [{"cognome": "Rossi", "nome": "Mario", "codice_fiscale": "RSSMRA80A01H501U"}]})
+    a = _entra(admin, inviati, ANNA)
+    r = a.get("/api/area-referenti/bandi")
+    assert r.status_code == 200 and "Rossi" not in r.get_data(as_text=True) and "RSSMRA" not in r.get_data(as_text=True)
+    assert a.get("/api/area-referenti/candidati").status_code == 404
+
+
+def test_coordinatore_anche_rdp_vede_i_suoi_bandi_senza_scegliere_il_profilo(area, db):
+    admin, mese, inviati = area
+    _profili(db)
+    admin.post("/api/coordinatori", json={"email": ANNA})
+    righe = _entra(admin, inviati, ANNA).get("/api/area-referenti/bandi").get_json()["monitoraggi"][0]["bandi"]
+    assert [(x["chiave"], x["rdp"]) for x in righe] == [(CODICE_A, True)]
+
+
+def test_gestione_coordinatori(area, db):
+    admin, mese, inviati = area
+    c = _coordinatore(admin, db, inviati)
+    voce = admin.get("/api/utenti").get_json()["coordinatori"]
+    assert [x["email"] for x in voce] == [COORD]
+    assert admin.post("/api/coordinatori", json={"email": "a b"}).status_code == 400
+    assert admin.post("/api/coordinatori", json={"email": "Mario.Rossi"}).get_json()["email"] == "mario.rossi@cnr.it"
+    admin.delete("/api/coordinatori/mario.rossi@cnr.it")
+    n = len(inviati)
+    assert admin.post(f"/api/coordinatori/{COORD}/invia-accesso").get_json() == {"ok": True}
+    assert len(inviati) == n + 1 and inviati[-1]["To"] == COORD and "/referenti" in inviati[-1].get_content() and "codice=" not in inviati[-1].get_content()
+    assert admin.post("/api/coordinatori/altro@cnr.it/invia-accesso").status_code == 404
+    admin.post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"})
+    with admin.application.test_client() as lettore:
+        with lettore.session_transaction() as s:
+            s["user"] = "lettore.uno"
+        assert lettore.post("/api/coordinatori", json={"email": "x@cnr.it"}).status_code == 403
+        assert lettore.delete(f"/api/coordinatori/{COORD}").status_code == 403
+    posta.salva_email({"portale_referenti": False}, "t")
+    assert admin.post(f"/api/coordinatori/{COORD}/invia-accesso").status_code == 409
+    posta.salva_email({"portale_referenti": True}, "t")
+    c.post("/api/area-referenti/profili", json={"profili": [CTER]})
+    assert admin.get("/api/utenti").get_json()["coordinatori"][0]["profili"] == [CTER]
+    assert admin.delete(f"/api/coordinatori/{COORD}").get_json() == {"ok": True}
+    d = c.get("/api/area-referenti/bandi").get_json()  # toglierlo ha effetto subito
+    assert d["coordinatore"] is False and d["monitoraggi"][0]["bandi"] == []
+    assert admin.delete(f"/api/coordinatori/{COORD}").status_code == 404

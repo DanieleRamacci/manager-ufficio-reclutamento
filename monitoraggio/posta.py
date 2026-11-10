@@ -8,6 +8,7 @@ import re
 import smtplib
 from datetime import datetime, timezone
 from email.message import EmailMessage
+from email.utils import formataddr
 
 from . import config, db
 
@@ -39,7 +40,7 @@ def impostazioni_email() -> dict:
     return {"prova_attiva": prova, "indirizzo_prova": valore("email_prova_indirizzo") or predefinito, "ufficiali_attive": ufficiali,
             "mittente": valore("email_mittente") or (os.environ.get("MAIL_SENDER") or "").strip() or None,
             "cc": valore("email_cc"), "firma": valore("email_firma") or "Ufficio Reclutamento",
-            "cartella_onedrive": valore("email_cartella_onedrive"),
+            "cartella_onedrive": valore("email_cartella_onedrive"), "nome_mittente": valore("email_nome_mittente"),
             "portale_referenti": "email_portale_referenti" in v and v["email_portale_referenti"]["valore"] == "1",
             "modificata_da": v["email_prova_attiva"]["modificata_da"] if "email_prova_attiva" in v else None,
             "modificata_il": v["email_prova_attiva"]["modificata_il"] if "email_prova_attiva" in v else None}
@@ -88,6 +89,11 @@ def salva_email(dati: dict, autore: str | None) -> dict:
         voci.append(("email_cc", ", ".join(indirizzi) or None))
     if "firma" in dati:
         voci.append(("email_firma", (dati["firma"] or "").strip() or None))
+    if "nome_mittente" in dati:
+        nome = " ".join((dati["nome_mittente"] or "").split())
+        if len(nome) > 100:
+            raise ValueError("Il nome del mittente è troppo lungo")
+        voci.append(("email_nome_mittente", nome or None))
     if "cartella_onedrive" in dati:
         cartella = (dati["cartella_onedrive"] or "").strip()
         if cartella and not cartella.lower().startswith("https://"):
@@ -117,7 +123,7 @@ def salva_prova(attiva: bool, indirizzo: str | None, autore: str | None) -> dict
 
 def stato() -> dict:
     e = impostazioni_email()
-    return {**{k: e[k] for k in ("prova_attiva", "ufficiali_attive", "indirizzo_prova", "mittente", "cc", "firma", "portale_referenti", "cartella_onedrive")},
+    return {**{k: e[k] for k in ("prova_attiva", "ufficiali_attive", "indirizzo_prova", "mittente", "cc", "firma", "portale_referenti", "cartella_onedrive", "nome_mittente")},
             "configurata": configurata(), "prova": (e["indirizzo_prova"] or "indirizzo non impostato") if e["prova_attiva"] else None,
             "risposta": os.environ.get("MAIL_REPLY_TO")}
 
@@ -186,7 +192,7 @@ def invia(destinatari: list[str], oggetto: str, corpo: str, sempre_reale: bool =
     copia = copia_effettiva(destinatari, cc) if modo != "reale" else []
     oggetto = " ".join(oggetto.split())  # un a capo nell'intestazione farebbe fallire la costruzione dell'email
     messaggio = EmailMessage()
-    messaggio["From"] = e["mittente"]
+    messaggio["From"] = formataddr((e["nome_mittente"], e["mittente"])) if e["nome_mittente"] else e["mittente"]
     messaggio["To"] = prova or ", ".join(destinatari)
     messaggio["Subject"] = f"[PROVA] {oggetto}" if prova else oggetto
     if os.environ.get("MAIL_REPLY_TO"):

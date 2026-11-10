@@ -15,6 +15,8 @@
     input[type=password] { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #c7cdea; border-radius: 6px; font-size: 1rem; }
     button { margin-top: 14px; padding: 10px 18px; border: 0; border-radius: 6px; background: #1f5fbf; color: #fff; font-size: 1rem; cursor: pointer; }
     h2 { font-size: 1.05rem; margin: 18px 0 8px; }
+    .testata { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .testata h1 { margin: 0 0 16px; }
     details.visualizzatore { margin: 0; border-top: 0; padding-top: 0; }
     details.visualizzatore summary { list-style: none; }
     details.visualizzatore summary::-webkit-details-marker { display: none; }
@@ -29,11 +31,14 @@
 </head>
 <body>
   <main>
-    <h1>Accesso al monitoraggio</h1>
+    <div class="testata">
+      <h1>Accesso al monitoraggio</h1>
+      {% if not codice_link %}<a class="pulsante" href="/login/programma" title="Per gli amministratori: il programma per collegare Selezioni Online">Scarica file</a>{% endif %}
+    </div>
     {% if errore %}<div class="errore" role="alert">{{ errore }}</div>{% endif %}
     {% if messaggio %}<div class="ok" role="status">{{ messaggio }}</div>{% endif %}
-    {% if pagina_richiesta and not codice_link and not messaggio %}
-    <div class="ok" role="status">Per aprire questa pagina devi prima accedere. Se sei autorizzato, chiedi il link via email: dopo l'accesso torni qui.</div>
+    {% if pagina_richiesta and not codice_link and not messaggio and not utente %}
+    <div class="ok" role="status">Per aprire questa pagina devi prima accedere: dopo l'accesso torni qui.</div>
     {% endif %}
     {% if codice_link %}
     <p>Stai per entrare in sola lettura.</p>
@@ -42,42 +47,16 @@
       <button type="submit">Entra</button>
     </form>
     {% else %}
-    <details class="visualizzatore"{% if pagina_richiesta %} open{% endif %}>
-      <summary class="pulsante">Accedi come visualizzatore autorizzato</summary>
-      <form method="post" action="/login/visualizzatore">
-        <input type="hidden" name="next" value="{{ next }}">
-        <label for="username">Nome utente (nome.cognome)</label>
-        <input id="username" name="username" type="text" autocomplete="username" required>
-        <button type="submit">Mandami il link via email</button>
-      </form>
-      <p class="nota">Ricevi nella tua casella CNR un link valido 15 minuti. Puoi vedere le tabelle ma non modificare nulla.</p>
-    </details>
-    <h2>Con il programma (Mac)</h2>
-    <ol>
-      <li><a class="pulsante" href="/login/programma">Scarica Collega-SOL</a> e apri lo zip. Basta farlo una volta.</li>
-      <li>Avvia <code>Collega-SOL.command</code> con un doppio clic. La prima volta il Mac lo blocca perché non è firmato: premi Fine, apri <strong>Impostazioni di Sistema → Privacy e sicurezza</strong>, scorri fino a Sicurezza e premi <strong>Apri comunque</strong>.</li>
-      <li>Fai il login su Selezioni Online nella finestra che si apre: entri qui da solo.</li>
-    </ol>
-    <details>
-      <summary>Oppure incolla il ticket a mano</summary>
-      <ol>
-        <li><a href="{{ sol_login }}" target="_blank" rel="noopener">Apri Selezioni Online</a> e fai il login come al solito.</li>
-        <li>Nella pagina di Selezioni Online premi <code>F12</code> (su Mac <code>Cmd+Opt+I</code>) e apri
-          <strong>Application</strong> → <strong>Cookies</strong> → <code>selezionionline.cnr.it</code>.
-          In Safari e Firefox la scheda si chiama Archiviazione.</li>
-        <li>Copia il <strong>valore</strong> del cookie <code>ticket</code> e incollalo qui sotto.</li>
-      </ol>
-      <form method="post" action="/login" autocomplete="off">
-        <input type="hidden" name="next" value="{{ next }}">
-        <label for="ticket">Cookie ticket</label>
-        <input id="ticket" name="ticket" type="password" required>
-        <button type="submit">Entra</button>
-      </form>
-    </details>
+    <h2>Accedi con link temporaneo</h2>
+    <form method="post" action="/login/visualizzatore" id="richiesta">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label for="username">Nome utente (nome.cognome)</label>
+      <input id="username" name="username" type="text" autocomplete="username" placeholder="nome.cognome" value="{{ utente }}" required>
+      <button type="submit">Richiedi link temporaneo</button>
+    </form>
+    <p class="nota">Ricevi nella tua casella CNR un link valido 15 minuti.</p>
+    {% if utente and not messaggio and not errore %}<script>document.getElementById("richiesta").submit();</script>{% endif %}
     {% endif %}
-    <p class="nota">Il ticket dà accesso a Selezioni Online con il tuo account: non condividerlo. Dura circa un'ora e
-      resta solo nella memoria del server. Le pagine restano accessibili per 12 ore; per leggere punteggi e RdP dopo la
-      scadenza basta avviare di nuovo il programma.</p>
   </main>
 </body>
 </html>

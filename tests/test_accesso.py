@@ -183,8 +183,9 @@ def test_zip_del_programma(db, tmp_path, monkeypatch):
     import zipfile
     c = _app(tmp_path, monkeypatch).test_client()
     r = c.get("/login/programma", base_url="https://sito.esempio")
-    assert r.status_code == 200 and "Collega-SOL.zip" in r.headers["Content-Disposition"]
-    voce = zipfile.ZipFile(io.BytesIO(r.data)).getinfo("Collega-SOL.command")
+    nome = re.search(r"filename=(Collega-SOL-[\w-]+)\.zip", r.headers["Content-Disposition"]).group(1)
+    assert r.status_code == 200 and nome not in c.get("/login/programma", base_url="https://sito.esempio").headers["Content-Disposition"]  # sempre un nome diverso
+    voce = zipfile.ZipFile(io.BytesIO(r.data)).getinfo(f"{nome}.command")
     assert voce.create_system == 3 and voce.external_attr >> 16 == 0o100755  # file normale ed eseguibile
     testo = zipfile.ZipFile(io.BytesIO(r.data)).read(voce).decode()
     assert testo.startswith("#!/bin/sh") and 'SERVER = "https://sito.esempio"' in testo and "__SERVER__" not in testo
@@ -209,7 +210,9 @@ def test_visualizzatore_entra_in_sola_lettura_col_link(db, tmp_path, monkeypatch
     inviate = _link_email(monkeypatch)
     utenti.imposta(db, "anna.bianchi", "lettura", "x")
     c = _app(tmp_path, monkeypatch).test_client()
-    assert "Accedi come visualizzatore autorizzato" in c.get("/login").get_data(as_text=True)
+    pagina = c.get("/login").get_data(as_text=True)
+    assert "Accedi con link temporaneo" in pagina and "Richiedi link temporaneo" in pagina and 'href="/login/programma"' in pagina
+    assert 'name="ticket"' not in pagina and "Con il programma" not in pagina and ".submit()" not in pagina
     assert c.post("/login/visualizzatore", data={"username": "Anna.Bianchi@altro.it"}).status_code == 200
     assert inviate[0][0] == ["anna.bianchi@cnr.it"]  # mai il dominio scritto da chi chiede
     assert inviate[0][2] is True  # il link arriva alla persona anche con le email di prova attive
@@ -284,7 +287,7 @@ def test_il_link_a_una_pagina_porta_lì_dopo_il_link_via_email(db, tmp_path, mon
     arrivo = c.get("/monitoraggio/segreteria?atto=7&foglio=bandi")
     assert arrivo.status_code == 302 and arrivo.headers["Location"] == "/login?next=/monitoraggio/segreteria%3Fatto%3D7%26foglio%3Dbandi"
     pagina = c.get(arrivo.headers["Location"]).get_data(as_text=True)
-    assert "<details class=\"visualizzatore\" open>" in pagina and "Per aprire questa pagina devi prima accedere" in pagina
+    assert "Per aprire questa pagina devi prima accedere" in pagina
     assert 'value="/monitoraggio/segreteria?atto=7&amp;foglio=bandi"' in pagina
     chiesto = c.post("/login/visualizzatore", data={"username": "anna.bianchi", "next": "/monitoraggio/segreteria?atto=7&foglio=bandi"})
     assert "riceverà a breve" in chiesto.get_data(as_text=True)
@@ -342,3 +345,17 @@ def test_tutte_le_pagine_portano_all_accesso_conservando_la_pagina(db, tmp_path,
     r = c.get("/monitoraggio/mensili/2026-11")
     assert r.headers["Location"] == "/login?next=/monitoraggio/mensili/2026-11"
     assert c.get("/report-mese.html").headers["Location"] == "/login?next=/report-mese.html"
+
+
+def test_login_precompila_il_nome_del_visualizzatore(db, tmp_path, monkeypatch):
+    c = _app(tmp_path, monkeypatch).test_client()
+    assert 'value="dirigente.uno"' in c.get("/login?utente=Dirigente.Uno").get_data(as_text=True)
+    testo = c.get('/login?utente="><script>alert(1)</script>').get_data(as_text=True)
+    assert "<script>alert(1)" not in testo and 'value=""' in testo
+
+
+def test_link_col_nome_chiede_da_solo_il_link_temporaneo(db, tmp_path, monkeypatch):
+    c = _app(tmp_path, monkeypatch).test_client()
+    pagina = c.get("/login?utente=dirigente.uno").get_data(as_text=True)
+    assert 'value="dirigente.uno"' in pagina and 'getElementById("richiesta").submit()' in pagina
+    assert ".submit()" not in c.get("/login?utente=x y").get_data(as_text=True)

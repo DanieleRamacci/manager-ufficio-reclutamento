@@ -21,6 +21,7 @@
       <section id="s-utenti" hidden>
         <h2>Utenti</h2>
         <p class="muted small">Gli amministratori avviano raccolte e verifiche, creano i monitoraggi e inviano le email. Chi ha il ruolo di lettura vede tutte le tabelle, compresi i dati dei candidati. Le modifiche hanno effetto subito.</p>
+        <div class="card" id="link-aree" style="margin-bottom:12px"></div>
         <div class="card" style="background:var(--surface-2)"><h3 style="margin-top:0">Aggiungi una persona</h3>
           <form id="aggiungi" class="riga">
             <label>Nome utente di Selezioni Online <input id="nome" placeholder="nome.cognome" autocomplete="off"></label>
@@ -30,6 +31,10 @@
           </form>
           <div class="errore" id="errore-utenti" role="alert" hidden style="margin-top:8px"></div></div>
         <div class="scroll" style="margin-top:12px"><table id="tabella-utenti" style="min-width:720px"></table></div>
+        <h3>Coordinatori</h3>
+        <p class="muted small">Entrano dalla pagina dei referenti, scelgono i profili che seguono e vedono le difformità di quei bandi in sola consultazione. Non inviano email; per i bandi di cui sono anche RdP trovano il link ai punteggi su Selezioni Online.</p>
+        <form id="aggiungi-coordinatore" class="riga"><label>Coordinatore <input type="text" id="email-coordinatore" autocomplete="off" size="30" placeholder="nome.cognome o email" required></label><button type="submit">Abilita come coordinatore</button></form>
+        <div class="scroll" style="margin-top:8px"><table id="tabella-coordinatori" style="min-width:720px"></table></div>
         <h3>Ultime modifiche</h3><div class="scroll"><table id="registro"></table></div>
       </section>
 
@@ -41,7 +46,8 @@
             <div class="scelta" id="box-prova"><label class="spunta"><input type="checkbox" id="prova"> <b>Email di prova abilitate</b></label>
               <label class="campo-largo" style="margin-top:10px">Indirizzo di prova <input type="email" id="indirizzo-prova" autocomplete="off"></label></div>
             <div class="scelta" id="box-uff"><label class="spunta"><input type="checkbox" id="ufficiali"> <b>Email ufficiali abilitate</b></label>
-              <label class="campo-largo" style="margin-top:10px">Casella mittente <input type="email" id="mittente" autocomplete="off"></label>
+              <label class="campo-largo" style="margin-top:10px">Nome del mittente <input type="text" id="nome-mittente" autocomplete="off" maxlength="100" placeholder="il nome che i destinatari leggono"></label>
+              <label class="campo-largo" style="margin-top:8px">Casella mittente <input type="email" id="mittente" autocomplete="off"></label>
               <label class="campo-largo" style="margin-top:8px">In copia (CC) alle email ufficiali <input type="text" id="cc" autocomplete="off" placeholder="una o più email separate da virgola"></label>
               <p class="muted small" style="margin:4px 0 0">Il contatto dell'ufficio è sempre in copia; qui puoi aggiungere altre persone.</p></div>
           </div>
@@ -76,7 +82,7 @@
   </div>
 </main>
 <script>
-  const { $, esc, ora, chiama, json, toast } = App;
+  const { $, esc, ora, chiama, json, toast, copia } = App;
   const errore = (id, testo) => { $(id).hidden = !testo; $(id).textContent = testo || ""; };
   function mostraSezione() {
     const s = ["utenti", "email", "aggiornamenti"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "utenti";
@@ -90,15 +96,40 @@
   let io = null;
   async function caricaUtenti() {
     if (!io) io = (await chiama("/api/menu")).utente;
-    const { utenti, registro } = await chiama("/api/utenti");
+    const { utenti, registro, coordinatori, link_aree: aree } = await chiama("/api/utenti");
+    $("tabella-coordinatori").innerHTML = `<thead><tr><th>Email</th><th>Profili scelti</th><th>Abilitato il</th><th></th></tr></thead><tbody>` + (coordinatori.map(c => `<tr><td>${esc(c.email)}</td><td class="small">${esc(c.profili.join(", ")) || `<span class="muted2">nessuno ancora</span>`}</td><td>${ora(c.aggiunto_il)}</td>
+      <td style="white-space:nowrap"><button type="button" class="piccolo" data-copia="${esc(aree.referenti)}">Copia link</button> <button type="button" class="piccolo" data-invia-coord="${esc(c.email)}">Invia email</button> <button type="button" class="piccolo" data-togli-coord="${esc(c.email)}">Rimuovi</button></td></tr>`).join("") || `<tr><td colspan="4" class="muted">Nessun coordinatore.</td></tr>`) + `</tbody>`;
+    const rigaLink = (titolo, nota, url, extra = "") => `<div style="padding:8px 0;border-top:1px solid var(--border-soft)"><b>${titolo}</b> ${extra}<div class="muted small">${nota}</div>
+      <div class="riga" style="align-items:center;margin-top:4px"><span class="mono small" style="word-break:break-all">${esc(url)}</span><button type="button" class="piccolo" data-copia="${esc(url)}">Copia</button></div></div>`;
+    $("link-aree").innerHTML = `<h3 style="margin-top:0">Link di accesso alle aree</h3>` +
+      rigaLink("Referenti (RdP)", "Accedono solo alla pagina con i propri bandi, usando l'email con cui risultano referenti su Selezioni Online.", aree.referenti,
+        aree.referenti_attiva ? "" : `<a class="etichetta" href="#email">area spenta: il link non funziona finché non la attivi</a>`) +
+      rigaLink("Amministratori e visualizzatori", "Solo per chi è nell'elenco qui sotto. Per mandare il link a una persona usa i pulsanti sulla sua riga.", aree.utenti);
     const mioNome = (io || "").split("@")[0].toLowerCase();
     $("tabella-utenti").innerHTML = `<thead><tr><th>Nome utente</th><th>Email</th><th>Ruolo</th><th>Aggiunto il</th><th>Ultimo accesso</th><th></th></tr></thead><tbody>` + utenti.map(u => `<tr>
       <td>${esc(u.username)}${u.username === mioNome ? ` <span class="muted2">(tu)</span>` : ""}</td><td>${esc(u.email || `${u.username}@cnr.it`)}</td>
       <td>${u.iniziale ? "Amministratore (dalla configurazione)" : `<select data-ruolo="${esc(u.username)}" aria-label="Ruolo"><option value="lettura"${u.ruolo === "lettura" ? " selected" : ""}>Lettura</option><option value="amministratore"${u.ruolo === "amministratore" ? " selected" : ""}>Amministratore</option></select>`}</td>
       <td>${ora(u.aggiunto_il)}${u.aggiunto_da ? `<div class="muted2 small">${esc(u.aggiunto_da)}</div>` : ""}</td><td>${ora(u.ultimo_accesso) || `<span class="muted2">mai</span>`}</td>
-      <td>${u.iniziale || u.username === mioNome ? "" : `<button type="button" class="piccolo" data-togli="${esc(u.username)}">Rimuovi</button>`}</td></tr>`).join("") + `</tbody>`;
-    $("registro").innerHTML = `<thead><tr><th>Quando</th><th>Chi</th><th>Modifica</th></tr></thead><tbody>` + (registro.map(r => `<tr><td>${ora(r.quando)}</td><td>${esc(r.autore)}</td><td>${r.azione === "togli" ? `Tolto ${esc(r.username)}` : r.azione === "link_accesso" ? `Link di accesso a ${esc(r.username)}` : `${esc(r.username)}: ${esc(r.ruolo)}`}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">Nessuna modifica</td></tr>`) + `</tbody>`;
+      <td style="white-space:nowrap"><button type="button" class="piccolo" data-copia="${esc(u.link)}">Copia link</button> <button type="button" class="piccolo" data-invia="${esc(u.username)}" data-email="${esc(u.email || `${u.username}@cnr.it`)}">Invia email</button>
+        ${u.iniziale || u.username === mioNome ? "" : `<button type="button" class="piccolo" data-togli="${esc(u.username)}">Rimuovi</button>`}</td></tr>`).join("") + `</tbody>`;
+    $("registro").innerHTML = `<thead><tr><th>Quando</th><th>Chi</th><th>Modifica</th></tr></thead><tbody>` + (registro.map(r => `<tr><td>${ora(r.quando)}</td><td>${esc(r.autore)}</td><td>${r.azione === "togli" ? `Tolto ${esc(r.username)}` : r.azione === "link_accesso" ? `Link di accesso a ${esc(r.username)}` : r.azione === "invito_accesso" ? `Email con il link di accesso a ${esc(r.username)}` : `${esc(r.username)}: ${esc(r.ruolo)}`}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">Nessuna modifica</td></tr>`) + `</tbody>`;
     document.querySelectorAll("[data-ruolo]").forEach(s => s.onchange = () => imposta(s.dataset.ruolo, s.value));
+    document.querySelectorAll("[data-copia]").forEach(b => b.onclick = () => copia(b.dataset.copia, "Link copiato"));
+    document.querySelectorAll("[data-invia-coord]").forEach(b => b.onclick = async () => {
+      if (!confirm(`Inviare il link di accesso a ${b.dataset.inviaCoord}?\n\nL'email parte davvero anche con la modalità di prova attiva.`)) return;
+      try { errore("errore-utenti"); await chiama(`/api/coordinatori/${encodeURIComponent(b.dataset.inviaCoord)}/invia-accesso`, { method: "POST" }); toast(`Email inviata a ${b.dataset.inviaCoord}`); await caricaUtenti(); }
+      catch (e) { errore("errore-utenti", e.message); }
+    });
+    document.querySelectorAll("[data-togli-coord]").forEach(b => b.onclick = async () => {
+      if (!confirm(`Togliere ${b.dataset.togliCoord} dai coordinatori?`)) return;
+      try { errore("errore-utenti"); await chiama(`/api/coordinatori/${encodeURIComponent(b.dataset.togliCoord)}`, { method: "DELETE" }); await caricaUtenti(); }
+      catch (e) { errore("errore-utenti", e.message); }
+    });
+    document.querySelectorAll("[data-invia]").forEach(b => b.onclick = async () => {
+      if (!confirm(`Inviare il link di accesso a ${b.dataset.email}?\n\nL'email parte davvero anche con la modalità di prova attiva.`)) return;
+      try { errore("errore-utenti"); const r = await chiama(`/api/utenti/${encodeURIComponent(b.dataset.invia)}/invia-accesso`, { method: "POST" }); toast(`Email inviata a ${r.email}`); await caricaUtenti(); }
+      catch (e) { errore("errore-utenti", e.message); }
+    });
     document.querySelectorAll("[data-togli]").forEach(b => b.onclick = async () => {
       if (!confirm(`Rimuovere ${b.dataset.togli}?`)) return;
       try { errore("errore-utenti"); await chiama(`/api/utenti/${encodeURIComponent(b.dataset.togli)}`, { method: "DELETE" }); await caricaUtenti(); } catch (e) { errore("errore-utenti", e.message); }
@@ -109,6 +140,11 @@
     catch (e) { errore("errore-utenti", e.message); return false; }
   }
   $("nome").oninput = () => { $("email-utente").placeholder = `${$("nome").value.trim().toLowerCase() || "nome.cognome"}@cnr.it`; };
+  $("aggiungi-coordinatore").onsubmit = async (e) => {
+    e.preventDefault();
+    try { errore("errore-utenti"); await chiama("/api/coordinatori", json("POST", { email: $("email-coordinatore").value })); $("email-coordinatore").value = ""; await caricaUtenti(); toast("Coordinatore abilitato"); }
+    catch (err) { errore("errore-utenti", err.message); }
+  };
   $("aggiungi").onsubmit = async (e) => {
     e.preventDefault();
     const nome = $("nome").value.trim();
@@ -121,7 +157,7 @@
   // --- email
   function mostraEmail(d) {
     $("prova").checked = d.prova_attiva; $("indirizzo-prova").value = d.indirizzo_prova || ""; $("ufficiali").checked = d.ufficiali_attive;
-    $("mittente").value = d.mittente || ""; $("cc").value = d.cc || ""; $("firma").value = d.firma || ""; $("portale").checked = d.portale_referenti; $("cartella-onedrive").value = d.cartella_onedrive || "";
+    $("mittente").value = d.mittente || ""; $("nome-mittente").value = d.nome_mittente || ""; $("cc").value = d.cc || ""; $("firma").value = d.firma || ""; $("portale").checked = d.portale_referenti; $("cartella-onedrive").value = d.cartella_onedrive || "";
     $("server-posta").innerHTML = `Server di posta: ${d.configurata ? "configurato" : `<span class="etichetta">non configurato: serve SMTP_SERVER nelle variabili di Coolify</span>`} · risposte a ${esc(d.risposta) || "–"}`;
     aspettoEmail();
   }
@@ -140,7 +176,7 @@
     errore("errore-email");
     if ($("ufficiali").checked && !confirm("Con le email ufficiali abilitate i messaggi possono partire ai destinatari veri. Confermi?")) return;
     try {
-      mostraEmail(await chiama("/api/impostazioni/posta", json("PUT", { prova_attiva: $("prova").checked, indirizzo_prova: $("indirizzo-prova").value, ufficiali_attive: $("ufficiali").checked, mittente: $("mittente").value, cc: $("cc").value, firma: $("firma").value, portale_referenti: $("portale").checked, cartella_onedrive: $("cartella-onedrive").value })));
+      mostraEmail(await chiama("/api/impostazioni/posta", json("PUT", { prova_attiva: $("prova").checked, indirizzo_prova: $("indirizzo-prova").value, ufficiali_attive: $("ufficiali").checked, mittente: $("mittente").value, nome_mittente: $("nome-mittente").value, cc: $("cc").value, firma: $("firma").value, portale_referenti: $("portale").checked, cartella_onedrive: $("cartella-onedrive").value })));
       $("esito-email").textContent = "Salvato.";
     } catch (err) { errore("errore-email", err.message); }
   };
