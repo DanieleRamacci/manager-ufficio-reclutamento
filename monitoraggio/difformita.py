@@ -9,7 +9,7 @@ import re
 import threading
 from datetime import datetime, timezone
 
-from . import atti, collegamento, compat, config, db, mensile, punteggi, raccolta
+from . import atti, collegamento, compat, config, db, mensile, punteggi, raccolta, sedi
 from .fonti.http import Client
 
 log = logging.getLogger(__name__)
@@ -47,9 +47,13 @@ def righe_correnti(conn, dal: str, al: str, tutti: bool = False) -> list[dict]:
     righe = [r for r in righe if config.nel_monitoraggio(r.get("tipologia"))]
     if atti.fonti_in_attesa(conn):
         return righe
+    famiglie = sedi.famiglie(conn)
+    figli = {s["id"]: f for f in famiglie.values() for s in f["figli"]}
+    padri = {f["padre"]["id"] for f in famiglie.values()}
+    per_riga: dict = {}  # le verifiche dei punteggi finite su ogni riga: un atto unico può valere per più sedi
     for p in punteggi.elenco_periodo(conn, dal, al):
-        if not dal <= (p.get("data") or "") <= al or not config.nel_monitoraggio(p.get("tipologia")):
-            continue
+        if p.get("scheda_id") in padri or not dal <= (p.get("data") or "") <= al or not config.nel_monitoraggio(p.get("tipologia")):
+            continue  # il padre non ha candidati: i punteggi stanno sui sotto-bandi
         note = [n for n in (p.get("difformita") or []) if not re.search(r"scorrimento|assunzione idoneo", n, re.I)]
         stessa = lambda a: a["bando_id"] == p["bando_id"] if a.get("bando_id") and p.get("bando_id") else a.get("numero_bando") == p.get("numero_bando")  # noqa: E731
         candidate = [a for a in righe if a["atto"] == "graduatoria" and stessa(a)]
@@ -57,21 +61,79 @@ def righe_correnti(conn, dal: str, al: str, tutti: bool = False) -> list[dict]:
                   or (p.get("codice_sotto") and str(a.get("codice_sotto") or "") == str(p["codice_sotto"]))]
         con_data = [a for a in candidate if a.get("data") == p.get("data")]
         scelta = esatte if len(esatte) == 1 else con_data if len(con_data) == 1 else candidate if len(candidate) == 1 else []
+        if p.get("scheda_id") in figli:  # un sotto-bando va solo sulla riga dell'atto che vale per quella sede
+            proprie = [a for a in candidate if p["scheda_id"] in (a.get("sedi_ids") or ())]
+            scelta = [a for a in proprie if a.get("data") == p.get("data")][:1] or (proprie if len(proprie) == 1 else [])
         if scelta:
-            a = scelta[0]
-            a["codice"] = p.get("codice") or a.get("codice")
-            esistenti = a.get("note") or []
-            nuove = [n for n in note if not (n == "graduatoria pubblica (oscurata) non allegata su SOL"
-                                             and (a["fonti"]["sol"]["stato"] == atti.MANCANTE or any("senza documento pubblico" in x for x in esistenti)))]
-            a["note"] = list(dict.fromkeys([*esistenti, *nuove]))
-            a["difforme"] = bool(a.get("difforme") or nuove)
+            per_riga.setdefault(id(scelta[0]), (scelta[0], []))[1].append((p, note))
         elif note:
             contesto = next((a for a in righe if stessa(a)), {})
             righe.append({"bando_id": p.get("bando_id"), "numero_bando": p.get("numero_bando"), "codice": p.get("codice"),
                           "tipologia": p.get("tipologia") or contesto.get("tipologia"), "titolo_bando": contesto.get("titolo_bando"), "atto": "graduatoria",
                           "data": p.get("data"), "protocollo": p.get("protocollo"), "note": list(dict.fromkeys(note)), "difforme": True,
                           "fonti": {"sol": {"stato": atti.PRESENTE if p.get("allegato_sol") else atti.MANCANTE, "protocollo": p.get("protocollo")}}})
+    for a, verifiche in per_riga.values():
+        _applica_verifiche(a, verifiche, famiglie.get(a.get("bando_id")))
     return righe
+
+
+NON_ALLEGATA = "graduatoria pubblica (oscurata) non allegata su SOL"
+_SEDE_NEL_CODICE = re.compile(r"\s+-\s+\d{2}\b.*$")
+_PREFISSO_SEDE = re.compile(r"^sede «[^»]*»: ")
+
+
+def _applica_verifiche(a: dict, verifiche: list[tuple[dict, list[str]]], famiglia: dict | None) -> None:
+    """Una sola sede: la riga prende codice, link e RdP di quella sede. Più sedi (una graduatoria unica per tutte):
+    la riga vale per il bando e ogni rilievo dice di quale sede è, altrimenti i conteggi sembrano in contraddizione."""
+    # la scheda madre di un bando a più sedi non ha candidati: conta solo se non ci sono sedi
+    ids_figli = {s["id"] for s in famiglia["figli"]} if famiglia else set()
+    reali = [v for v in verifiche if v[0].get("scheda_id") in ids_figli or (not famiglia and _SEDE_NEL_CODICE.search(v[0].get("codice") or ""))] or verifiche
+    sedi = list(dict.fromkeys(p.get("codice") for p, _ in reali if p.get("codice")))
+    piu_sedi = len(sedi) > 1 or len(a.get("sedi_ids") or ()) > 1
+    esistenti = a.get("note") or []
+    if piu_sedi:  # le note della scheda principale sono le stesse di una sede: restano solo quelle con il nome della sede
+        dalle_sedi = {n for _, note in verifiche for n in note}
+        esistenti = [x for x in esistenti if x not in dalle_sedi]
+    nuove = []
+    for p, note in verifiche:
+        for n in note:
+            if n == NON_ALLEGATA:
+                if not (a["fonti"]["sol"]["stato"] == atti.MANCANTE or any("senza documento pubblico" in x for x in esistenti)):
+                    nuove.append(n)
+            else:
+                nuove.append(f"sede «{p['codice']}»: {n}" if piu_sedi and p.get("codice") else n)
+    a["note"] = list(dict.fromkeys([*esistenti, *nuove]))
+    a["difforme"] = bool(a.get("difforme") or nuove)
+    if a.get("titolo_bando") and (piu_sedi or (sedi and sedi[0] not in a["titolo_bando"])):
+        a["titolo_bando"] = _SEDE_NEL_CODICE.sub("", a["titolo_bando"])
+    sol = a["fonti"]["sol"]
+    if piu_sedi:
+        if not famiglia:
+            a["codice"] = re.split(r"\s+-\s+", sedi[0])[0]
+        esiti = [p.get("esito") for p, _ in reali]
+        if esiti and all(e and e != "errore" for e in esiti):  # il controllo vale se è stato fatto su tutte le sedi
+            somma = lambda k: sum(p.get(k) or 0 for p, _ in reali)  # noqa: E731
+            a["punteggi"] = {"domande": somma("domande"), "con_punteggi": somma("con_punteggi"), "esito": next((e for e in esiti if e != "completi"), "completi"),
+                             "verificato_il": min(p.get("verificato_il") or "" for p, _ in reali), "scheda_id": None, "candidati": False}
+            a["punteggi_da_verificare"] = False
+        else:
+            a["punteggi"], a["punteggi_da_verificare"] = None, True
+        persone = {(r.get("email") or f"{r.get('nome')} {r.get('cognome')}"): r for p, _ in verifiche for r in p.get("rdp") or []}
+        if persone:
+            a["rdp"], a["rdp_origine"] = list(persone.values()), "bando"
+        a["link_codice"], a["url_punteggi"] = None, None
+        if sol.get("stato") != atti.PRESENTE and famiglia:
+            sol["url"] = famiglia["padre"]["url"]
+    elif reali:
+        p = reali[0][0]
+        a["codice"] = p.get("codice") or a.get("codice")
+        if p.get("rdp"):
+            a["rdp"], a["rdp_origine"] = p["rdp"], "codice"
+        a["url_punteggi"] = p.get("url_punteggi") or a.get("url_punteggi")
+        if p.get("url"):
+            a["link_codice"] = p["url"]
+            if sol.get("stato") != atti.PRESENTE:
+                sol["url"] = p["url"]
 
 
 def _protocolli(riga: dict) -> set[str]:
@@ -220,6 +282,7 @@ def _correzione_accertata(testo: str, riga: dict) -> bool:
 def _rilievi_da_tenere(e: dict, riga: dict, testi: list[str], affidabili: bool) -> list[str]:
     """I rilievi passati non più rilevati ma senza prova di correzione: restano aperti."""
     tenuti, viste = [], {_chiave_rilievo(t) for t in testi}
+    viste |= {_PREFISSO_SEDE.sub("", k) for k in viste}  # il vecchio testo senza sede è lo stesso rilievo
     for t in [*json.loads(e["rilievi_attuali"]), *json.loads(e["rilievi_iniziali"])]:
         chiave = _chiave_rilievo(t)
         if chiave not in viste and not (affidabili and _correzione_accertata(t, riga)):
@@ -232,9 +295,12 @@ def _stato_rilievi(e: dict) -> tuple[list[dict], str]:
     """I rilievi di una voce del registro, con quelli risolti spuntati, e il suo stato per la pagina."""
     iniziali, attuali = json.loads(e["rilievi_iniziali"]), json.loads(e["rilievi_attuali"])
     correnti = {_chiave_rilievo(t): t for t in attuali}
+    per_sede = {_PREFISSO_SEDE.sub("", k) for k in correnti if _PREFISSO_SEDE.match(k)}
     voci_rilievo, viste = [], set()
     for t in iniziali:
         chiave = _chiave_rilievo(t)
+        if chiave in per_sede:  # ora detto sede per sede: non è risolto, lo mostrano le voci delle sedi
+            continue
         if chiave not in viste:
             viste.add(chiave)
             voci_rilievo.append({"testo": correnti[chiave], "risolto": False} if chiave in correnti
@@ -242,7 +308,7 @@ def _stato_rilievi(e: dict) -> tuple[list[dict], str]:
     for t in attuali:
         if _chiave_rilievo(t) not in viste:
             viste.add(_chiave_rilievo(t))
-            voci_rilievo.append({"testo": t, "risolto": False, "nuovo": True})
+            voci_rilievo.append({"testo": t, "risolto": False, "nuovo": _PREFISSO_SEDE.sub("", _chiave_rilievo(t)) not in {_chiave_rilievo(i) for i in iniziali}})
     risolti = sum(r["risolto"] for r in voci_rilievo)
     if e["stato"] == CORRETTA:
         badge = "corretta"

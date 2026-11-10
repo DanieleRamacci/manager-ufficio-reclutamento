@@ -53,6 +53,12 @@ def codice_sotto(testo: str | None) -> str | None:
     return None
 
 
+def codice_sede(codice: str | None) -> str | None:
+    """Sede indicata nel codice di SOL: '367.535 CTER - 06 STEMS NA' -> '6', come la colonna del file della segreteria."""
+    m = re.search(r"\s-\s+(\d{1,2})\s+[A-Z]", norm_space(codice))
+    return str(int(m.group(1))) if m else None
+
+
 def protocollo(testo: str | int | None) -> str | None:
     """Solo cifre, senza zeri iniziali: '0455701' -> '455701'."""
     if testo is None:

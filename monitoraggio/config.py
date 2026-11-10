@@ -5,6 +5,7 @@ Le funzioni leggono l'ambiente a ogni chiamata, così test e app possono cambiar
 import os
 from datetime import date
 from pathlib import Path
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -96,6 +97,15 @@ def urp_sezioni() -> list[str]:
 def urp_url_sezione(sezione: str) -> str:
     # senza barra finale: con la barra URP risponde 301 (research R7)
     return f"{URP_BASE}/documenti/{URP_PERCORSI.get(sezione, sezione)}"
+
+
+def pagina_documenti_urp(sezione: str | None, url: str, titolo: str | None) -> str:
+    """La pagina con tutti i documenti del bando. Nell'archivio storico l'url della scheda è il PDF del bando:
+    i documenti stanno nell'unica pagina dell'archivio, che il browser apre evidenziando il bando."""
+    if sezione != URP_ARCHIVIO_SEZIONE:
+        return url
+    pagina = URP_ARCHIVIO_BASE + URP_ARCHIVIO_PAGINA
+    return f"{pagina}#:~:text={quote(titolo, safe='').replace('-', '%2D')}" if titolo else pagina
 
 
 def pausa_urp() -> float:

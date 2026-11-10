@@ -1,6 +1,7 @@
+import json
 from datetime import datetime
 
-from monitoraggio import atti, collegamento, segreteria
+from monitoraggio import atti, collegamento, config, difformita, normalizza, segreteria, sedi
 from tests.test_collegamento import doc, salva, scheda
 from tests.test_segreteria import crea_excel
 
@@ -185,3 +186,108 @@ def test_nota_sottotipo_dice_cosa_fare():
     assert "va indicata la tipologia «subentro»" in nota_sottotipo("ordinario", "subentro")
     assert "«scorrimento e subentro insieme»" in nota_sottotipo("misto", "subentro")
     assert "va indicata la tipologia «subentro»" in nota_sottotipo("subentro", "utilizzo") and "non compare" in nota_sottotipo("subentro", "utilizzo")
+
+
+def _figlio(cod):
+    s = scheda("sol", cod, f"367.535 CTER - {cod}", "367.535", sotto=str(int(cod[:2])) if cod[:2].isdigit() else None)
+    s["id_padre"] = "madre"
+    return s
+
+
+def _sedi(db, conteggi, nel_file=None, doc_padre=False):
+    """Una graduatoria unica per più sedi, come il 367.535: nel file una riga per sede con lo stesso protocollo."""
+    grad = doc("g-sol", "graduatoria", "444208")
+    salva(db, "sol", [scheda("sol", "madre", "367.535 CTER - Supporto", "367.535", documenti=[grad] if doc_padre else []), *[_figlio(c) for c in conteggi]])
+    salva(db, "urp", [scheda("urp", "/node/1", "367.535 CTER", "367.535", documenti=[doc("g", "graduatoria", "444208")])])
+    voci = list(conteggi) if nel_file is None else nel_file
+    _carica_segreteria(db, [], [[1, "g.pdf", "367.535 CTER", cod, 1, "Nome Inventato", "80/90", None, None, "1", "2026-05-01", "444208", "2026-05-01", None, None, 0] for cod in voci], [])
+    collegamento.collega(db)
+    for cod, n in conteggi.items():
+        sid = db.execute("SELECT id FROM scheda WHERE id_esterno = ?", (cod,)).fetchone()[0]
+        db.execute("INSERT INTO punteggi_verifica (scheda_id, verificato_il, domande, con_punteggi, vincitori, idonei, scorrimento, "
+                   "senza_protocollo, esito) VALUES (?, '2026-11-01T00:00:00Z', ?, ?, 1, 0, 0, ?, 'completi')", (sid, n, n, n))
+    return [r for r in difformita.righe_correnti(db, "2026-05-01", "2026-05-31") if r["atto"] == "graduatoria"]
+
+
+def _rilievi_candidati(r):
+    return [n for n in r["note"] if "non valorizzato" in n]
+
+
+def test_atto_unico_per_piu_sedi_dice_di_quale_sede_e_ogni_rilievo(db):
+    righe = _sedi(db, {"01 ISMAR VE": 2, "06 STEMS NA": 5})
+    assert len(righe) == 1
+    r = righe[0]
+    assert r["codice"] == "367.535 CTER - Supporto"  # la riga è del padre, non di una sede
+    assert "ISMAR" not in r["titolo_bando"]
+    testi = _rilievi_candidati(r)
+    assert len(testi) == 2
+    assert any(t.startswith("sede «367.535 CTER - 01 ISMAR VE»") and "(2 candidati)" in t for t in testi)
+    assert any(t.startswith("sede «367.535 CTER - 06 STEMS NA»") and "(5 candidati)" in t for t in testi)
+    assert r["fonti"]["sol"]["url"] == "http://sol/madre"
+    assert r["url_punteggi"] is None
+    assert r["punteggi"]["domande"] == 7 and r["punteggi"]["candidati"] is False
+    assert r["sede_da_abbinare"] is False
+
+
+def test_una_sola_sede_prende_il_link_di_quella_sede(db):
+    r = _sedi(db, {"06 STEMS NA": 2})[0]
+    assert r["codice"] == "367.535 CTER - 06 STEMS NA"
+    assert "sede «" not in " ".join(r["note"])
+    assert r["fonti"]["sol"]["url"] == "http://sol/06 STEMS NA"
+    assert len(_rilievi_candidati(r)) == 1
+
+
+def test_sede_scritta_in_altro_modo_nel_file(db):
+    r = _sedi(db, {"01 ISMAR VE": 2, "06 STEMS NA": 5}, nel_file=["CODICE 06 STEMS NA"])[0]
+    assert r["codice"] == "367.535 CTER - 06 STEMS NA"
+    assert [("5 candidati" in t) for t in _rilievi_candidati(r)] == [True]
+
+
+def test_sede_non_riconosciuta_non_si_sceglie_a_caso(db):
+    r = _sedi(db, {"01 ISMAR VE": 2, "06 STEMS NA": 5}, nel_file=["SEDE INVENTATA"])[0]
+    assert r["sede_da_abbinare"] is True
+    assert r["codice"] == "367.535 CTER - Supporto"
+    assert _rilievi_candidati(r) == []
+    assert r["punteggi"] is None
+
+
+def test_graduatoria_sul_padre_vale_per_tutte_le_sedi(db):
+    r = _sedi(db, {"01 ISMAR VE": 2, "06 STEMS NA": 5}, nel_file=[], doc_padre=True)[0]
+    assert r["fonti"]["sol"]["stato"] == atti.PRESENTE
+    assert r["sede_da_abbinare"] is False
+    assert len(_rilievi_candidati(r)) == 2
+    assert "non allegata" not in " ".join(r["note"])
+
+
+def test_abbina_solo_se_la_sede_e_una():
+    figlio = lambda c, s=None: {"codice_originale": c, "dati_extra": json.dumps({"sede": s}) if s else None}  # noqa: E731
+    figli = [figlio("367.434 CA - TRIESTE Codice 05"), figlio("367.434 CA - ROMA Codice 13"), figlio("367.498 RIC ISPA MI", "Istituto Alfa")]
+    assert sedi.abbina("TRIESTE", figli) is figli[0]
+    assert sedi.abbina("cod. 13", figli) is figli[1]
+    assert sedi.abbina("MI", figli) is figli[2]
+    assert sedi.abbina("alfa", figli) is figli[2]
+    assert sedi.abbina("CA", figli) is None  # vale per due sedi
+    assert sedi.abbina("NAPOLI", figli) is None
+
+
+def test_codice_sede_dal_codice_sol():
+    assert normalizza.codice_sede("367.535 CTER - 06 STEMS NA") == "6"
+    assert normalizza.codice_sede("367.535 CTER - Supporto alla Ricerca") is None
+    assert normalizza.codice_sede("367.565 RIC ITM") is None
+
+
+def test_vecchio_rilievo_senza_sede_non_risulta_risolto():
+    vecchio = "protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL (5 candidati)"
+    attuali = [f"sede «A»: {vecchio}", "sede «B»: protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL (2 candidati)"]
+    voci, badge = difformita._stato_rilievi({"rilievi_iniziali": json.dumps([vecchio]), "rilievi_attuali": json.dumps(attuali), "stato": difformita.APERTA})
+    assert [v["testo"] for v in voci] == attuali
+    assert not any(v["risolto"] or v["nuovo"] for v in voci)
+    assert badge == "da_correggere"
+
+
+def test_link_urp_alla_pagina_con_tutti_i_documenti(db):
+    pagina = config.URP_ARCHIVIO_BASE + config.URP_ARCHIVIO_PAGINA
+    assert config.pagina_documenti_urp("tempo-indeterminato", "http://urp/node/1", "x") == "http://urp/node/1"
+    assert config.pagina_documenti_urp(config.URP_ARCHIVIO_SEZIONE, "http://a/b.pdf", "Codice Bando 367.434 CA") == f"{pagina}#:~:text=Codice%20Bando%20367.434%20CA"
+    assert config.pagina_documenti_urp(config.URP_ARCHIVIO_SEZIONE, "http://a/b.pdf", "A-B") == f"{pagina}#:~:text=A%2DB"
+    assert config.pagina_documenti_urp(config.URP_ARCHIVIO_SEZIONE, "http://a/b.pdf", None) == pagina

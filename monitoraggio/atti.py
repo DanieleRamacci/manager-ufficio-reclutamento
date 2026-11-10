@@ -6,6 +6,7 @@ from collections import defaultdict
 
 from . import config, punteggi, referenti, segreteria
 from .collegamento import _da_confrontare
+from . import sedi
 from .fonti.sol import url_punteggi
 from .normalizza import nota_sottotipo, codice_sotto
 
@@ -84,6 +85,8 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
     for b in bandi.values():
         if b["numero_bando"]:
             per_numero.setdefault(b["numero_bando"], b["id"])
+    def pagina_urp(s):
+        return config.pagina_documenti_urp(s["sezione"], s["url"], s["titolo"])
     schede = defaultdict(dict)
     sol_per_codice = defaultdict(dict)  # bando -> codice di sotto-bando -> scheda SOL di quel codice
     for s in conn.execute("SELECT * FROM scheda WHERE presente = 1 AND bando_id IS NOT NULL ORDER BY codice_sotto IS NOT NULL, id"):
@@ -91,21 +94,26 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
         if s["fonte"] == "sol" and s["codice_sotto"]:
             sol_per_codice[s["bando_id"]].setdefault(s["codice_sotto"], s)
 
+    famiglie = sedi.famiglie(conn)
+    testi_sede = sedi.testi_sede(conn)
+
     # --- URP e SOL: documenti per bando
     voci = defaultdict(lambda: defaultdict(dict))  # chiave bando -> fonte -> (categoria, protocollo) -> voce
     for d in conn.execute(
-            "SELECT s.bando_id, s.fonte, s.url AS url_scheda, s.codice_sotto AS sotto_scheda, d.* "
+            "SELECT s.bando_id, s.fonte, s.url AS url_scheda, s.sezione AS sezione_scheda, s.titolo AS titolo_scheda, s.codice_sotto AS sotto_scheda, d.* "
             "FROM documento d JOIN scheda s ON s.id = d.scheda_id "
             "WHERE d.presente = 1 AND s.presente = 1 AND d.protocollo IS NOT NULL "
             "AND d.categoria IN ('graduatoria', 'scorrimento', 'rettifica') AND d.data_protocollo BETWEEN ? AND ?",
             (dal, al)):
         if d["bando_id"] in bandi and _da_confrontare(d):
-            url = d["url_scheda"]  # pagina del bando (o del sotto-bando) con tutti gli allegati
+            # pagina del bando (o del sotto-bando) con tutti gli allegati
+            url = config.pagina_documenti_urp(d["sezione_scheda"], d["url_scheda"], d["titolo_scheda"]) if d["fonte"] == "urp" else d["url_scheda"]
             # codice di sotto-bando: dalla scheda SOL o, per la pagina unica di URP, dal titolo ("Cod. 13")
             sotto = d["sotto_scheda"] or codice_sotto(d["titolo"])
-            voci[d["bando_id"]][d["fonte"]].setdefault((d["categoria"], d["protocollo"]), _voce(
+            voce = voci[d["bando_id"]][d["fonte"]].setdefault((d["categoria"], d["protocollo"]), _voce(
                 d["categoria"], d["data_protocollo"], d["protocollo"], url, d["sottotipo"],
                 "titolo" if d["sottotipo"] else None, d["titolo"], {"codice_sotto": sotto, "url_documento": d["url"]}))
+            voce.setdefault("schede_doc", set()).add(d["scheda_id"])  # padre o sotto-bando: il documento vale comunque per il bando
 
     # --- file della segreteria (versione in uso)
     versione = segreteria.versione_in_uso(conn)
@@ -123,9 +131,13 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
             bandi_seg.setdefault(chiave_bando, a)
             continue
         extra = {"persone": a["persone"], "protocollo_privato": a["protocollo_privato"], "codice_sotto": a["codice_sotto"]}
-        voci[chiave_bando]["segreteria"].setdefault((a["categoria"], a["protocollo"]), _voce(
+        gia = voci[chiave_bando]["segreteria"].get((a["categoria"], a["protocollo"]))
+        voce = voci[chiave_bando]["segreteria"].setdefault((a["categoria"], a["protocollo"]), _voce(
             a["categoria"], a["data"], a["protocollo"], url_file_segreteria(atto=a["id"]), a["sottotipo"], "segreteria",
             a["titolo"], extra))
+        if gia is not None:  # stesso atto per più sedi: il file ha una riga per ogni sede
+            voce["persone"] = (voce.get("persone") or 0) + (a["persone"] or 0)
+        voce.setdefault("testi_sede", set()).update(testi_sede.get(a["id"], ()))
 
     righe = []
 
@@ -237,7 +249,7 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
                           "titolo": base["titolo_bando"], "persone": None,
                           "fonti": {
                               "sol": cella("sol", {"url": sch["sol"]["url"]} if "sol" in sch else None, urp_ok, "bando", data_bando),
-                              "urp": cella("urp", {"url": sch["urp"]["url"], "protocollo": sch["urp"]["protocollo"]}
+                              "urp": cella("urp", {"url": pagina_urp(sch["urp"]), "protocollo": sch["urp"]["protocollo"]}
                                            if "urp" in sch else None, urp_ok, "bando", data_bando),
                               "segreteria": cella("segreteria", voce_seg, urp_ok, "bando", data_bando)},
                           "note": note})
@@ -280,7 +292,8 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
                           "protocollo": principale["protocollo"], "titolo": principale["titolo"],
                           "persone": gruppo.get("segreteria", {}).get("persone"),
                           "fonti": {f: cella(f, gruppo.get(f), urp_ok, categoria, data) for f in FONTI},
-                          "note": note, "_protocolli": [p for p in protocolli.values() if p]})
+                          "note": note, "_protocolli": [p for p in protocolli.values() if p],
+                          "_sedi": sedi.del_gruppo(famiglie.get(chiave), gruppo)})
 
     # utilizzi di scorrimento presenti su SOL per bando/codice, su tutto il periodo (non solo il mese):
     # così un utilizzo nuovo mancante non sembra un falso allarme quando SOL ne ha già altri per quel codice
@@ -302,7 +315,18 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
             sotto = sol_per_codice.get(r["bando_id"], {}).get(r.get("codice_sotto")) if r.get("codice_sotto") else None
             if sotto is not None:
                 r["codice"] = sotto["codice_originale"]  # es. "367.434 CA - TRIESTE Codice 05", come su SOL
-            s = scheda_sol(r["bando_id"], r.get("codice_sotto"))
+            info = r.pop("_sedi", None)
+            unica = info["figli"][0] if info and len(info["figli"]) == 1 else None
+            if info:
+                riferita = unica or info["padre"]
+                r.update(codice=riferita["codice_originale"], titolo_bando=riferita["titolo"], link_codice=unica["url"] if unica else None,
+                         sedi_ids=[x["id"] for x in info["figli"]], sede_da_abbinare=info["da_abbinare"])
+                if unica:
+                    r["codice_sotto"] = unica["codice_sotto"]
+                persone_sedi = {p.get("email") or f"{p.get('nome')} {p.get('cognome')}": p for x in info["figli"] for p in persone(rdp_scheda.get(x["id"], []))}
+                if persone_sedi:
+                    r["rdp"], r["rdp_origine"] = list(persone_sedi.values()), "codice" if unica else "bando"
+            s = unica if info else scheda_sol(r["bando_id"], r.get("codice_sotto"))
             if r["atto"] in ("graduatoria", "scorrimento") and s is not None:
                 r["punteggi"] = punteggi_riga(s)
                 r["scheda_sol_id"] = s["id"]
@@ -313,10 +337,10 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
                 r["punteggi"], r["url_punteggi"] = None, None
             # celle senza documento: link alla pagina della fonte, per verificare se l'atto manca davvero
             if not r["fonti"]["sol"].get("url"):
-                principale = schede.get(r["bando_id"], {}).get("sol")
+                principale = info["padre"] if info else schede.get(r["bando_id"], {}).get("sol")
                 r["fonti"]["sol"]["url"] = r["link_codice"] or (principale["url"] if principale is not None else None)
             if not r["fonti"]["urp"].get("url") and "urp" in schede.get(r["bando_id"], {}):
-                r["fonti"]["urp"]["url"] = schede[r["bando_id"]]["urp"]["url"]
+                r["fonti"]["urp"]["url"] = pagina_urp(schede[r["bando_id"]]["urp"])
         else:
             r["rdp"], r["rdp_origine"], r["link_codice"], r["punteggi"], r["url_punteggi"] = [], None, None, None, None
         if versione and not r["fonti"]["segreteria"].get("url") and r["atto"] in FOGLIO_SEGRETERIA:

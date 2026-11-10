@@ -4,7 +4,7 @@ from urllib.parse import quote
 
 from .. import config
 from ..classifica import classifica
-from ..normalizza import codice_norm, codice_sotto, data_iso, numero_bando, protocollo
+from ..normalizza import codice_norm, codice_sede, codice_sotto, data_iso, numero_bando, protocollo
 from .http import FonteErrore
 
 TIPO_COMMISSIONE = "D:jconon_commissione"
@@ -92,7 +92,7 @@ def scheda_da_item(item: dict, tipo: str) -> dict:
         "codice_originale": codice,
         "codice_norm": codice_norm(codice),
         "numero_bando": numero_bando(codice),
-        "codice_sotto": codice_sotto(codice) or codice_sotto(item.get("cmis:name")),
+        "codice_sotto": codice_sotto(codice) or codice_sede(codice) or codice_sotto(item.get("cmis:name")),
         "titolo": item.get("cmis:name"),
         "protocollo": None,
         "protocollo_originale": None,

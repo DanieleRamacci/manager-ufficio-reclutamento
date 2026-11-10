@@ -20,7 +20,7 @@ _avanzamento: dict[str, tuple[int, int]] = {}  # allegati letti e da leggere, pe
 CAMPI_SCHEDA = [
     "sezione", "tipologia", "codice_originale", "codice_norm", "numero_bando", "codice_sotto",
     "titolo", "protocollo", "protocollo_originale", "data_pubblicazione", "data_pubbl_graduatoria",
-    "url", "dati_extra", "modificata_fonte_il",
+    "url", "dati_extra", "modificata_fonte_il", "id_padre",
 ]
 CAMPI_DOCUMENTO = [
     "titolo", "categoria", "sottotipo", "sottotipo_ordinale", "sottotipo_origine", "tipo_fonte",

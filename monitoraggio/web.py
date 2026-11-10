@@ -166,8 +166,8 @@ def elenco_bandi(conn, filtri: dict) -> list[dict]:
     if not bandi:
         return []
     schede = defaultdict(list)
-    for s in conn.execute("SELECT bando_id, fonte, url, protocollo, codice_originale FROM scheda WHERE presente = 1"):
-        schede[s["bando_id"]].append(dict(s))
+    for s in conn.execute("SELECT bando_id, fonte, url, sezione, titolo, protocollo, codice_originale FROM scheda WHERE presente = 1"):
+        schede[s["bando_id"]].append({**dict(s), "url": config.pagina_documenti_urp(s["sezione"], s["url"], s["titolo"]) if s["fonte"] == "urp" else s["url"]})
     conteggi = _conteggi_documenti(conn)
     stati = {b["id"]: b["stato_collegamento"] for b in bandi}
     segn = collegamento.calcola_segnalazioni(collegamento.documenti_confrontati(conn), stati)
@@ -192,6 +192,8 @@ def dettaglio_bando(conn, bando_id: int) -> dict | None:
         scheda = dict(s)
         scheda["dati_extra"] = json.loads(scheda["dati_extra"]) if scheda["dati_extra"] else None
         scheda["url_punteggi"] = url_punteggi(s["id_esterno"]) if s["fonte"] == "sol" else None
+        if s["fonte"] == "urp":
+            scheda["url"] = config.pagina_documenti_urp(s["sezione"], s["url"], s["titolo"])
         scheda["documenti"] = [dict(d) for d in conn.execute(
             "SELECT id, titolo, categoria, sottotipo, sottotipo_ordinale, sottotipo_origine, tipo_fonte, protocollo, "
             "protocollo_originale, data_protocollo, url, presente, prima_rilevazione FROM documento "

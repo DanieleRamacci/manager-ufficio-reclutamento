@@ -51,7 +51,7 @@ window.App = (() => {
     return `<div class="avviso" role="status"><b>Difformità sospese.</b> Le fonti non si possono ancora confrontare, quindi nessuna difformità viene segnata e non si possono inviare messaggi né chiudere il mese.
       Aggiornamento da concludere: ${attesa.map(f => `${esc(f.nome)} (${esc(f.motivo)})`).join(", ")}. <a class="solo-admin" href="/monitoraggio/impostazioni#aggiornamenti">Vai agli aggiornamenti</a></div>`;
   }
-  const DOVE_FONTE = { sol: "Apri il bando su Selezioni Online", urp: "Apri il bando su URP", segreteria: "Apri nel file della segreteria" };
+  const DOVE_FONTE = { sol: "Apri il bando su Selezioni Online", urp: "Apri su URP la pagina con tutti i documenti del bando", segreteria: "Apri nel file della segreteria" };
   function cellaFonte(riga, chiave) {
     const c = riga.fonti?.[chiave] || {};
     const diverso = c.stato === "presente" && riga.protocollo_diverso && c.protocollo && riga.protocollo && String(c.protocollo) !== String(riga.protocollo);

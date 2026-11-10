@@ -4,9 +4,9 @@ import re
 import sqlite3
 
 from . import config
-from .normalizza import AGGIUNTA_TIPOLOGIE, ANCORA_SCORRIMENTI, nota_sottotipo
+from .normalizza import AGGIUNTA_TIPOLOGIE, ANCORA_SCORRIMENTI, codice_sede, nota_sottotipo
 
-SCHEMA_VERSION = 21
+SCHEMA_VERSION = 23
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS scheda (
     bando_id INTEGER REFERENCES bando (id),
     fonte TEXT NOT NULL CHECK (fonte IN ('urp', 'sol')),
     id_esterno TEXT NOT NULL,
+    id_padre TEXT,
     sezione TEXT NOT NULL,
     tipologia TEXT,
     codice_originale TEXT,
@@ -585,4 +586,10 @@ def inizializza(conn: sqlite3.Connection) -> None:
                 conn.execute(f"DELETE {fuori}")
         if riga["versione"] < 21:
             _migra_testi_graduatoria(conn)
+        if riga["versione"] < 23 and "id_padre" not in {r[1] for r in conn.execute("PRAGMA table_info(scheda)")}:
+            conn.execute("ALTER TABLE scheda ADD COLUMN id_padre TEXT")  # il sotto-bando si lega al padre alla prossima raccolta SOL
+        if riga["versione"] < 22:  # sedi nel codice di SOL ("- 06 STEMS NA"): valgono da subito, senza attendere la raccolta
+            for s in conn.execute("SELECT id, codice_originale FROM scheda WHERE fonte = 'sol' AND codice_sotto IS NULL").fetchall():
+                if codice_sede(s["codice_originale"]):
+                    conn.execute("UPDATE scheda SET codice_sotto = ? WHERE id = ?", (codice_sede(s["codice_originale"]), s["id"]))
         conn.execute("UPDATE schema_version SET versione = ?", (SCHEMA_VERSION,))

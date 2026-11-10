@@ -377,7 +377,7 @@ function disegnaAtti() {
 }
 
 function renderTabellaAtti(id, righe, conSollecito) {
-  const DOVE = { sol: "Apri il bando su Selezioni Online (tutti gli allegati)", urp: "Apri il bando su URP (tutti gli allegati)",
+  const DOVE = { sol: "Apri il bando su Selezioni Online (tutti gli allegati)", urp: "Apri su URP la pagina con tutti i documenti del bando",
     segreteria: "Apri il file della segreteria" };
   const diverso = (c, a) => c.stato === "presente" && a.protocollo_diverso && c.protocollo && a.protocollo && String(c.protocollo) !== String(a.protocollo);
   const cella = (c, fonte, a) => `<td class="f ${diverso(c, a) ? "diverso" : c.stato}${c.url ? " apribile" : ""}"${c.url ? ` data-url="${esc(c.url)}" title="${DOVE[fonte]}"` : ""}>${diverso(c, a) ? "protocollo diverso" : CELLE[c.stato]}${c.protocollo && c.stato === "presente" ? `<div class="muted" style="font-weight:400">${esc(c.protocollo)}</div>` : ""}</td>`;
@@ -418,7 +418,7 @@ function renderTabellaAtti(id, righe, conSollecito) {
   document.querySelectorAll(`#${id} a.punteggi-sol`).forEach(l => l.onclick = (e) => e.stopPropagation());
   document.querySelectorAll(`#${id} td.f[data-url]`).forEach(td => td.onclick = (e) => {
     e.stopPropagation();
-    window.open(td.dataset.url, "_blank");
+    window.open(td.dataset.url, "_blank", "noopener");
   });
   document.querySelectorAll(`#${id} tr[data-id]`).forEach(tr => tr.onclick = () => {
     if (tr.dataset.id !== "null") apriDettaglio(tr.dataset.id); else location.href = "/monitoraggio/segreteria";

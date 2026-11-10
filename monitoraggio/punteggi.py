@@ -12,7 +12,7 @@ import logging
 import threading
 from datetime import datetime, timezone
 
-from . import config, referenti
+from . import config, referenti, sedi
 from .fonti import sol_auth
 from .fonti.http import Client, FonteErrore
 from .fonti.sol import url_punteggi
@@ -218,7 +218,20 @@ def schede_periodo(conn, dal: str, al: str) -> list:
         per_bando.setdefault(s["bando_id"], []).append(s)
     per_numero = {s["numero_bando"]: s["bando_id"] for s in sol if s["numero_bando"]}
 
-    def aggiungi(bando_id, sotto):
+    famiglie = sedi.famiglie(conn)
+    testi_sede = sedi.testi_sede(conn)
+
+    def aggiungi(bando_id, sotto, testi=()):
+        famiglia = famiglie.get(bando_id)
+        if famiglia:  # bando con sotto-bandi: solo le sedi riconosciute, mai una a caso
+            for testo in testi:
+                s = sedi.abbina(testo, famiglia["figli"])
+                if s is not None:
+                    schede.setdefault(s["id"], s)
+            for s in famiglia["figli"]:
+                if sotto and s["codice_sotto"] == sotto:
+                    schede.setdefault(s["id"], s)
+            return
         candidate = per_bando.get(bando_id, [])
         scelte = [s for s in candidate if sotto and s["codice_sotto"] == sotto] or \
                  [s for s in candidate if not s["codice_sotto"]] or candidate[:1]
@@ -233,13 +246,19 @@ def schede_periodo(conn, dal: str, al: str) -> list:
         aggiungi(d["bando_id"], codice_sotto(d["titolo"]))
     # graduatorie e scorrimenti nel file della segreteria nel periodo
     for a in conn.execute(
-            "SELECT a.numero_bando, a.codice_sotto FROM segreteria_atto a JOIN segreteria_versione v ON v.id = a.versione_id "
+            "SELECT a.id, a.numero_bando, a.codice_sotto FROM segreteria_atto a JOIN segreteria_versione v ON v.id = a.versione_id "
             "WHERE v.esito = 'in_uso' AND a.in_ambito = 1 AND a.categoria IN ('graduatoria', 'scorrimento') "
             "AND a.data BETWEEN ? AND ?",
             (dal, al)):
         if a["numero_bando"] in per_numero:
-            aggiungi(per_numero[a["numero_bando"]], a["codice_sotto"])
+            aggiungi(per_numero[a["numero_bando"]], a["codice_sotto"], testi_sede.get(a["id"], ()))
+    for famiglia in famiglie.values():  # atto sul padre senza altre indicazioni: vale per tutte le sedi
+        if famiglia["padre"]["id"] in schede and not any(s["id"] in schede for s in famiglia["figli"]):
+            schede.update({s["id"]: s for s in famiglia["figli"]})
     return sorted(schede.values(), key=lambda s: (s["numero_bando"] or "", int(s["codice_sotto"]) if (s["codice_sotto"] or "").isdigit() else 0))
+
+
+_SCHEDA_E_PADRE = "(?, (SELECT id FROM scheda WHERE fonte = 'sol' AND id_esterno = ?))"  # la graduatoria può stare sul sotto-bando o sul padre
 
 
 def riferimento(conn, s, dal: str, al: str) -> dict:
@@ -247,9 +266,9 @@ def riferimento(conn, s, dal: str, al: str) -> dict:
     periodo, altrimenti l'ultima nota (scheda entrata per uno scorrimento)."""
     grad = None
     for da, a in ((dal, al), ("0000-00-00", "9999-99-99")):
-        grad = conn.execute("SELECT protocollo, data_protocollo, titolo FROM documento WHERE scheda_id = ? AND presente = 1 "
+        grad = conn.execute(f"SELECT protocollo, data_protocollo, titolo FROM documento WHERE scheda_id IN {_SCHEDA_E_PADRE} AND presente = 1 "
                             "AND categoria = 'graduatoria' AND data_protocollo BETWEEN ? AND ? ORDER BY data_protocollo DESC",
-                            (s["id"], da, a)).fetchone()
+                            (s["id"], s["id_padre"], da, a)).fetchone()
         if not grad:
             grad = conn.execute(
                 "SELECT d.protocollo, d.data_protocollo, d.titolo FROM documento d JOIN scheda x ON x.id = d.scheda_id "
@@ -263,8 +282,8 @@ def riferimento(conn, s, dal: str, al: str) -> dict:
                 (s["numero_bando"], s["codice_sotto"], s["codice_sotto"], da, a)).fetchone()
         if grad or s["data_pubbl_graduatoria"]:
             break
-    allegato = conn.execute("SELECT 1 FROM documento WHERE scheda_id = ? AND presente = 1 AND categoria = 'graduatoria'",
-                            (s["id"],)).fetchone() is not None
+    allegato = conn.execute(f"SELECT 1 FROM documento WHERE scheda_id IN {_SCHEDA_E_PADRE} AND presente = 1 AND categoria = 'graduatoria'",
+                            (s["id"], s["id_padre"])).fetchone() is not None
     return {"protocollo": grad["protocollo"] if grad else None,
             "data": grad["data_protocollo"] if grad else s["data_pubbl_graduatoria"],
             "titolo": grad["titolo"] if grad else None, "allegato_sol": allegato}
