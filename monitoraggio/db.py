@@ -555,8 +555,10 @@ def inizializza(conn: sqlite3.Connection) -> None:
     for colonna in ("letti", "totale"):  # versione 14
         if colonna not in colonne_referenti:
             conn.execute(f"ALTER TABLE referenti_aggiornamento ADD COLUMN {colonna} INTEGER")
-    if "cc" not in {r[1] for r in conn.execute("PRAGMA table_info(comunicazione)")}:  # versione 17
-        conn.execute("ALTER TABLE comunicazione ADD COLUMN cc TEXT")
+    colonne_comunicazione = {r[1] for r in conn.execute("PRAGMA table_info(comunicazione)")}
+    for colonna in ("cc", "message_id"):  # versioni 17 e 21
+        if colonna not in colonne_comunicazione:
+            conn.execute(f"ALTER TABLE comunicazione ADD COLUMN {colonna} TEXT")
     _migra_versioni(conn)
     _migra_comunicazioni(conn)
     riga = conn.execute("SELECT versione FROM schema_version").fetchone()

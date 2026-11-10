@@ -8,7 +8,7 @@ import re
 import smtplib
 from datetime import datetime, timezone
 from email.message import EmailMessage
-from email.utils import formataddr
+from email.utils import formataddr, make_msgid
 
 from . import config, db
 
@@ -168,8 +168,13 @@ def indirizzi_non_validi(indirizzi: list[str]) -> list[str]:
     return [i for i in indirizzi if not _EMAIL.fullmatch(i)]
 
 
+def nuovo_message_id() -> str:
+    mittente = impostazioni_email()["mittente"] or "monitoraggio.invalid"
+    return make_msgid(domain=mittente.split("@")[-1])
+
+
 def invia(destinatari: list[str], oggetto: str, corpo: str, sempre_reale: bool = False, modo: str | None = None,
-          cc: list[str] | None = None) -> bool:
+          cc: list[str] | None = None, message_id: str | None = None, in_risposta_a: str | None = None) -> bool:
     """Invia l'email. Ritorna True se è andata in prova; solleva PostaErrore se non parte. `modo`: "prova" o "ufficiale";
     senza, vale la prova se è attiva. `sempre_reale`: per le email che devono arrivare alla persona, come i link di accesso.
     `cc`: indirizzi in copia aggiunti per questo messaggio, oltre a quelli fissi."""
@@ -197,6 +202,11 @@ def invia(destinatari: list[str], oggetto: str, corpo: str, sempre_reale: bool =
     messaggio["Subject"] = f"[PROVA] {oggetto}" if prova else oggetto
     if os.environ.get("MAIL_REPLY_TO"):
         messaggio["Reply-To"] = os.environ["MAIL_REPLY_TO"]
+    if message_id:
+        messaggio["Message-ID"] = message_id
+    if in_risposta_a:  # il sollecito resta nella stessa conversazione dell'email a cui si riferisce
+        messaggio["In-Reply-To"] = in_risposta_a
+        messaggio["References"] = in_risposta_a
     if modo == "ufficiale" and copia:
         messaggio["Cc"] = ", ".join(copia)
     in_copia = f". In copia: {', '.join(copia)}" if copia else ""

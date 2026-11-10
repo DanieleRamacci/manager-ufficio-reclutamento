@@ -385,11 +385,11 @@ def nuovo_id_comunicazione(conn, monitoraggio: dict, chiave: str, numero_bando: 
 
 def registra_comunicazione(conn, mese: str, chiave: str, numero_bando: str | None, canale: str, stato: str, utente: str | None,
                            destinatari: list[str] | None = None, oggetto: str | None = None, corpo: str | None = None,
-                           n_difformita: int | None = None, cc: list[str] | None = None) -> str:
+                           n_difformita: int | None = None, cc: list[str] | None = None, message_id: str | None = None) -> str:
     id_c = nuovo_id_comunicazione(conn, leggi(conn, mese), chiave, numero_bando)
-    conn.execute("INSERT INTO comunicazione (id, mese, chiave, numero_bando, codice, destinatari, cc, oggetto, corpo, n_difformita, canale, stato, data, utente) "
-                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                 (id_c, mese, chiave, numero_bando, chiave, json.dumps(destinatari or []), json.dumps(cc or []), oggetto, corpo, n_difformita, canale, stato, _adesso(), utente))
+    conn.execute("INSERT INTO comunicazione (id, mese, chiave, numero_bando, codice, destinatari, cc, oggetto, corpo, n_difformita, canale, stato, data, utente, message_id) "
+                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 (id_c, mese, chiave, numero_bando, chiave, json.dumps(destinatari or []), json.dumps(cc or []), oggetto, corpo, n_difformita, canale, stato, _adesso(), utente, message_id))
     return id_c
 
 

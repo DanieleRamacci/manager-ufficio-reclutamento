@@ -580,7 +580,7 @@ function righeGraduatoriaUnificate() {
       destinazione.rdp = p.rdp?.length ? p.rdp : destinazione.rdp;
       destinazione.codice = p.codice || destinazione.codice;
       destinazione.note = [...new Set([...(destinazione.note || []), ...note.filter(n =>
-        !(n === "graduatoria pubblica (oscurata) non allegata su SOL" && (destinazione.note || []).some(x => x.includes("senza documento pubblico"))))])];
+        !(n === "graduatoria pubblica (oscurata) non allegata su SOL" && (destinazione.fonti?.sol?.stato === "mancante" || (destinazione.note || []).some(x => x.includes("senza documento pubblico")))))])];
       if (note.length) destinazione.difforme = true;
       destinazione.scoreRecord = p;
       return;

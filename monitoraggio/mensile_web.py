@@ -487,14 +487,16 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         if modo == "ufficiale" and messaggio["stato"] in ("inviata", "inviata_a_mano") and not conferma and not sollecito:
             return {"error": "Comunicazione già inviata", "gia_inviata": True}, 409
         try:
-            prova = posta.invia(messaggio["destinatari"], oggetto, testo, modo=modo, cc=messaggio["cc_aggiunti"])
+            message_id = posta.nuovo_message_id()
+            prova = posta.invia(messaggio["destinatari"], oggetto, testo, modo=modo, cc=messaggio["cc_aggiunti"], message_id=message_id,
+                                in_risposta_a=messaggio["message_id_precedente"] if sollecito else None)
         except posta.PostaErrore as e:
             mensile.registra_invio(conn, "sollecito", m["mese"], codice, utente_corrente(), messaggio["destinatari"], oggetto, "errore", str(e))
             return {"error": str(e)}, 502
         mensile.registra_invio(conn, "sollecito", m["mese"], codice, utente_corrente(), messaggio["destinatari"], oggetto, "prova" if prova else "inviata")
         id_c = mensile.registra_comunicazione(conn, m["mese"], codice, messaggio["numero_bando"], "Email di prova" if prova else "Casella ufficio",
                                               "prova" if prova else "inviata", utente_corrente(), messaggio["destinatari"],
-                                              f"[PROVA] {oggetto}" if prova else oggetto, testo, messaggio["n_difformita"], messaggio["cc"])
+                                              f"[PROVA] {oggetto}" if prova else oggetto, testo, messaggio["n_difformita"], messaggio["cc"], message_id)
         return {"ok": True, "prova": prova, "id": id_c}, 200
 
     @bp.post("/api/monitoraggi/<mese>/comunicazioni/<path:codice>/invia")

@@ -824,14 +824,14 @@ def test_correzione_parziale(ambiente, db):
     from monitoraggio import atti, difformita
     admin, mese = _mese_con_dati(ambiente, db)
     _raccolte_riuscite(db)
-    uno, due = "primo rilievo", "secondo rilievo"
+    uno, due = "mancano i punteggi su SOL", "esito (V/I/S) mancante su SOL (1 candidati)"
     reale = atti.elenco_atti
     note = [uno, due]
 
     def finto(conn, dal=None, al=None):
         righe = reale(conn, dal, al)
         for r in righe:
-            r["note"], r["difforme"] = list(note), True
+            r["note"], r["difforme"], r["punteggi"] = list(note), True, {"esito": "completi"}
         return righe
     from unittest import mock
     with mock.patch.object(difformita.atti, "elenco_atti", finto):
@@ -1056,7 +1056,7 @@ def test_messaggio_standard_per_codice(ambiente, db):
     m = admin.get(url + "/messaggio").get_json()
     assert m["destinatari"] == ["rdp@cnr.it"] and m["referenti"][0]["nome"] == "Anna Bianchi"
     assert m["oggetto"] == f"Monitoraggio aprile 2026. Bando n° 367.479 CTER: Aggiornamento Dati Graduatoria Pubblica – Rif. {m['n_gestione']}" and len(m["n_gestione"]) == 4
-    assert m["corpo"].startswith("Gentile Anna Bianchi,") and "(rif." not in m["corpo"]
+    assert "\n\nGentile Anna Bianchi,\n" in m["corpo"] and "(rif." not in m["corpo"]
     assert "1) Graduatoria pubblica (oscurata) del 12/04/2026" in m["corpo"] and comunicazioni_nota in m["corpo"] and "protocollo diverso: SOL 1001, URP 1002" in m["corpo"]
     assert "Cordiali saluti," in m["corpo"] and m["stato"] == "da_inviare"
     assert admin.get(f"/api/monitoraggi/{mese}/comunicazioni/inesistente/messaggio").status_code == 404
@@ -1388,7 +1388,7 @@ def test_cc_ufficio_multiplo_e_testo_di_riscontro(ambiente, db, monkeypatch):
     assert posta.impostazioni_email()["cc"] == "uno@cnr.it, due@cnr.it"  # non sovrascritto dall'errore
     m = admin.get(url + "/messaggio").get_json()
     assert "Una volta completato l'aggiornamento della graduatoria pubblica (oscurata) e dei dati" in m["corpo"]
-    assert "rispondendo a questa email (lasciando in copia ufficio@esempio.it)" in m["corpo"]
+    assert "a questa email lasciando in copia il mio indirizzo (ufficio@esempio.it)" in m["corpo"]
     posta.salva_email({"prova_attiva": False, "ufficiali_attive": True}, "t")
     admin.post(url + "/invia", json={"modo": "ufficiale"})
     assert inviati[-1]["Cc"] == "ufficio@esempio.it, uno@cnr.it, due@cnr.it"  # ufficio sempre primo, senza doppioni
@@ -1425,11 +1425,11 @@ def test_togliere_un_referente_e_aggiungere_cc(ambiente, db, monkeypatch):
     posta.salva_email({"prova_attiva": False, "ufficiali_attive": True, "cc": "fisso@cnr.it"}, "t")
     admin, mese, url = _due_rdp(ambiente, db)
     d = admin.get(url + "/messaggio").get_json()
-    assert set(d["destinatari"]) == {"anna@cnr.it", "bruno@cnr.it"} and d["corpo"].startswith("Gentili tutte e tutti,")
+    assert set(d["destinatari"]) == {"anna@cnr.it", "bruno@cnr.it"} and "Gentili tutte e tutti," in d["corpo"]
     assert d["cc"] == ["ufficio@esempio.it", "fisso@cnr.it"]
 
     r = admin.put(url + "/indirizzi", json={"esclusi": ["bruno@cnr.it"], "cc": ["Extra@cnr.it, due@cnr.it; fisso@cnr.it"]}).get_json()
-    assert r["destinatari"] == ["anna@cnr.it"] and r["corpo"].startswith("Gentile Anna Bianchi,")
+    assert r["destinatari"] == ["anna@cnr.it"] and "Gentile Anna Bianchi," in r["corpo"]
     assert r["cc"] == ["ufficio@esempio.it", "fisso@cnr.it", "extra@cnr.it", "due@cnr.it"]
     assert {x["email"]: x["escluso"] for x in r["referenti"]} == {"anna@cnr.it": False, "bruno@cnr.it": True}
     # la scelta resta riaprendo il messaggio
@@ -1442,7 +1442,7 @@ def test_togliere_un_referente_e_aggiungere_cc(ambiente, db, monkeypatch):
 
     # rimettendolo torna destinatario e il saluto torna al plurale
     r = admin.put(url + "/indirizzi", json={"esclusi": [], "cc": []}).get_json()
-    assert len(r["destinatari"]) == 2 and r["corpo"].startswith("Gentili tutte e tutti,") and r["cc"] == ["ufficio@esempio.it", "fisso@cnr.it"]
+    assert len(r["destinatari"]) == 2 and "Gentili tutte e tutti," in r["corpo"] and r["cc"] == ["ufficio@esempio.it", "fisso@cnr.it"]
 
 
 def test_invia_tutte_rispetta_le_scelte_del_messaggio(ambiente, db, monkeypatch):
@@ -1661,14 +1661,16 @@ def test_sollecito_dopo_un_invio(ambiente, db, monkeypatch):
     assert r.status_code == 400 and "già inviata" in r.get_json()["error"] and inviati == []
     assert admin.post(url + "/invia", json={"modo": "ufficiale"}).status_code == 200
     m = admin.get(url + "/messaggio?sollecito=1").get_json()
-    assert m["oggetto"].startswith("Promemoria – Monitoraggio aprile 2026") and "gentile promemoria sulla comunicazione del " in m["corpo"]
+    prima = inviati[-1]
+    assert m["oggetto"] == "R: " + prima["Subject"] and "vi chiedo gentilmente un riscontro in merito alle richieste di aggiornamento indicate nella email del " in m["corpo"]
     assert "ancora da aggiornare" in m["corpo"] and "protocollo diverso: SOL 1001, URP 1002" in m["corpo"]
     assert "Se aveste già provveduto, vi preghiamo di scusarci" in m["corpo"] and "Grazie per la collaborazione" in m["corpo"]
     assert admin.post(url + "/invia", json={"modo": "ufficiale", "sollecito": True}).status_code == 200  # non chiede la conferma del reinvio
-    assert inviati[-1]["Subject"].startswith("Promemoria") and inviati[-1]["To"] == "rdp@cnr.it"
-    assert "Promemoria" not in admin.get(url + "/messaggio").get_json()["oggetto"]
+    assert inviati[-1]["Subject"] == "R: " + prima["Subject"] and inviati[-1]["To"] == "rdp@cnr.it"
+    assert inviati[-1]["In-Reply-To"] == prima["Message-ID"] and inviati[-1]["References"] == prima["Message-ID"] and inviati[-1]["Message-ID"] != prima["Message-ID"]
+    assert not admin.get(url + "/messaggio").get_json()["oggetto"].startswith("R: ") and prima["In-Reply-To"] is None
     voci = admin.get(f"/api/comunicazioni?mese={mese}").get_json()["comunicazioni"]
-    assert len(voci) == 2 and voci[0]["oggetto"].startswith("Promemoria")
+    assert len(voci) == 2 and voci[0]["oggetto"].startswith("R: ")
 
 
 def test_vecchi_rilievi_riscritti_con_la_graduatoria_pubblica(ambiente, db):
@@ -1711,3 +1713,101 @@ def test_email_mai_graduatoria_generica(ambiente, db):
     m = admin.get(url + "/messaggio").get_json()
     assert not re.search(r"graduatoria(?! pubblica)", m["oggetto"] + m["corpo"], re.I)
     assert not re.search(r"graduatoria(?! pubblica)", comunicazioni.ISTRUZIONE_A, re.I)
+
+
+def test_stesso_rilievo_con_altro_testo_non_risulta_risolto():
+    import json
+    from monitoraggio import difformita as d
+    SOL = "la graduatoria pubblica (oscurata) non risulta tra i dati attualmente disponibili da Selezioni Online"
+    SOL_PROT = "la graduatoria pubblica (oscurata) (prot. 454343) non risulta tra i dati attualmente disponibili da Selezioni Online"
+    URP = "la graduatoria pubblica (oscurata) non risulta tra i dati attualmente disponibili da URP"
+    NUOVO = "protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL (13 candidati)"
+    voce = {"rilievi_iniziali": json.dumps([SOL, URP]), "stato": d.APERTA,
+            "rilievi_attuali": json.dumps([SOL_PROT, "graduatoria pubblica (oscurata) non allegata su SOL", NUOVO])}
+    voci, badge = d._stato_rilievi(voce)
+    assert voci == [{"testo": voci[0]["testo"], "risolto": False},
+                    {"testo": URP, "risolto": True}, {"testo": NUOVO, "risolto": False, "nuovo": True}]
+    assert voci[0]["testo"] in (SOL_PROT, "graduatoria pubblica (oscurata) non allegata su SOL") and badge == "parziale"
+    # il conteggio dei candidati che cambia non è una correzione
+    uguale = {"rilievi_iniziali": json.dumps(["esito (V/I/S) mancante su SOL (3 candidati)"]), "rilievi_attuali": json.dumps(["esito (V/I/S) mancante su SOL (1 candidati)"]), "stato": d.APERTA}
+    assert d._stato_rilievi(uguale) == ([{"testo": "esito (V/I/S) mancante su SOL (1 candidati)", "risolto": False}], "da_correggere")
+
+
+def test_email_dice_che_e_generata_e_chiede_di_rispondere_in_prima_persona(ambiente, db, monkeypatch):
+    _configura_posta(monkeypatch, [])
+    admin, mese, url = _mese_con_rdp(ambiente, db)
+    m = admin.get(url + "/messaggio").get_json()
+    assert m["corpo"].startswith("Email generata dal sistema di monitoraggio dei bandi.\n\nGentile ")
+    assert "vi chiedo di rispondere a questa email lasciando in copia il mio indirizzo (ufficio@esempio.it), così posso ricontrollare i dati." in m["corpo"]
+
+
+def _riga_registro(note=(), sol="presente", urp="presente", segreteria="non_caricato", esito="completi", difforme=True):
+    return {"atto": "graduatoria", "codice": "1 X", "numero_bando": "1", "titolo_bando": "", "tipologia": "tempo_indeterminato", "data": "2026-04-12", "protocollo": None,
+            "difforme": difforme, "note": list(note), "punteggi": {"esito": esito} if esito else None,
+            "fonti": {"sol": {"stato": sol, "protocollo": "5"}, "urp": {"stato": urp, "protocollo": "5"}, "segreteria": {"stato": segreteria}}}
+
+
+def _registro_con(monkeypatch, db, riga_iniziale):
+    from monitoraggio import atti, difformita as d
+    monkeypatch.setattr(atti, "fonti_in_attesa", lambda conn: [])
+    monkeypatch.setattr(d, "_fonti_affidabili", lambda conn: True)
+    mese = mensile.crea(db, "2026-05", None, "t")["mese"]
+    monkeypatch.setattr(d, "righe_correnti", lambda conn, dal, al: [riga_iniziale])
+    d.sincronizza(db, mese)
+    return d, mese
+
+
+def _voce_registro(d, db, mese):
+    r = dict(db.execute("SELECT * FROM difformita WHERE mese = ?", (mese,)).fetchone())
+    return r, d._stato_rilievi(r)
+
+
+SEGR = "la graduatoria pubblica (oscurata) non risulta tra i dati attualmente disponibili da file di riepilogo della segreteria"
+SOL_TXT = "la graduatoria pubblica (oscurata) non risulta tra i dati attualmente disponibili da Selezioni Online"
+
+
+def test_senza_prova_il_rilievo_resta_aperto(ambiente, db, monkeypatch):
+    ambiente()
+    d, mese = _registro_con(monkeypatch, db, _riga_registro(sol="mancante", segreteria="mancante"))
+    # il file segreteria non è più caricato: il rilievo sparisce, ma non è una correzione
+    monkeypatch.setattr(d, "righe_correnti", lambda conn, dal, al: [_riga_registro(sol="mancante", segreteria="non_caricato")])
+    d.sincronizza(db, mese)
+    r, (voci, badge) = _voce_registro(d, db, mese)
+    assert r["stato"] == d.APERTA and badge == "da_correggere" and not any(v["risolto"] for v in voci) and {v["testo"] for v in voci} == {SEGR, SOL_TXT}
+
+
+def test_lettura_dei_punteggi_fallita_non_chiude_il_rilievo(ambiente, db, monkeypatch):
+    ambiente()
+    d, mese = _registro_con(monkeypatch, db, _riga_registro(note=["mancano i punteggi su SOL"]))
+    monkeypatch.setattr(d, "righe_correnti", lambda conn, dal, al: [_riga_registro(note=["verifica dei punteggi su SOL non riuscita"], esito="errore")])
+    d.sincronizza(db, mese)
+    r, (voci, badge) = _voce_registro(d, db, mese)
+    assert r["stato"] == d.APERTA and not any(v["risolto"] for v in voci) and "mancano i punteggi su SOL" in [v["testo"] for v in voci]
+
+
+def test_con_la_prova_si_spunta_e_si_chiude(ambiente, db, monkeypatch):
+    ambiente()
+    d, mese = _registro_con(monkeypatch, db, _riga_registro(note=["mancano i punteggi su SOL"], sol="mancante"))
+    monkeypatch.setattr(d, "righe_correnti", lambda conn, dal, al: [_riga_registro(note=["mancano i punteggi su SOL"], sol="presente")])
+    d.sincronizza(db, mese)
+    r, (voci, badge) = _voce_registro(d, db, mese)
+    assert badge == "parziale" and {v["testo"]: v["risolto"] for v in voci} == {SOL_TXT: True, "mancano i punteggi su SOL": False}
+    monkeypatch.setattr(d, "righe_correnti", lambda conn, dal, al: [_riga_registro(difforme=False)])
+    assert d.sincronizza(db, mese)["corrette"] == 1
+    r, (voci, badge) = _voce_registro(d, db, mese)
+    assert r["stato"] == d.CORRETTA and badge == "corretta" and all(v["risolto"] for v in voci)
+
+
+def test_ogni_tipo_di_rilievo_ha_la_sua_prova():
+    from monitoraggio import difformita as d
+    ok = _riga_registro(segreteria="presente")
+    for testo in (SOL_TXT, "la graduatoria pubblica (oscurata) (prot. 5) non risulta tra i dati attualmente disponibili da URP", SEGR,
+                  "il provvedimento di assunzione idoneo (scorrimento/utilizzo della graduatoria) non risulta tra i dati attualmente disponibili da Selezioni Online (per questo codice su Selezioni Online risulta già 1 utilizzo)",
+                  "graduatoria pubblica (oscurata) non allegata su SOL", "data della graduatoria pubblica (oscurata) su SOL senza documento pubblico", "protocollo diverso: SOL 5, URP 5",
+                  "tipologia da completare nel file", "nota per il monitoraggio: x", "mancano i punteggi su SOL", "esito (V/I/S) mancante su SOL (1 candidati)",
+                  "nessuna domanda inviata su SOL", "punteggi su SOL solo per 1 domande su 2", "data assunzione idoneo diversa su SOL",
+                  "protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL (1 candidati)",
+                  "provvedimento di assunzione idoneo (prot. 5) presente tra gli allegati SOL ma non risulta nei punteggi: nessun candidato S con questo protocollo"):
+        assert d._correzione_accertata(testo, ok), testo
+    assert not d._correzione_accertata("testo sconosciuto", ok)
+    assert not d._correzione_accertata("protocollo diverso: SOL 5, URP 6", {"fonti": {"sol": {"stato": "presente", "protocollo": "5"}, "urp": {"stato": "presente", "protocollo": "6"}}})

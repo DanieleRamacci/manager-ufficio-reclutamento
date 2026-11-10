@@ -84,6 +84,7 @@ def anteprima(conn, mese_dati: str) -> dict:
 _RILIEVI_PUNTEGGI = ("mancano i punteggi", "esito (V/I", "non valorizzato sui candidati",
                      "punteggi su SOL solo per", "nessuna domanda inviata su SOL")
 
+INTESTAZIONE_EMAIL = "Email generata dal sistema di monitoraggio dei bandi."
 NOTA_GRADUATORIA = ("Per le graduatorie, il controllo riguarda la versione pubblica (oscurata) allegata su Selezioni Online "
                     "e pubblicata su URP, non quella riservata.")
 ISTRUZIONE_A = ("Graduatoria pubblica (oscurata) già presente su Selezioni Online: inserite i punteggi e gli esiti (V/I/R/S) di ogni "
@@ -103,7 +104,7 @@ def _graduatoria_su_sol(r: dict) -> bool:
 
 def da_sbloccare(riga: dict) -> bool:
     """La graduatoria è su SOL ma il protocollo non è valorizzato: potrebbe servire lo sblocco manuale."""
-    return riga.get("atto") == "graduatoria" and any("non valorizzato sui candidati" in t for t in riga.get("rilievi") or [])
+    return riga.get("atto") == "graduatoria" and _graduatoria_su_sol(riga) and any("non valorizzato sui candidati" in t for t in riga.get("rilievi") or [])
 
 
 def istruzioni_email(righe: list[dict]) -> list[str]:
@@ -149,32 +150,37 @@ def messaggio(conn, monitoraggio: dict, codice: str, righe_del_mese: list[dict] 
     titolo = f" – {r0['titolo_bando']}" if r0.get("titolo_bando") else ""
     if sollecito:
         quando = r0["comunicazione"].get("quando")
-        apertura = (f"vi scriviamo con un gentile promemoria sulla comunicazione{f' del {_data_it(quando)}' if quando else ''} relativa al monitoraggio "
-                    f"mensile di {mese_testo}, per il bando {codice}{titolo}. Dai dati attualmente disponibili, risultano ancora da aggiornare i seguenti punti:")
+        apertura = (f"vi chiedo gentilmente un riscontro in merito alle richieste di aggiornamento indicate nella email{f' del {_data_it(quando)}' if quando else ''}, relativa "
+                    f"al monitoraggio mensile di {mese_testo} per il bando {codice}{titolo}. Dai dati attualmente disponibili, risultano ancora da aggiornare i seguenti punti:")
     else:
         apertura = (f"nell'ambito del monitoraggio mensile di {mese_testo}, per il bando {codice}{titolo} "
                     f"risultano le seguenti difformità tra le fonti:")
-    corpo = f"{saluto}\n\n{apertura}\n\n" + "\n\n".join(voci)
+    corpo = f"{INTESTAZIONE_EMAIL}\n\n{saluto}\n\n{apertura}\n\n" + "\n\n".join(voci)
     con_graduatoria = any(r["atto"] == "graduatoria" for r in righe)
     if con_graduatoria:
         corpo += f"\n\n{NOTA_GRADUATORIA}"
     istruzioni = istruzioni_email(righe)
     if istruzioni:
         corpo += "\n\nCome procedere:\n" + "\n".join(f"- {x}" for x in istruzioni)
-    copia = f" (lasciando in copia {posta.contatto_ufficio()})" if posta.contatto_ufficio() else ""
+    copia = f" lasciando in copia il mio indirizzo ({posta.contatto_ufficio()})" if posta.contatto_ufficio() else ""
     aggiornamento = "l'aggiornamento della graduatoria pubblica (oscurata) e dei dati" if con_graduatoria else "l'aggiornamento dei dati"
     if sollecito:
         corpo += ("\n\nSe aveste già provveduto, vi preghiamo di scusarci: i nostri dati si aggiornano periodicamente e la correzione potrebbe "
                   "non essere ancora visibile. In caso di dubbi o difficoltà, siamo a disposizione per aiutarvi.")
-    corpo += (f"\n\nUna volta completato {aggiornamento}, vi {'saremmo grati di un riscontro' if sollecito else 'chiediamo di darne riscontro'} rispondendo a questa "
-              f"email{copia}.{' Grazie per la collaborazione.' if sollecito else ''}\n\nCordiali saluti,\n{posta.impostazioni_email()['firma']}\n")
+    corpo += (f"\n\nUna volta completato {aggiornamento}, {'potete rispondere' if sollecito else 'vi chiedo di rispondere'} a questa "
+              f"email{copia}, così posso ricontrollare i dati.{' Grazie per la collaborazione.' if sollecito else ''}\n\nCordiali saluti,\n{posta.impostazioni_email()['firma']}\n")
     if r0.get("link_codice"):
         corpo += f"\nScheda su Selezioni Online: {r0['link_codice']}\n"
+    storico = mensile.registro_comunicazioni(conn, monitoraggio["mese"], codice)
+    precedente = next((s for s in storico if s["stato"] == "inviata" and s.get("oggetto")), {}) if sollecito else {}
+    oggetto = f"Monitoraggio {mese_testo}. Bando n° {codice}: Aggiornamento Dati{' Graduatoria Pubblica' if con_graduatoria else ''} – Rif. {r0.get('n_gestione')}"
+    if sollecito:  # stesso oggetto dell'email inviata, come una risposta: resta nella stessa conversazione
+        oggetto = "R: " + re.sub(r"^(?:R: |Promemoria – )+", "", precedente.get("oggetto") or oggetto)
     return {"chiave": codice, "n_gestione": r0.get("n_gestione"), "numero_bando": r0.get("numero_bando"), "titolo_bando": r0.get("titolo_bando"), "referenti": referenti,
             "destinatari": destinatari, "esclusi": scelte["esclusi"], "cc_ufficio": posta.copia_fissa(), "cc_aggiunti": scelte["cc"],
-            "cc": posta.copia_effettiva(destinatari, scelte["cc"]), "oggetto": f"{'Promemoria – ' if sollecito else ''}Monitoraggio {mese_testo}. Bando n° {codice}: Aggiornamento Dati{' Graduatoria Pubblica' if con_graduatoria else ''} – Rif. {r0.get('n_gestione')}",
+            "cc": posta.copia_effettiva(destinatari, scelte["cc"]), "oggetto": oggetto, "message_id_precedente": precedente.get("message_id"),
             "corpo": corpo, "n_difformita": n, "stato": (righe or tutte)[0]["comunicazione"]["stato"],
-            "storico": mensile.registro_comunicazioni(conn, monitoraggio["mese"], codice), "posta": posta.stato()}
+            "storico": storico, "posta": posta.stato()}
 
 
 def contiene_dati_candidati(*testi: str) -> bool:

@@ -321,7 +321,7 @@
           ${sollecitabile ? `<div class="schede" style="align-self:flex-start"><button type="button" id="t-sollecito" aria-selected="true">Sollecito</button><button type="button" id="t-prima" aria-selected="false">Prima comunicazione</button></div>` : ""}
           <div class="schede" style="align-self:flex-start"><button type="button" id="v-ant" aria-selected="true">Anteprima</button><button type="button" id="v-mod" aria-selected="false">Modifica testo</button></div>
           <div id="area-testo"></div>
-          ${d.storico.length ? `<details><summary class="small">Storico (${d.storico.length})</summary>${d.storico.map(s => `<div class="small">${ora(s.data)} · ${(s.oggetto || "").startsWith("Promemoria") ? "sollecito · " : ""}${esc(s.canale)} · ${esc(s.stato)} · <span class="mono">${esc(s.id)}</span></div>`).join("")}</details>` : ""}
+          ${d.storico.length ? `<details><summary class="small">Storico (${d.storico.length})</summary>${d.storico.map(s => `<div class="small">${ora(s.data)} · ${/^(R: |Promemoria)/.test(s.oggetto || "") ? "sollecito · " : ""}${esc(s.canale)} · ${esc(s.stato)} · <span class="mono">${esc(s.id)}</span></div>`).join("")}</details>` : ""}
         </div>
         <footer><div class="riga" style="align-items:center"><button type="button" id="copia-msg">Copia messaggio</button><a class="pulsante" id="apri-client" href="#">Apri nel mio client email</a>
           ${chiuso ? "" : `<label class="spunta solo-admin"><input type="checkbox" id="spunta"${inviata ? " checked" : ""}> Email inviata</label>`}</div>
@@ -349,8 +349,9 @@
       const salvaIndirizzi = (scelte) => (salvataggio = salvataggio.then(async () => {
         try {
           const n = await chiama(`/api/monitoraggi/${m.mese}/comunicazioni/${encodeURIComponent(codice)}/indirizzi`, corpoJson("PUT", scelte));
-          const prima = d.corpo.split("\n")[0], dopo = n.corpo.split("\n")[0];
-          if (prima !== dopo && lavoro.corpo.startsWith(prima + "\n")) { lavoro.corpo = dopo + lavoro.corpo.slice(prima.length); testo(); }
+          const saluto = (t) => t.split("\n").find(r => r.startsWith("Gentil"));
+          const prima = saluto(d.corpo), dopo = saluto(n.corpo);
+          if (prima && dopo && prima !== dopo && lavoro.corpo.includes(`${prima}\n`)) { lavoro.corpo = lavoro.corpo.replace(prima, dopo); testo(); }
           Object.assign(d, n);
           indirizzi();
         } catch (err) { toast(err.message); }

@@ -62,7 +62,7 @@ def righe_correnti(conn, dal: str, al: str, tutti: bool = False) -> list[dict]:
             a["codice"] = p.get("codice") or a.get("codice")
             esistenti = a.get("note") or []
             nuove = [n for n in note if not (n == "graduatoria pubblica (oscurata) non allegata su SOL"
-                                             and any("senza documento pubblico" in x for x in esistenti))]
+                                             and (a["fonti"]["sol"]["stato"] == atti.MANCANTE or any("senza documento pubblico" in x for x in esistenti)))]
             a["note"] = list(dict.fromkeys([*esistenti, *nuove]))
             a["difforme"] = bool(a.get("difforme") or nuove)
         elif note:
@@ -140,11 +140,16 @@ def sincronizza(conn, mese: str, origine: str = "aggiornamento", utente: str | N
                     variazioni["ricomparse"] += 1
                 elif e["rilievi_attuali"] != testo:
                     _evento(conn, e["id"], "cambiata", ora, origine, utente, testo)
+                testo = json.dumps([*testi, *_rilievi_da_tenere(e, riga, testi, affidabili)], ensure_ascii=False)
                 unione = sorted(set(json.loads(e["protocolli"] or "[]")) | protocolli)
                 conn.execute("UPDATE difformita SET stato = ?, rilievi_attuali = ?, protocolli = ?, corretta_il = NULL, ultimo_controllo_il = ? WHERE id = ?",
                              (APERTA, testo, json.dumps(unione), ora, e["id"]))
             elif e:
-                if affidabili and e["stato"] != CORRETTA:
+                tenuti = _rilievi_da_tenere(e, riga, [], affidabili) if e["stato"] == APERTA else []
+                if tenuti:
+                    conn.execute("UPDATE difformita SET rilievi_attuali = ?, ultimo_controllo_il = ? WHERE id = ?",
+                                 (json.dumps(tenuti, ensure_ascii=False), ora, e["id"]))
+                elif affidabili and e["stato"] != CORRETTA:
                     conn.execute("UPDATE difformita SET stato = ?, rilievi_attuali = '[]', corretta_il = ?, ultimo_controllo_il = ? WHERE id = ?",
                                  (CORRETTA, ora, ora, e["id"]))
                     _evento(conn, e["id"], "corretta", ora, origine, utente)
@@ -184,11 +189,58 @@ def reimposta(conn, mese: str) -> None:
     conn.execute("DELETE FROM difformita WHERE mese = ?", (mese,))
 
 
+def _chiave_rilievo(testo: str) -> str:
+    """Lo stesso problema con un testo un po' diverso (protocollo, conteggi) non è un problema risolto più uno nuovo."""
+    testo = re.sub(r"\s*\((?:prot\.[^)]*|[^)]*candidati[^)]*|per questo codice[^)]*)\)", "", testo)
+    return testo.replace("graduatoria pubblica (oscurata) non allegata su SOL",
+                         "la graduatoria pubblica (oscurata) non risulta tra i dati attualmente disponibili da Selezioni Online")
+
+
+def _presente(riga: dict, fonte: str) -> bool:
+    return (riga.get("fonti") or {}).get(fonte, {}).get("stato") == atti.PRESENTE
+
+
+def _correzione_accertata(testo: str, riga: dict) -> bool:
+    """Un rilievo sparito conta come corretto solo con una prova: una lettura fallita o un file non caricato lo fanno sparire senza esserlo."""
+    if "non risulta tra i dati" in testo:
+        return next((_presente(riga, f) for f, nome in FONTI.items() if testo.endswith(f"da {nome}") or f"da {nome} (" in testo), False)
+    if "non allegata su SOL" in testo or "senza documento pubblico" in testo:
+        return _presente(riga, "sol")
+    if testo.startswith("protocollo diverso"):
+        return len({c.get("protocollo") for c in (riga.get("fonti") or {}).values() if c.get("stato") == atti.PRESENTE and c.get("protocollo")}) == 1
+    if testo.startswith(("tipologia da completare", "nota per il monitoraggio")):
+        return _presente(riga, "segreteria")
+    if re.search(r"punteggi|candidati|esito \(|domand|assunzione idoneo", testo, re.I):
+        return (riga.get("punteggi") or {}).get("esito") not in (None, "errore")
+    return False
+
+
+def _rilievi_da_tenere(e: dict, riga: dict, testi: list[str], affidabili: bool) -> list[str]:
+    """I rilievi passati non più rilevati ma senza prova di correzione: restano aperti."""
+    tenuti, viste = [], {_chiave_rilievo(t) for t in testi}
+    for t in [*json.loads(e["rilievi_attuali"]), *json.loads(e["rilievi_iniziali"])]:
+        chiave = _chiave_rilievo(t)
+        if chiave not in viste and not (affidabili and _correzione_accertata(t, riga)):
+            viste.add(chiave)
+            tenuti.append(t)
+    return tenuti
+
+
 def _stato_rilievi(e: dict) -> tuple[list[dict], str]:
     """I rilievi di una voce del registro, con quelli risolti spuntati, e il suo stato per la pagina."""
     iniziali, attuali = json.loads(e["rilievi_iniziali"]), json.loads(e["rilievi_attuali"])
-    voci_rilievo = [{"testo": t, "risolto": t not in attuali and e["stato"] != DA_CONTROLLARE} for t in iniziali] + \
-                   [{"testo": t, "risolto": False, "nuovo": True} for t in attuali if t not in iniziali]
+    correnti = {_chiave_rilievo(t): t for t in attuali}
+    voci_rilievo, viste = [], set()
+    for t in iniziali:
+        chiave = _chiave_rilievo(t)
+        if chiave not in viste:
+            viste.add(chiave)
+            voci_rilievo.append({"testo": correnti[chiave], "risolto": False} if chiave in correnti
+                                else {"testo": t, "risolto": e["stato"] != DA_CONTROLLARE})
+    for t in attuali:
+        if _chiave_rilievo(t) not in viste:
+            viste.add(_chiave_rilievo(t))
+            voci_rilievo.append({"testo": t, "risolto": False, "nuovo": True})
     risolti = sum(r["risolto"] for r in voci_rilievo)
     if e["stato"] == CORRETTA:
         badge = "corretta"
