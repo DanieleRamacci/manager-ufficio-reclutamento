@@ -323,6 +323,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
             # atti di scorrimento delle fonti, per confrontare protocollo e data dei candidati S
             noti = [{"data": g["data"], "protocolli": sorted(g["protocolli"])}
                     for g in punteggi.scorrimenti_noti(conn, s)] if s else []
+            pubblica = punteggi.riferimento(conn, s, "0000-00-00", "9999-99-99") if s else {}
         finally:
             conn.close()
         extra = json.loads(s["dati_extra"]) if s and s["dati_extra"] else {}
@@ -330,6 +331,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
         prove = [{"n": p.get("n") or i + 1, "nome": p.get("nome"), "min": p.get("min"), "max": p.get("max")}
                  for i, p in enumerate(extra.get("punteggi") or [])]
         risposta = jsonify({"scheda_id": scheda_id, "prove": prove, "scorrimenti_noti": noti,
+                            "graduatoria_pubblica": {"protocollo": pubblica.get("protocollo"), "data": pubblica.get("data")},
                             "url_punteggi": url_punteggi(s["id_esterno"]) if s else None, **dati})
         risposta.headers["Cache-Control"] = "no-store"  # dati personali: niente cache del browser
         return risposta

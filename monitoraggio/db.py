@@ -1,10 +1,12 @@
 """Database SQLite del monitoraggio (data-model.md)."""
 import json
+import re
 import sqlite3
 
 from . import config
+from .normalizza import AGGIUNTA_TIPOLOGIE, ANCORA_SCORRIMENTI, nota_sottotipo
 
-SCHEMA_VERSION = 19
+SCHEMA_VERSION = 20
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -186,6 +188,8 @@ CREATE TABLE IF NOT EXISTS punteggi_verifica (
     senza_esito INTEGER,
     protocollo_diverso INTEGER,
     data_diversa INTEGER,
+    date_candidati TEXT,
+    data_allegato TEXT,
     scorrimenti_sol TEXT,
     esito TEXT NOT NULL CHECK (esito IN
         ('completi', 'parziali', 'mancanti', 'protocollo_mancante', 'nessuna_domanda', 'errore')),
@@ -460,6 +464,34 @@ CREATE TABLE IF NOT EXISTS invio_email (
 """
 
 
+def testo_graduatoria_pubblica(testo: str) -> str:
+    """Versione 20: i vecchi rilievi diventano uguali ai nuovi, che dicono quale graduatoria è controllata."""
+    if testo.startswith("la graduatoria") and not testo.startswith("la graduatoria pubblica"):
+        testo = "la graduatoria pubblica (oscurata)" + testo[len("la graduatoria"):]
+    for vecchio, nuovo in (
+            ("protocollo graduatoria non valorizzato su SOL (", "protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL ("),
+            ("data protocollo graduatoria diversa su SOL (", "data del protocollo della graduatoria pubblica (oscurata) diversa tra allegato e candidati su SOL ("),
+            ("protocollo graduatoria diverso su SOL (", "numero di protocollo della graduatoria pubblica (oscurata) diverso tra allegato e candidati su SOL ("),
+            ("graduatoria non allegata su SOL", "graduatoria pubblica (oscurata) non allegata su SOL")):
+        testo = testo.replace(vecchio, nuovo)
+    sottotipo = re.fullmatch(r"sottotipo diverso: file (.+), titolo (.+)", testo)
+    return nota_sottotipo(*sottotipo.groups()) if sottotipo else testo
+
+
+def _migra_testi_graduatoria(conn: sqlite3.Connection) -> None:
+    def con_tipologie(testo: str) -> str:
+        return testo.replace(ANCORA_SCORRIMENTI, ANCORA_SCORRIMENTI + AGGIUNTA_TIPOLOGIE, 1) if AGGIUNTA_TIPOLOGIE not in testo else testo
+    for r in conn.execute("SELECT valore FROM impostazione WHERE chiave = 'email_testo' AND valore IS NOT NULL").fetchall():
+        conn.execute("UPDATE impostazione SET valore = ? WHERE chiave = 'email_testo'", (con_tipologie(r["valore"]),))
+    for r in conn.execute("SELECT mese, testo FROM monitoraggio_mese WHERE testo IS NOT NULL").fetchall():
+        conn.execute("UPDATE monitoraggio_mese SET testo = ? WHERE mese = ?", (con_tipologie(r["testo"]), r["mese"]))
+    for r in conn.execute("SELECT id, rilievi_iniziali, rilievi_attuali FROM difformita").fetchall():
+        nuovi = [json.dumps([testo_graduatoria_pubblica(t) for t in json.loads(r[c])], ensure_ascii=False) for c in ("rilievi_iniziali", "rilievi_attuali")]
+        conn.execute("UPDATE difformita SET rilievi_iniziali = ?, rilievi_attuali = ? WHERE id = ?", (*nuovi, r["id"]))
+    for r in conn.execute("SELECT id, rilievo FROM segnalazione").fetchall():
+        conn.execute("UPDATE segnalazione SET rilievo = ? WHERE id = ?", (testo_graduatoria_pubblica(r["rilievo"]), r["id"]))
+
+
 def connetti() -> sqlite3.Connection:
     path = config.db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -536,7 +568,7 @@ def inizializza(conn: sqlite3.Connection) -> None:
             conn.executescript(SCHEMA_3)
         colonne = {r[1] for r in conn.execute("PRAGMA table_info(punteggi_verifica)")}
         for colonna, tipo in (("senza_esito", "INTEGER"), ("protocollo_diverso", "INTEGER"),  # versione 6
-                              ("data_diversa", "INTEGER"), ("scorrimenti_sol", "TEXT")):
+                              ("data_diversa", "INTEGER"), ("scorrimenti_sol", "TEXT"), ("date_candidati", "TEXT"), ("data_allegato", "TEXT")):
             if colonna not in colonne:
                 conn.execute(f"ALTER TABLE punteggi_verifica ADD COLUMN {colonna} {tipo}")
         if "email" not in {r[1] for r in conn.execute("PRAGMA table_info(utente)")}:  # versione 8
@@ -548,4 +580,6 @@ def inizializza(conn: sqlite3.Connection) -> None:
                          f"(SELECT numero_bando FROM bando WHERE tipologia IN ({elenco}))")
                 conn.execute(f"DELETE FROM difformita_evento WHERE difformita_id IN (SELECT id {fuori})")
                 conn.execute(f"DELETE {fuori}")
+        if riga["versione"] < 20:
+            _migra_testi_graduatoria(conn)
         conn.execute("UPDATE schema_version SET versione = ?", (SCHEMA_VERSION,))

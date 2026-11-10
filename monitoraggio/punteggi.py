@@ -54,6 +54,7 @@ def conteggi_candidati(candidati: list[dict], protocollo_rif: str | None = None,
     """Conteggi per esito e difformità rispetto alla graduatoria nota (protocollo e data di riferimento)."""
     c = {"vincitori": 0, "idonei": 0, "scorrimento": 0, "senza_protocollo": 0, "senza_esito": 0,
          "protocollo_diverso": 0, "data_diversa": 0}
+    date_diverse = set()
     rif = protocollo(protocollo_rif)
     for x in candidati:
         esito_x = (x.get("esito") or "").strip().upper()
@@ -63,13 +64,15 @@ def conteggi_candidati(candidati: list[dict], protocollo_rif: str | None = None,
             c[ESITI_CANDIDATO[esito_x]] += 1
         prot = protocollo(x.get("numero_protocollo_graduatoria"))
         if not prot:
-            c["senza_protocollo"] += 1
+            if ESITI_CANDIDATO.get(esito_x):  # Selezioni Online scrive il protocollo solo su chi ha esito V, I o S
+                c["senza_protocollo"] += 1
         elif rif and prot != rif:
             c["protocollo_diverso"] += 1
         data = data_iso(x.get("data_protocollo_graduatoria"))
         if prot and data and data_rif and data != data_rif:
             c["data_diversa"] += 1
-    return c
+            date_diverse.add(data)
+    return {**c, "date_diverse": sorted(date_diverse)}
 
 
 def scorrimenti_candidati(candidati: list[dict]) -> dict:
@@ -162,6 +165,13 @@ def difformita_scorrimenti(sol: dict | None, noti: list[dict], dal: str, al: str
     return d
 
 
+def _dettaglio_date(v: dict) -> str:
+    date = json.loads(v.get("date_candidati") or "[]")
+    if not date or not v.get("data_allegato"):
+        return ""
+    return f": {', '.join(_data_it(d) for d in date)} sui candidati, {_data_it(v['data_allegato'])} nell'allegato"
+
+
 def difformita(v: dict | None) -> list[str]:
     """Difformità di SOL rispetto alle fonti, dalla verifica dei punteggi (da segnalare in rosso)."""
     if not v or not v.get("esito"):
@@ -176,13 +186,13 @@ def difformita(v: dict | None) -> list[str]:
     elif v["esito"] == "parziali":
         d.append(f"punteggi su SOL solo per {v['con_punteggi']} domande su {v['domande']}")
     if v.get("senza_protocollo"):
-        d.append(f"protocollo graduatoria non valorizzato su SOL ({v['senza_protocollo']} candidati)")
+        d.append(f"protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL ({v['senza_protocollo']} candidati)")
     if v.get("senza_esito"):
         d.append(f"esito (V/I/S) mancante su SOL ({v['senza_esito']} candidati)")
     if v.get("protocollo_diverso"):
-        d.append(f"protocollo graduatoria diverso su SOL ({v['protocollo_diverso']} candidati)")
+        d.append(f"numero di protocollo della graduatoria pubblica (oscurata) diverso tra allegato e candidati su SOL ({v['protocollo_diverso']} candidati)")
     if v.get("data_diversa"):
-        d.append(f"data protocollo graduatoria diversa su SOL ({v['data_diversa']} candidati)")
+        d.append(f"data del protocollo della graduatoria pubblica (oscurata) diversa tra allegato e candidati su SOL ({v['data_diversa']} candidati{_dettaglio_date(v)})")
     return d
 
 
@@ -299,10 +309,10 @@ def verifica_schede(conn, schede: list, dal: str, al: str, intestazioni: dict, c
             conn.execute(
                 "INSERT INTO punteggi_verifica (scheda_id, verificato_il, domande, con_punteggi, vincitori, idonei, "
                 "scorrimento, senza_protocollo, senza_esito, protocollo_diverso, data_diversa, scorrimenti_sol, esito, "
-                "messaggio) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "messaggio, date_candidati, data_allegato) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (s["id"], ora, n["domande"], n["con_punteggi"], c["vincitori"], c["idonei"], c["scorrimento"],
                  c["senza_protocollo"], c["senza_esito"], c["protocollo_diverso"], c["data_diversa"],
-                 json.dumps(scorr) if scorr is not None else None, e, msg))
+                 json.dumps(scorr) if scorr is not None else None, e, msg, json.dumps(c.get("date_diverse") or []), rif["data"]))
             _avanzamento["fatti"] += 1
         log.info("Verifica punteggi %s-%s: %s", dal, al, totali)
         return {**totali, "esito": "completata", "messaggio": None}
@@ -356,7 +366,7 @@ def elenco_periodo(conn, dal: str, al: str) -> list[dict]:
             **{k: v.get(k) for k in ("domande", "con_punteggi", "vincitori", "idonei", "scorrimento", "senza_protocollo",
                                      "senza_esito", "protocollo_diverso", "data_diversa", "esito", "verificato_il",
                                      "messaggio")},
-            "difformita": difformita(v) + ([] if rif["allegato_sol"] else ["graduatoria non allegata su SOL"])
+            "difformita": difformita(v) + ([] if rif["allegato_sol"] else ["graduatoria pubblica (oscurata) non allegata su SOL"])
                           + difformita_scorrimenti(sol_scorr, noti, dal, al),
             "scorrimenti": [{"data": g["data"], "protocolli": sorted(g["protocolli"]), "fonti": sorted(g["fonti"]),
                              **stato_scorrimento(g, sol_scorr)} for g in noti if dal <= (g["data"] or "") <= al],
@@ -403,7 +413,7 @@ def righe_excel_scheda(s) -> list[tuple[list, bool]]:
                        x.get("totale_punteggio"), x.get("graduatoria"), x.get("esito"), x.get("note"),
                        _data_it(x.get("data_protocollo_graduatoria")), x.get("numero_protocollo_graduatoria"),
                        _data_it(x.get("data_protocollo_assunzione_idoneo")), x.get("numero_protocollo_assunzione_idoneo")],
-                      not str(x.get("numero_protocollo_graduatoria") or "").strip()))
+                      bool(ESITI_CANDIDATO.get((x.get("esito") or "").strip().upper())) and not str(x.get("numero_protocollo_graduatoria") or "").strip()))
     return righe
 
 

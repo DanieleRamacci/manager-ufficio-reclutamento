@@ -50,8 +50,8 @@
     <h2>Accedi con link temporaneo</h2>
     <form method="post" action="/login/visualizzatore" id="richiesta">
       <input type="hidden" name="next" value="{{ next }}">
-      <label for="username">Nome utente (nome.cognome)</label>
-      <input id="username" name="username" type="text" autocomplete="username" placeholder="nome.cognome" value="{{ utente }}" required>
+      <label for="username">Email o nome utente (nome.cognome)</label>
+      <input id="username" name="username" type="text" autocomplete="username" placeholder="nome.cognome o email" value="{{ utente }}" required>
       <button type="submit">Richiedi link temporaneo</button>
     </form>
     <p class="nota">Ricevi nella tua casella CNR un link valido 15 minuti.</p>

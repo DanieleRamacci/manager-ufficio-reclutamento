@@ -178,3 +178,10 @@ def test_conteggio_utilizzi_per_codice_nel_rilievo(db):
     # quello presente su SOL non porta il conteggio
     assert all("risulta già" not in t for t in difformita.rilievi(righe[("scorrimento", "100")]))
 
+
+
+def test_nota_sottotipo_dice_cosa_fare():
+    from monitoraggio.normalizza import nota_sottotipo
+    assert "va indicata la tipologia «subentro»" in nota_sottotipo("ordinario", "subentro")
+    assert "«scorrimento e subentro insieme»" in nota_sottotipo("misto", "subentro")
+    assert "va controllato che la tipologia sia corretta" in nota_sottotipo("subentro", "utilizzo")

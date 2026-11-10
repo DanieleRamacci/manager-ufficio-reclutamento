@@ -138,10 +138,10 @@ def test_difformita_graduatoria(db, client_finto):
     assert righe["367.611 RIC"]["difformita"] == ["mancano i punteggi su SOL"]
     assert righe["367.611 RIC"]["url_punteggi"].endswith("/carica-punteggi?callId=m")
     d = righe["367.612 RIC"]["difformita"]
-    assert "protocollo graduatoria non valorizzato su SOL (1 candidati)" in d
+    assert "protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL (1 candidati)" in d
     assert "esito (V/I/S) mancante su SOL (1 candidati)" in d
-    assert "protocollo graduatoria diverso su SOL (1 candidati)" in d
-    assert "data protocollo graduatoria diversa su SOL (1 candidati)" in d
+    assert "numero di protocollo della graduatoria pubblica (oscurata) diverso tra allegato e candidati su SOL (1 candidati)" in d
+    assert any(x.startswith("data del protocollo della graduatoria pubblica (oscurata) diversa tra allegato e candidati su SOL (1 candidati: ") and "nell'allegato)" in x for x in d)
 
 
 def test_scorrimenti_candidati_s(db, client_finto):
@@ -217,3 +217,28 @@ def test_senza_v_e_i_si_segnala_e_senza_verifica_si_dice_da_verificare(db, monke
     assert r["punteggi_da_verificare"] is False and r["difforme"] is True and "esito (V/I/S) mancante su SOL (2 candidati)" in r["note"]
     assert r["punteggi"]["candidati"] is True
 
+
+
+def test_data_del_protocollo_letta_nel_giorno_italiano():
+    from monitoraggio.normalizza import data_iso
+    assert data_iso("2026-10-20T22:00:00.000Z") == "2026-10-21"  # mezzanotte italiana, ora legale
+    assert data_iso("2026-12-20T23:00:00Z") == "2026-12-21"  # ora solare
+    assert data_iso("2026-10-21T12:00:00Z") == "2026-10-21"
+    assert data_iso("2026-10-21T00:00:00.000+02:00") == "2026-10-21"
+    assert data_iso("2026-10-21T10:00:00") == "2026-10-21"
+    c = punteggi.conteggi_candidati([{"esito": "I", "numero_protocollo_graduatoria": "0448313", "data_protocollo_graduatoria": "2026-10-20T22:00:00.000Z"}], "448313", "2026-10-21")
+    assert c["data_diversa"] == 0 and c["date_diverse"] == []
+
+
+def test_il_rilievo_sulla_data_dice_le_due_date():
+    c = punteggi.conteggi_candidati([{"esito": "I", "numero_protocollo_graduatoria": "1", "data_protocollo_graduatoria": "2026-10-25T12:00:00Z"}], "1", "2026-10-21")
+    assert c["data_diversa"] == 1 and c["date_diverse"] == ["2026-10-25"]
+    v = {"esito": "completi", "domande": 1, "con_punteggi": 1, "data_diversa": 1, "date_candidati": '["2026-10-25"]', "data_allegato": "2026-10-21"}
+    assert any("(1 candidati: 25/10/2026 sui candidati, 21/10/2026 nell'allegato)" in t for t in punteggi.difformita(v))
+
+
+def test_protocollo_mancante_solo_per_vincitori_idonei_e_scorrimenti():
+    candidati = [{"esito": "V", "numero_protocollo_graduatoria": "1"}, {"esito": "N", "numero_protocollo_graduatoria": None},
+                 {"esito": "R", "numero_protocollo_graduatoria": ""}, {"esito": "I", "numero_protocollo_graduatoria": None}]
+    c = punteggi.conteggi_candidati(candidati, "1", "2026-10-21")
+    assert c["senza_protocollo"] == 1 and c["senza_esito"] == 0

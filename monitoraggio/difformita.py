@@ -27,7 +27,7 @@ def _adesso() -> str:
 
 def rilievi(riga: dict) -> list[str]:
     """Come rilievi() in solleciti.js."""
-    atto = "la graduatoria" if riga["atto"] == "graduatoria" else "il provvedimento di assunzione idoneo (scorrimento/utilizzo della graduatoria)"
+    atto = "la graduatoria pubblica (oscurata)" if riga["atto"] == "graduatoria" else "il provvedimento di assunzione idoneo (scorrimento/utilizzo della graduatoria)"
     testi = list(riga.get("note") or [])
     rif = f" (prot. {riga['protocollo']})" if riga.get("protocollo") else ""
     n_sol = riga.get("utilizzi_sol_codice") or 0
@@ -61,7 +61,7 @@ def righe_correnti(conn, dal: str, al: str, tutti: bool = False) -> list[dict]:
             a = scelta[0]
             a["codice"] = p.get("codice") or a.get("codice")
             esistenti = a.get("note") or []
-            nuove = [n for n in note if not (n == "graduatoria non allegata su SOL"
+            nuove = [n for n in note if not (n == "graduatoria pubblica (oscurata) non allegata su SOL"
                                              and any("senza documento pubblico" in x for x in esistenti))]
             a["note"] = list(dict.fromkeys([*esistenti, *nuove]))
             a["difforme"] = bool(a.get("difforme") or nuove)
@@ -184,7 +184,8 @@ def reimposta(conn, mese: str) -> None:
     conn.execute("DELETE FROM difformita WHERE mese = ?", (mese,))
 
 
-def _voce(conn, e: dict, solleciti: dict) -> dict:
+def _stato_rilievi(e: dict) -> tuple[list[dict], str]:
+    """I rilievi di una voce del registro, con quelli risolti spuntati, e il suo stato per la pagina."""
     iniziali, attuali = json.loads(e["rilievi_iniziali"]), json.loads(e["rilievi_attuali"])
     voci_rilievo = [{"testo": t, "risolto": t not in attuali and e["stato"] != DA_CONTROLLARE} for t in iniziali] + \
                    [{"testo": t, "risolto": False, "nuovo": True} for t in attuali if t not in iniziali]
@@ -195,11 +196,44 @@ def _voce(conn, e: dict, solleciti: dict) -> dict:
         badge = "da_controllare"
     else:
         badge = "parziale" if risolti else "da_correggere"
+    return voci_rilievo, badge
+
+
+def registro_per_righe(conn, mese: str, righe: list[dict]) -> None:
+    """Aggiunge alle righe del monitoraggio la loro voce del registro, abbinata come in sincronizza()."""
+    m = mensile.leggi(conn, mese)
+    if m and not m.get("difformita_aggiornate_il"):
+        sincronizza(conn, mese, "primo controllo")
+    registro = [dict(r) for r in conn.execute("SELECT * FROM difformita WHERE mese = ?", (mese,))]
+    usate: set[int] = set()
+    for riga in sorted((r for r in righe if r["atto"] in ATTI_SEGUITI), key=lambda r: not r.get("difforme")):
+        protocolli = _protocolli(riga)
+        e = next((x for x in registro if x["id"] not in usate and x["codice"] == riga.get("codice") and _corrisponde(x, riga, protocolli)), None) \
+            or next((x for x in registro if x["id"] not in usate and _corrisponde(x, riga, protocolli)), None)
+        if e:
+            usate.add(e["id"])
+            voci, badge = _stato_rilievi(e)
+            riga["registro"] = {"id": e["id"], "badge": badge, "corretta_il": e["corretta_il"], "rilievi": voci}
+
+
+def _rdp_per_bando(conn) -> tuple[dict, dict]:
+    per_codice, per_bando = {}, {}
+    for r in conn.execute("SELECT s.codice_originale, s.numero_bando, r.nome, r.cognome, r.email FROM referente r JOIN scheda s ON s.id = r.scheda_id "
+                          "WHERE r.attivo = 1 AND s.fonte = 'sol' ORDER BY r.cognome, r.nome"):
+        persona = {"nome": r["nome"], "cognome": r["cognome"], "email": r["email"]}
+        for mappa, chiave in ((per_codice, r["codice_originale"]), (per_bando, r["numero_bando"])):
+            if persona not in mappa.setdefault(chiave, []):
+                mappa[chiave].append(persona)
+    return per_codice, per_bando
+
+
+def _voce(conn, e: dict, solleciti: dict, rdp: tuple[dict, dict]) -> dict:
+    voci_rilievo, badge = _stato_rilievi(e)
     sollecito = solleciti.get(e["codice"] or "") or solleciti.get(e["numero_bando"] or "")
     return {**{k: e[k] for k in ("id", "numero_bando", "codice", "titolo_bando", "tipologia", "atto", "data", "protocollo",
                                  "stato", "prima_rilevata_il", "corretta_il", "ultimo_controllo_il")},
             "n_gestione": mensile.numero_gestione(conn, e["codice"] or e["numero_bando"] or str(e["id"])),
-            "badge": badge, "rilievi": voci_rilievo,
+            "badge": badge, "rilievi": voci_rilievo, "rdp": rdp[0].get(e["codice"]) or rdp[1].get(e["numero_bando"]) or [],
             "sollecito": {k: sollecito[k] for k in ("stato", "autore", "quando")} if sollecito else None,
             "storico": [dict(x) for x in conn.execute(
                 "SELECT quando, tipo, origine, utente FROM difformita_evento WHERE difformita_id = ? ORDER BY id DESC", (e["id"],))]}
@@ -211,7 +245,8 @@ def elenco(conn, mese: str) -> dict:
         sincronizza(conn, mese, "primo controllo")
         m = mensile.leggi(conn, mese)
     solleciti = mensile.solleciti(conn, mese)
-    voci = [_voce(conn, dict(e), solleciti) for e in conn.execute(
+    rdp = _rdp_per_bando(conn)
+    voci = [_voce(conn, dict(e), solleciti, rdp) for e in conn.execute(
         "SELECT * FROM difformita WHERE mese = ? ORDER BY stato = 'corretta', data DESC, codice", (mese,))]
     conteggi = {b: sum(v["badge"] == b for v in voci) for b in ("da_correggere", "parziale", "corretta", "da_controllare")}
     fonti = {f: compat.ultima_riuscita(conn, f) for f in ("urp", "sol")}

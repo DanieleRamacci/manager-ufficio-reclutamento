@@ -1587,7 +1587,7 @@ def test_link_di_accesso_nella_pagina_utenti(ambiente, monkeypatch):
     d = admin.get("/api/utenti").get_json()
     assert d["link_aree"] == {"utenti": "https://sito.esempio/login", "referenti": "https://sito.esempio/referenti", "referenti_attiva": False}
     link = {u["username"]: u["link"] for u in d["utenti"]}
-    assert link["dirigente.uno"] == "https://sito.esempio/login?utente=dirigente.uno" and link["capo.ufficio"] == "https://sito.esempio/login"
+    assert link["dirigente.uno"] == "https://sito.esempio/login?utente=dirigente.uno" and link["capo.ufficio"] == "https://sito.esempio/login?utente=capo.ufficio"
 
 
 def test_invio_del_link_di_accesso_a_un_utente(ambiente, monkeypatch):
@@ -1598,9 +1598,9 @@ def test_invio_del_link_di_accesso_a_un_utente(ambiente, monkeypatch):
     r = admin.post("/api/utenti/dirigente.uno/invia-accesso").get_json()
     assert r == {"ok": True, "email": "dirigente@cnr.it"} and inviati[-1]["To"] == "dirigente@cnr.it" and inviati[-1]["Cc"] is None
     corpo = inviati[-1].get_content()
-    assert "sola lettura" in corpo and "/login?utente=dirigente.uno" in corpo and "codice=" not in corpo
+    assert "richiedi il link di accesso" in corpo and "/login?utente=dirigente.uno" in corpo and "codice=" not in corpo and "Scarica" not in corpo and "Selezioni Online" not in corpo
     assert any(x["azione"] == "invito_accesso" and x["username"] == "dirigente.uno" and x["autore"] == "capo.ufficio" for x in admin.get("/api/utenti").get_json()["registro"])
-    assert admin.post("/api/utenti/capo.ufficio/invia-accesso").status_code == 200 and "amministratore" in inviati[-1].get_content()
+    assert admin.post("/api/utenti/capo.ufficio/invia-accesso").status_code == 200 and "Scarica" not in inviati[-1].get_content()
     assert admin.post("/api/utenti/sconosciuto/invia-accesso").status_code == 404
     assert ambiente("dirigente.uno").post("/api/utenti/capo.ufficio/invia-accesso").status_code == 403
 
@@ -1637,3 +1637,68 @@ def test_reinvio_usa_il_testo_sulla_graduatoria_pubblica(ambiente, db, monkeypat
     m = inviati[-1]
     assert "Aggiornamento Dati Graduatoria Pubblica" in m["Subject"] and "aggiornamento della graduatoria pubblica (oscurata)" in m.get_content()
     assert db.execute("SELECT corpo FROM comunicazione WHERE id = 'VECCHIA'").fetchone()[0] == "testo vecchio"  # lo storico non si riscrive
+
+
+def test_righe_del_monitoraggio_con_le_difformita_corrette_spuntate(ambiente, db):
+    from monitoraggio import difformita
+    admin, mese, url = _mese_con_rdp(ambiente, db)
+    difformita.sincronizza(db, mese, "prova")
+    riga = admin.get(f"/api/monitoraggi/{mese}/atti").get_json()["righe"][0]
+    assert riga["registro"]["badge"] == "da_correggere" and riga["registro"]["rilievi"][0]["risolto"] is False
+    assert admin.get(f"/api/monitoraggi/{mese}/difformita").get_json()["voci"][0]["rdp"][0]["email"] == "rdp@cnr.it"
+    db.execute("UPDATE documento SET protocollo = '1001', protocollo_originale = '1001' WHERE protocollo = '1002'")
+    difformita.sincronizza(db, mese, "prova")
+    riga = admin.get(f"/api/monitoraggi/{mese}/atti").get_json()["righe"][0]
+    assert riga["con_difformita"] is False and riga["registro"]["badge"] == "corretta" and riga["registro"]["rilievi"][0]["risolto"] is True and riga["registro"]["corretta_il"]
+
+
+def test_sollecito_dopo_un_invio(ambiente, db, monkeypatch):
+    inviati = []
+    _configura_posta(monkeypatch, inviati)
+    posta.salva_email({"prova_attiva": False, "ufficiali_attive": True}, "t")
+    admin, mese, url = _mese_con_rdp(ambiente, db)
+    r = admin.post(url + "/invia", json={"modo": "ufficiale", "sollecito": True})
+    assert r.status_code == 400 and "già inviata" in r.get_json()["error"] and inviati == []
+    assert admin.post(url + "/invia", json={"modo": "ufficiale"}).status_code == 200
+    m = admin.get(url + "/messaggio?sollecito=1").get_json()
+    assert m["oggetto"].startswith("Promemoria – Monitoraggio aprile 2026") and "gentile promemoria sulla comunicazione del " in m["corpo"]
+    assert "ancora da aggiornare" in m["corpo"] and "protocollo diverso: SOL 1001, URP 1002" in m["corpo"]
+    assert "Se aveste già provveduto, vi preghiamo di scusarci" in m["corpo"] and "Grazie per la collaborazione" in m["corpo"]
+    assert admin.post(url + "/invia", json={"modo": "ufficiale", "sollecito": True}).status_code == 200  # non chiede la conferma del reinvio
+    assert inviati[-1]["Subject"].startswith("Promemoria") and inviati[-1]["To"] == "rdp@cnr.it"
+    assert "Promemoria" not in admin.get(url + "/messaggio").get_json()["oggetto"]
+    voci = admin.get(f"/api/comunicazioni?mese={mese}").get_json()["comunicazioni"]
+    assert len(voci) == 2 and voci[0]["oggetto"].startswith("Promemoria")
+
+
+def test_vecchi_rilievi_riscritti_con_la_graduatoria_pubblica(ambiente, db):
+    import json
+    from monitoraggio import db as dbmod, difformita
+    admin, mese, url = _mese_con_rdp(ambiente, db)
+    vecchi = ["data protocollo graduatoria diversa su SOL (22 candidati)", "la graduatoria (prot. 5) non risulta tra i dati attualmente disponibili da URP", "protocollo diverso: SOL 1, URP 2", "sottotipo diverso: file ordinario, titolo subentro"]
+    testo = json.dumps(vecchi, ensure_ascii=False)
+    db.execute("INSERT INTO difformita (mese, numero_bando, codice, tipologia, atto, data, protocollo, protocolli, rilievi_iniziali, rilievi_attuali, stato, prima_rilevata_il, ultimo_controllo_il) "
+               "VALUES (?, '1', '1 X', 'tempo_indeterminato', 'graduatoria', '2026-04-01', '5', '[]', ?, ?, ?, 'x', 'x')", (mese, testo, testo, difformita.APERTA))
+    db.execute("UPDATE schema_version SET versione = 19")
+    dbmod.inizializza(db)
+    attuali = json.loads(db.execute("SELECT rilievi_attuali FROM difformita WHERE codice = '1 X'").fetchone()[0])
+    assert attuali == ["data del protocollo della graduatoria pubblica (oscurata) diversa tra allegato e candidati su SOL (22 candidati)",
+                       "la graduatoria pubblica (oscurata) (prot. 5) non risulta tra i dati attualmente disponibili da URP", "protocollo diverso: SOL 1, URP 2",
+                       "nota per il monitoraggio: il titolo del documento indica un subentro, mentre nel file della segreteria risulta «scorrimento». Nel file degli scorrimenti va indicata la tipologia «subentro»"]
+    assert db.execute("SELECT versione FROM schema_version").fetchone()[0] == dbmod.SCHEMA_VERSION
+
+
+def test_email_generale_e_excel_spiegano_le_tipologie_di_scorrimento(ambiente, db):
+    from monitoraggio import db as dbmod
+    admin = ambiente()
+    mese = admin.post("/api/monitoraggi", json={"numero_mese": 5}).get_json()["mese"]
+    corpo = admin.get(f"/api/monitoraggi/{mese}").get_json()["email"]["corpo"]
+    for tipo in ("disponibilità di risorse", "successivo a una rinuncia (subentro)", "cessazione del vincitore dopo i 6 mesi"):
+        assert tipo in corpo and tipo in excel_mese.NOTA_TIPOLOGIA
+    assert corpo.index("cessazione del vincitore") < corpo.index("- graduatoria")
+    # i testi già personalizzati ricevono la stessa frase una volta sola
+    mensile.salva_impostazioni_email(db, {"testo": "Prima\n  i dati relativi agli scorrimenti del mese di {mese_dati}.\nDopo"}, "t")
+    db.execute("UPDATE schema_version SET versione = 19")
+    dbmod.inizializza(db)
+    salvato = mensile.impostazioni_email(db)["testo"]
+    assert salvato.count("Da adesso, nella colonna TIPOLOGIA") == 1 and salvato.endswith("\nDopo")

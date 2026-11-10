@@ -187,7 +187,7 @@ def chiedi_link():
     """Risponde sempre allo stesso modo, per non rivelare chi è autorizzato."""
     if not posta.configurata():
         return _mostra("L'accesso via email non è attivo: chiedi a un amministratore.", 503)
-    nome = utenti.normalizza(request.form.get("username"))
+    nome = utenti.nome_da_indicazione(request.form.get("username"))
     risposta = _mostra(messaggio="Se l'utente è autorizzato, riceverà a breve un'email con il link di accesso. "
                                  "Il link vale 15 minuti.")
     if not re.fullmatch(r"[\w.\-]{2,100}", nome) or not utenti.ruolo(nome):

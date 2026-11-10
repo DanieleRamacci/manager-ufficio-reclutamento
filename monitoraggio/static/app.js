@@ -85,6 +85,8 @@ window.App = (() => {
     });
   }
 
+  // ricerca a testo libero: tutte le parole cercate devono comparire, in qualsiasi ordine
+  const contieneTesto = (cerca, testo) => String(cerca || "").toLowerCase().split(/\s+/).filter(Boolean).every(p => String(testo || "").toLowerCase().includes(p));
   async function copia(testo, messaggio) {
     try { await navigator.clipboard.writeText(testo); toast(messaggio || "Copiato"); return true; }
     catch { toast("Copia automatica non disponibile"); return false; }
@@ -114,19 +116,26 @@ window.App = (() => {
   function pannelloCandidati(d) {
     const lista = d.candidati || [];
     const conta = (e) => lista.filter(c => (c.esito || "").toUpperCase() === e).length;
-    const senza = lista.filter(c => !String(c.numero_protocollo_graduatoria || "").trim()).length;
+    const manca = (c) => ["V", "I", "S"].includes((c.esito || "").trim().toUpperCase()) && !String(c.numero_protocollo_graduatoria || "").trim();  // solo a loro Selezioni Online scrive il protocollo
+    const senza = lista.filter(manca).length;
     const prove = d.prove || [];
     const ESITI = { V: "Vincitore", I: "Idoneo", S: "Scorrimento" };
+    const pubblica = d.graduatoria_pubblica || {};
+    // Selezioni Online dà l'istante in UTC: conta il giorno in Italia, come nelle sue pagine
+    const giorno = (v) => v && /T.*(Z|[+-]\d\d:?\d\d)$/.test(v) ? new Date(v).toLocaleDateString("sv-SE", { timeZone: "Europe/Rome" }) : v;
+    const dataDiversa = (c) => pubblica.data && c.data_protocollo_graduatoria && String(giorno(c.data_protocollo_graduatoria)).slice(0, 10) !== pubblica.data;
     return `<div style="margin-bottom:8px">${lista.length} candidati con punteggi · V ${conta("V")} · I ${conta("I")} · S ${conta("S")}
       ${senza ? ` <span class="etichetta">${senza} senza protocollo graduatoria</span>` : ""}
-      ${d.url_punteggi ? ` · <a href="${esc(d.url_punteggi)}" target="_blank" rel="noopener"><b>Apri i punteggi su Selezioni Online ↗</b></a>` : ""}</div>
+      ${d.url_punteggi ? ` · <a href="${esc(d.url_punteggi)}" target="_blank" rel="noopener"><b>Apri i punteggi su Selezioni Online ↗</b></a>` : ""}
+      ${pubblica.protocollo || pubblica.data ? `<div class="small">Graduatoria pubblica (oscurata) allegata: ${pubblica.protocollo ? `prot. ${esc(pubblica.protocollo)}` : ""}${pubblica.data ? ` del ${esc(dataIt(pubblica.data))}` : ""}</div>` : ""}</div>
       <div class="scroll"><table><thead><tr><th>Pos.</th><th>Cognome</th><th>Nome</th><th>Nascita</th><th>Codice fiscale</th><th>Email</th><th>Email PEC</th>
-        ${prove.map(p => `<th>${esc(p.nome || `Prova ${p.n}`)}${p.max ? ` /${esc(p.max)}` : ""}</th>`).join("")}<th>Totale</th><th>Esito</th><th>Prot. graduatoria</th></tr></thead><tbody>
+        ${prove.map(p => `<th>${esc(p.nome || `Prova ${p.n}`)}${p.max ? ` /${esc(p.max)}` : ""}</th>`).join("")}<th>Totale</th><th>Esito</th><th>Prot. graduatoria</th><th>Data prot.</th></tr></thead><tbody>
       ${lista.map(c => `<tr><td>${esc(c.graduatoria)}</td><td>${esc(c.cognome)}</td><td>${esc(c.nome)}</td><td>${esc(dataIt(c.data_nascita))}</td><td class="mono">${esc(c.codice_fiscale)}</td><td>${esc(c.email)}</td><td>${esc(c.email_pec)}</td>
         ${prove.map(p => `<td>${esc(c.prove?.[p.n]?.punteggio)}</td>`).join("")}<td><b>${esc(c.totale_punteggio)}</b></td><td>${esc(c.esito)} ${esc(ESITI[(c.esito || "").toUpperCase()] || "")}</td>
-        <td class="${String(c.numero_protocollo_graduatoria || "").trim() ? "" : "f-mancante"}">${esc(c.numero_protocollo_graduatoria) || "mancante"}</td></tr>`).join("")}
+        <td class="${manca(c) ? "f-mancante" : ""}">${esc(c.numero_protocollo_graduatoria) || (manca(c) ? "mancante" : "–")}</td>
+        <td class="${dataDiversa(c) ? "f-mancante" : ""}" title="${esc(c.data_protocollo_graduatoria)}">${esc(dataIt(giorno(c.data_protocollo_graduatoria)))}</td></tr>`).join("")}
       </tbody></table></div>`;
   }
 
-  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, json, toast, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati };
+  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, json, toast, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati, contieneTesto };
 })();

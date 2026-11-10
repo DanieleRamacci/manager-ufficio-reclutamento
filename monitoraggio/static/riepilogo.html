@@ -163,7 +163,7 @@
       <label class="muted" title="manca su una fonte o SOL non torna con le fonti (punteggi, protocolli, scorrimenti)"><input type="checkbox" id="atti-incompleti"> solo con difformità</label>
       <label class="muted"><input type="checkbox" id="atti-protdiv"> protocollo diverso</label>
       <select id="atti-rdp"><option value="">Tutti gli RdP</option></select>
-      <input type="search" id="atti-q" placeholder="Bando, codice, protocollo" size="22">
+      <input type="search" id="atti-q" placeholder="Codice, titolo, protocollo, RdP o testo" size="34">
       <a href="#" id="atti-azzera" class="muted" style="font-size:12.5px">Azzera filtri</a>
     </div>
     <div class="scroll"><table id="atti"></table></div>
@@ -204,7 +204,7 @@
   <section>
     <h2>Bandi <span class="muted" id="conteggio"></span></h2>
     <div class="filtri">
-      <input type="search" id="q" placeholder="Codice o titolo" size="24">
+      <input type="search" id="q" placeholder="Codice o testo del titolo" size="24">
       <select id="tipologia"><option value="">Tutte le tipologie</option></select>
       <select id="stato-coll"><option value="">Tutti gli stati</option></select>
       <label class="muted">Pubblicati nel mese <input type="month" id="mese"></label>
@@ -306,10 +306,16 @@ async function caricaBandi() {
   disegnaBandi();
 }
 
+// ricerca a testo libero: tutte le parole cercate devono comparire, in qualsiasi ordine
+const contieneTesto = (cerca, testo) => String(cerca || "").toLowerCase().split(/\s+/).filter(Boolean).every(p => String(testo || "").toLowerCase().includes(p));
+
+// Selezioni Online dà l'istante in UTC: conta il giorno in Italia, come nelle sue pagine
+const giornoIt = (v) => v && /T.*(Z|[+-]\d\d:?\d\d)$/.test(v) ? new Date(v).toLocaleDateString("sv-SE", { timeZone: "Europe/Rome" }) : (v || "").slice(0, 10);
+
 function disegnaBandi() {
-  const q = $("q").value.trim().toLowerCase(), tip = $("tipologia").value, st = $("stato-coll").value;
+  const q = $("q").value, tip = $("tipologia").value, st = $("stato-coll").value;
   const mese = $("mese").value, soloSegn = $("solo-segnalazioni").checked;
-  const righe = bandi.filter(b => (!q || `${b.codice} ${b.titolo}`.toLowerCase().includes(q))
+  const righe = bandi.filter(b => contieneTesto(q, `${b.codice} ${b.titolo}`)
     && (!tip || b.tipologia === tip) && (!st || b.stato_collegamento === st)
     && (!mese || (b.data_pubblicazione || "").startsWith(mese)) && (!soloSegn || b.segnalazioni.length));
   $("conteggio").textContent = `(${righe.length} di ${bandi.length})`;
@@ -360,12 +366,12 @@ const linkPunteggi = (url) => url ? `<div><a class="punteggi-sol" href="${esc(ur
 
 function disegnaAtti() {
   const tipo = $("atti-tipo").value, tip = $("atti-tipologia").value, manca = $("atti-manca").value;
-  const inc = $("atti-incompleti").checked, pd = $("atti-protdiv").checked, q = $("atti-q").value.trim().toLowerCase();
+  const inc = $("atti-incompleti").checked, pd = $("atti-protdiv").checked, q = $("atti-q").value;
   const rdp = $("atti-rdp").value;
   const righe = atti.filter(a => (!tipo || a.atto === tipo) && (!tip || a.tipologia === tip)
     && (!manca || a.fonti[manca].stato === "mancante") && (!inc || a.difforme) && (!pd || a.protocollo_diverso)
     && (!rdp || (a.rdp || []).some(r => (r.email || nomeRdp(r)) === rdp))
-    && (!q || `${a.numero_bando} ${a.codice} ${a.protocollo} ${a.titolo}`.toLowerCase().includes(q)));
+    && contieneTesto(q, `${a.numero_bando} ${a.codice} ${a.protocollo} ${a.titolo} ${a.titolo_bando || ""} ${(a.note || []).join(" ")} ${(a.rdp || []).map(r => `${r.nome} ${r.cognome} ${r.email}`).join(" ")}`));
   $("conteggio-atti").textContent = `(${righe.length} di ${atti.length} · ${fontiInAttesa.length ? "difformità sospese" : `${atti.filter(a => a.difforme).length} con difformità`})`;
   renderTabellaAtti("atti", righe, false);
 }
@@ -574,7 +580,7 @@ function righeGraduatoriaUnificate() {
       destinazione.rdp = p.rdp?.length ? p.rdp : destinazione.rdp;
       destinazione.codice = p.codice || destinazione.codice;
       destinazione.note = [...new Set([...(destinazione.note || []), ...note.filter(n =>
-        !(n === "graduatoria non allegata su SOL" && (destinazione.note || []).some(x => x.includes("senza documento pubblico"))))])];
+        !(n === "graduatoria pubblica (oscurata) non allegata su SOL" && (destinazione.note || []).some(x => x.includes("senza documento pubblico"))))])];
       if (note.length) destinazione.difforme = true;
       destinazione.scoreRecord = p;
       return;
@@ -592,7 +598,7 @@ function righeGraduatoriaUnificate() {
         urp: { ...fonteNessunDato }, segreteria: { ...fonteNessunDato } },
       note: [...new Set(note)], rdp: p.rdp || [], link_codice: p.url, url_punteggi: p.url_punteggi,
       punteggi: punteggiPerRiga(p), scoreRecord: p, difforme: true, incompleto: !p.allegato_sol,
-      protocollo_diverso: note.some(n => n.startsWith("protocollo graduatoria diverso")),
+      protocollo_diverso: note.some(n => n.startsWith("numero di protocollo della graduatoria pubblica (oscurata) diverso")),
     });
   });
 
@@ -791,15 +797,16 @@ async function apriCandidati(schedaId, tr, opzioni = {}) {
   (corpo.scorrimenti_noti || []).forEach(g => g.protocolli.forEach(p => scorrNoti.set(normProt(p), g.data)));
   let senza = 0, protDiv = 0, dataDiv = 0, sSenza = 0, sDiv = 0;
   const righe = ordinati.map(c => {
-    const prot = normProt(c.numero_protocollo_graduatoria), data = (c.data_protocollo_graduatoria || "").slice(0, 10);
-    const cellaProt = !prot ? (senza++, `<td class="f mancante">mancante</td>`)
+    const prot = normProt(c.numero_protocollo_graduatoria), data = giornoIt(c.data_protocollo_graduatoria);
+    const graduato = ["V", "I", "S"].includes((c.esito || "").trim().toUpperCase());  // solo a loro Selezioni Online scrive il protocollo
+    const cellaProt = !prot ? (graduato ? (senza++, `<td class="f mancante">mancante</td>`) : `<td>–</td>`)
       : protDoc && prot !== protDoc ? (protDiv++, `<td class="f diverso" title="diverso dal documento allegato (${esc(r.protocollo)})">${esc(c.numero_protocollo_graduatoria)}</td>`)
       : `<td>${esc(c.numero_protocollo_graduatoria)}</td>`;
-    const cellaData = !data ? `<td class="f mancante">mancante</td>`
+    const cellaData = !data ? (graduato ? `<td class="f mancante">mancante</td>` : `<td>–</td>`)
       : dataDoc && data !== dataDoc ? (dataDiv++, `<td class="f diverso" title="diversa dal documento allegato (${dataIt(dataDoc)})">${dataIt(data)}</td>`)
       : `<td>${dataIt(data)}</td>`;
     const esito = (c.esito || "").toUpperCase();
-    const pa = normProt(c.numero_protocollo_assunzione_idoneo), da = (c.data_protocollo_assunzione_idoneo || "").slice(0, 10);
+    const pa = normProt(c.numero_protocollo_assunzione_idoneo), da = giornoIt(c.data_protocollo_assunzione_idoneo);
     let cellaPa = `<td>${esc(c.numero_protocollo_assunzione_idoneo || "")}</td>`, cellaDa = `<td>${dataIt(da)}</td>`;
     if (esito === "S" && !pa) { sSenza++; cellaPa = `<td class="f mancante" title="candidato S senza protocollo di assunzione idoneo">mancante</td>`; }
     else if (esito === "S" && !scorrNoti.has(pa)) { sDiv++; cellaPa = `<td class="f diverso" title="scorrimento non presente in URP, file segreteria o allegati SOL">${esc(c.numero_protocollo_assunzione_idoneo)}</td>`; }

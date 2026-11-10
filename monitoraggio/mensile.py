@@ -4,6 +4,7 @@ import re
 from datetime import date, datetime, timezone
 
 from . import config, excel_mese, posta
+from .normalizza import AGGIUNTA_TIPOLOGIE, ANCORA_SCORRIMENTI
 
 SEGNAPOSTI = ("mese", "mese_dati", "cartella", "file_scorrimenti", "link_scorrimenti", "file_graduatorie", "link_graduatorie")
 _CODICE_FISCALE = re.compile(r"\b[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]\b", re.I)
@@ -18,7 +19,7 @@ La richiesta è di inserire all'interno dei seguenti file, ognuno per la sua lin
 
 - scorrimenti: {file_scorrimenti}
   {link_scorrimenti}
-  i dati relativi agli scorrimenti del mese di {mese_dati}.
+  """ + ANCORA_SCORRIMENTI + AGGIUNTA_TIPOLOGIE + """
 
 - graduatoria: {file_graduatorie}
   {link_graduatorie}

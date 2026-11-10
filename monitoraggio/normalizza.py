@@ -1,6 +1,7 @@
 """Normalizzazione di codici bando, protocolli e date (research R5, R12)."""
 import re
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 _PREFISSI = re.compile(r"^\s*(?:codice\s+bando|bando\s*n\.?|bando)\s*[:\-]?\s*", re.I)
 _NUMERO = re.compile(r"(?<![\d.])(\d{3})\.(\d{1,4})(?![\d.])")
@@ -73,7 +74,11 @@ def data_iso(valore) -> str | None:
     s = str(valore).strip()
     m = re.match(r"^(\d{4}-\d{2}-\d{2})T", s)
     if m:
-        return m.group(1)
+        try:  # Selezioni Online dà l'istante in UTC: la mezzanotte italiana del 21 è il 20 alle 22
+            istante = datetime.fromisoformat(s)
+        except ValueError:
+            return m.group(1)
+        return istante.astimezone(ZoneInfo("Europe/Rome")).date().isoformat() if istante.tzinfo else m.group(1)
     m = re.search(r"\d{2}[/\-.]\d{2}[/\-.]\d{4}|\d{4}-\d{2}-\d{2}", s)
     if not m:
         return None
@@ -83,3 +88,18 @@ def data_iso(valore) -> str | None:
         except ValueError:
             pass
     return None
+
+
+def nota_sottotipo(nel_file: str, nel_titolo: str) -> str:
+    """Il file della segreteria e il titolo del documento non concordano: su Selezioni Online il titolo non cambia, si interviene sul file."""
+    if nel_titolo == "subentro":
+        nel_file = "scorrimento e subentro insieme" if nel_file == "misto" else "scorrimento"
+        return (f"nota per il monitoraggio: il titolo del documento indica un subentro, mentre nel file della segreteria risulta «{nel_file}». "
+                "Nel file degli scorrimenti va indicata la tipologia «subentro»")
+    return ("nota per il monitoraggio: nel file della segreteria risulta «subentro», mentre il titolo del documento indica uno scorrimento. "
+            "Nel file degli scorrimenti va controllato che la tipologia sia corretta")
+
+
+ANCORA_SCORRIMENTI = "i dati relativi agli scorrimenti del mese di {mese_dati}."
+AGGIUNTA_TIPOLOGIE = ("\n  Da adesso, nella colonna TIPOLOGIA va indicato anche il tipo di scorrimento: scorrimento per disponibilità di risorse, "
+                      "scorrimento successivo a una rinuncia (subentro) oppure scorrimento per cessazione del vincitore dopo i 6 mesi.")

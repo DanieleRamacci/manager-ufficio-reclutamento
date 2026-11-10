@@ -357,6 +357,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             if not m:
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
             righe = comunicazioni.righe_mese(conn, m)
+            difformita.registro_per_righe(conn, m["mese"], righe)
             return jsonify({"righe": righe, "conteggi": comunicazioni.conteggi(righe), "fonti_in_attesa": atti.fonti_in_attesa(conn)})
         finally:
             conn.close()
@@ -439,7 +440,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         conn = _conn()
         try:
             m = _trova(conn, mese)
-            messaggio = comunicazioni.messaggio(conn, m, codice) if m else None
+            messaggio = comunicazioni.messaggio(conn, m, codice, sollecito=request.args.get("sollecito") == "1") if m else None
             return jsonify({**messaggio, "id_monitoraggio": mensile.id_monitoraggio(m), "chiuso": m["stato"] == "chiuso"}) if messaggio \
                 else (jsonify({"error": "Comunicazione non trovata"}), 404)
         finally:
@@ -469,8 +470,8 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             conn.close()
 
     def _invia_messaggio(conn, m: dict, codice: str, modo: str, oggetto: str | None = None, corpo: str | None = None, conferma: bool = False,
-                         righe: list[dict] | None = None):
-        messaggio = comunicazioni.messaggio(conn, m, codice, righe)
+                         righe: list[dict] | None = None, sollecito: bool = False):
+        messaggio = comunicazioni.messaggio(conn, m, codice, righe, sollecito=sollecito)
         if not messaggio:
             return {"error": "Comunicazione non trovata"}, 404
         if not messaggio["n_difformita"]:
@@ -481,7 +482,9 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         if not messaggio["destinatari"]:
             return {"error": "Tutti i referenti sono stati tolti da questa email: rimettine almeno uno" if messaggio["referenti"]
                     else "Nessuna email RdP disponibile per questo bando"}, 400
-        if modo == "ufficiale" and messaggio["stato"] in ("inviata", "inviata_a_mano") and not conferma:
+        if sollecito and messaggio["stato"] not in ("inviata", "inviata_a_mano", "da_confermare"):
+            return {"error": "Si può sollecitare solo una comunicazione già inviata"}, 400
+        if modo == "ufficiale" and messaggio["stato"] in ("inviata", "inviata_a_mano") and not conferma and not sollecito:
             return {"error": "Comunicazione già inviata", "gia_inviata": True}, 409
         try:
             prova = posta.invia(messaggio["destinatari"], oggetto, testo, modo=modo, cc=messaggio["cc_aggiunti"])
@@ -511,7 +514,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             if not m:
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
             mensile.verifica_aperto(conn, mese)
-            esito, codice_http = _invia_messaggio(conn, m, codice, modo, corpo.get("oggetto"), corpo.get("corpo"), bool(corpo.get("conferma")))
+            esito, codice_http = _invia_messaggio(conn, m, codice, modo, corpo.get("oggetto"), corpo.get("corpo"), bool(corpo.get("conferma")), sollecito=bool(corpo.get("sollecito")))
             return jsonify(esito), codice_http
         except mensile.MeseChiuso as e:
             return jsonify({"error": str(e)}), 409

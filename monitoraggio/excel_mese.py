@@ -15,7 +15,8 @@ from .normalizza import data_iso
 MODELLI = Path(__file__).resolve().parent / "modelli"
 MODELLO_SCORRIMENTI = "MODELLO-scorrimenti-mese-anno.xlsx"
 MODELLO_GRADUATORIE = "MODELLO-Graduatorie-e-bandi-pubblicati-mese-anno.xlsx"
-NOTA_TIPOLOGIA = "Indicare se scorrimento, subentro o per rinuncia dopo 6 mesi"
+NOTA_TIPOLOGIA = ("Indicare il tipo: scorrimento per disponibilità di risorse, scorrimento successivo a una rinuncia (subentro) "
+                  "oppure scorrimento per cessazione del vincitore dopo i 6 mesi")
 INTESTAZIONI_BANDI = ["Codice bando", "Sede di lavoro", "Struttura di riferimento", "N. Posti", "Profilo/Livello",
                       "Protocollo", "Data pubblicazione"]
 TIPOLOGIE_MOBILITA = {"mobilita", "comando"}
@@ -61,7 +62,7 @@ def excel_scorrimenti() -> bytes:
         ws.merge_cells(f"A1:{lettera}1")
         intestazione = ws.cell(2, nuova, "TIPOLOGIA")
         nota = Comment(NOTA_TIPOLOGIA, "Monitoraggio")
-        nota.width, nota.height = 260, 70
+        nota.width, nota.height = 300, 120
         intestazione.comment = nota
         ws.column_dimensions[lettera].width = 28
         if ws.auto_filter.ref:

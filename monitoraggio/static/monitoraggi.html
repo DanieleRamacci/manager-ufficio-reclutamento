@@ -11,7 +11,7 @@
 <body>
   <main id="contenuto"><p class="muted">Caricamento…</p></main>
   <script>
-    const { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, json: corpoJson, toast, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati } = App;
+    const { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, contieneTesto, json: corpoJson, toast, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati } = App;
     const meseScelto = location.pathname.split("/")[3];
     const titoloMese = (mese) => { const [a, n] = mese.split("-"); return `${MESI[Number(n) - 1]} ${a}`; };
     const chipGruppo = (g) => `<span class="chip t-${g}">${esc(TIPOLOGIE[g] || g)}</span>`;
@@ -101,7 +101,7 @@
     }
 
     // ------------------------------------------------------------------- dettaglio
-    const stato = { m: null, atti: null, scheda: "difformita", filtri: { tipologia: "", comunicazione: "", solo: false, q: "" }, ver: null };
+    const stato = { m: null, atti: null, scheda: "difformita", filtri: { tipologia: "", comunicazione: "", solo: false, q: "", rdp: "" }, ver: null };
     const POSTA = () => stato.m.posta;
 
     async function dettaglio() {
@@ -170,17 +170,47 @@
     }
 
     // --- atti
+    const idRdp = (p) => p.email || `${p.nome} ${p.cognome}`;
+    const opzioniRdp = (persone, scelto) => [...new Map(persone.map(p => [idRdp(p), `${p.cognome || ""} ${p.nome || ""}`.trim() || p.email])).entries()]
+      .sort((a, b) => a[1].localeCompare(b[1])).map(([id, nome]) => `<option value="${esc(id)}"${id === scelto ? " selected" : ""}>${esc(nome)}</option>`).join("");
+    function cellaRilievi(r) {
+      const reg = r.registro;
+      const voci = reg ? [...reg.rilievi, ...r.rilievi.filter(t => !reg.rilievi.some(v => v.testo === t)).map(testo => ({ testo }))] : r.rilievi.map(testo => ({ testo }));
+      if (!voci.length) return "";
+      const testata = reg && reg.badge !== "da_correggere" ? `<div style="margin-bottom:4px"><span class="badge ${reg.badge}">${BADGE[reg.badge]}</span>${reg.corretta_il ? ` <span class="muted small">il ${ora(reg.corretta_il)}</span>` : ""}</div>` : "";
+      const verifica = reg && reg.badge !== "corretta" && stato.m.stato !== "chiuso" ? `<button type="button" class="piccolo solo-admin" data-verifica-atto="${reg.id}"${stato.verificaAtti || stato.atti.fonti_in_attesa.length ? " disabled" : ""}>Verifica</button>` : "";
+      return `${testata}<ul class="rilievi">${voci.map(v => `<li class="${v.risolto ? "risolto" : v.testo.startsWith("protocollo diverso") ? "diverso" : ""}">${esc(v.testo)}${v.nuovo ? " (nuovo)" : ""}</li>`).join("")}</ul>${verifica}`;
+    }
+    async function verificaDaAtti(id) {
+      try { await chiama(`/api/monitoraggi/${stato.m.mese}/difformita/verifica`, corpoJson("POST", { ids: [id] })); }
+      catch (err) { return toast(err.message); }
+      stato.verificaAtti = true;
+      stato.esitoAtti = `<div class="avviso" role="status">Verifica del bando in corso…</div>`;
+      schedaAtti();
+      attendiVerifica();
+    }
+    async function attendiVerifica() {
+      try {
+        const v = (await chiama(`/api/monitoraggi/${stato.m.mese}/difformita`)).verifica;
+        if (v.in_corso) { stato.attesaVerifica = setTimeout(attendiVerifica, 2000); return; }
+        stato.atti = await chiama(`/api/monitoraggi/${stato.m.mese}/atti`);
+        stato.verificaAtti = false;
+        stato.esitoAtti = esitoVerifica(v);
+        disegna();
+      } catch (err) { stato.verificaAtti = false; stato.esitoAtti = ""; toast(err.message); }
+    }
     function righeScheda() {
-      const f = stato.filtri, s = stato.scheda, q = f.q.toLowerCase();
+      const f = stato.filtri, s = stato.scheda;
       return stato.atti.righe.filter(r => {
-        if (s === "difformita" && !r.con_difformita) return false;
+        if (s === "difformita" && !r.con_difformita && !r.registro) return false;
         if (s === "subentro" ? r.sottotipo !== "subentro" : (s !== "difformita" && r.atto !== s)) return false;
         if (f.tipologia && r.gruppo_tipologia && r.gruppo_tipologia !== f.tipologia) return false;
         if (f.solo && !r.con_difformita) return false;
         if (f.comunicazione === "da_inviare" && r.comunicazione.stato !== "da_inviare") return false;
         if (f.comunicazione === "da_confermare" && r.comunicazione.stato !== "da_confermare") return false;
         if (f.comunicazione === "inviate" && !["inviata", "inviata_a_mano"].includes(r.comunicazione.stato)) return false;
-        return !q || `${r.numero_bando} ${r.codice} ${r.protocollo} ${(r.rdp || []).map(p => `${p.nome} ${p.cognome}`).join(" ")}`.toLowerCase().includes(q);
+        if (f.rdp && !(r.rdp || []).some(p => idRdp(p) === f.rdp)) return false;
+        return contieneTesto(f.q, `${r.numero_bando} ${r.codice} ${r.titolo_bando} ${r.n_gestione} ${r.protocollo} ${ATTI[r.atto] || r.atto} ${(r.rilievi || []).join(" ")} ${(r.rdp || []).map(p => `${p.nome} ${p.cognome} ${p.email}`).join(" ")}`);
       });
     }
     function cellaComunicazione(r) {
@@ -228,8 +258,10 @@
         <select id="f-tip" aria-label="Tipologia"><option value="">Tutte le tipologie</option>${m.tipologie.map(g => `<option value="${g}"${f.tipologia === g ? " selected" : ""}>${TIPOLOGIE[g]}</option>`).join("")}</select>
         <select id="f-com" aria-label="Comunicazione"><option value="">Tutte le comunicazioni</option>${[["da_inviare", "Da inviare"], ["da_confermare", "Da confermare"], ["inviate", "Inviate"]].map(([k, t]) => `<option value="${k}"${f.comunicazione === k ? " selected" : ""}>${t}</option>`).join("")}</select>
         <label class="spunta"><input type="checkbox" id="f-solo"${f.solo ? " checked" : ""}> solo con difformità</label>
-        <input type="search" id="f-q" placeholder="Bando, protocollo, RdP" value="${esc(f.q)}" aria-label="Cerca"></div>`;
+        <select id="f-rdp" aria-label="RdP"><option value="">Tutti gli RdP</option>${opzioniRdp(stato.atti.righe.flatMap(r => r.rdp || []), f.rdp)}</select>
+        <input type="search" id="f-q" placeholder="Codice, titolo, protocollo, RdP o testo" size="34" value="${esc(f.q)}" aria-label="Cerca"></div>`;
       $("corpo-scheda").innerHTML = `
+        ${stato.esitoAtti ? `<div style="margin-bottom:8px">${stato.esitoAtti}</div>` : ""}
         ${stato.scheda === "bando" ? "" : `<div class="small muted" id="stato-candidati" style="margin-bottom:8px"></div>`}
         ${daInviare.length && m.stato !== "chiuso" ? `<div class="banda solo-admin"><span><b>${daInviare.length}</b> bandi con difformità ancora da comunicare</span>
           <button class="primario" type="button" id="invia-tutti">Invia tutti dalla casella dell'ufficio…</button></div>` : ""}
@@ -238,15 +270,17 @@
           <td style="min-width:170px"><b>${esc(r.codice || r.numero_bando)}</b><div class="muted2 small" style="max-width:240px">${esc(r.titolo_bando)}</div></td><td>${chipTipologia(r.tipologia)}</td><td class="mono small">${esc(r.n_gestione)}</td>
           <td>${esc(ATTI[r.atto] || r.atto)}${r.sottotipo && r.sottotipo !== "non_specificato" ? ` <span class="chip t-altro">${esc(r.sottotipo)}</span>` : ""}${r.persone ? `<div class="muted2 small">${r.persone} persone nel file segreteria</div>` : ""}${celleCandidati(r)}</td>
           <td class="mono small">${esc(r.protocollo)}</td>${cellaFonte(r, "sol")}${cellaFonte(r, "urp")}${cellaFonte(r, "segreteria")}
-          <td style="min-width:240px">${r.sblocco_graduatoria ? `<div style="margin-bottom:4px"><span class="pillola p-warn" title="La graduatoria è su Selezioni Online ma il protocollo non è valorizzato: se il referente non riesce a premere il pulsante, va sbloccata">graduatoria da sbloccare</span></div>` : ""}${r.rilievi.length ? `<ul class="rilievi">${r.rilievi.map(t => `<li class="${t.startsWith("protocollo diverso") ? "diverso" : ""}">${esc(t)}</li>`).join("")}</ul>` : (r.comunicazione.stato === "in_attesa" ? `<span class="muted2">Non ancora confrontabile</span>` : r.punteggi_da_verificare ? `<span class="muted2">Fonti in regola</span>` : `<span style="color:var(--ok)" class="small">Nessuna difformità</span>`)}${r.punteggi_da_verificare ? `<div class="etichetta small" style="margin-top:4px">Punteggi da verificare: V, I e protocolli non ancora controllati</div>` : ""}</td>
+          <td style="min-width:240px">${r.sblocco_graduatoria ? `<div style="margin-bottom:4px"><span class="pillola p-warn" title="La graduatoria è su Selezioni Online ma il protocollo non è valorizzato: se il referente non riesce a premere il pulsante, va sbloccata">graduatoria da sbloccare</span></div>` : ""}${cellaRilievi(r) || (r.comunicazione.stato === "in_attesa" ? `<span class="muted2">Non ancora confrontabile</span>` : r.punteggi_da_verificare ? `<span class="muted2">Fonti in regola</span>` : `<span style="color:var(--ok)" class="small">Nessuna difformità</span>`)}${r.punteggi_da_verificare ? `<div class="etichetta small" style="margin-top:4px">Punteggi da verificare: V, I e protocolli non ancora controllati</div>` : ""}</td>
           ${cellaRdp(r)}${cellaComunicazione(r)}</tr>`).join("") || `<tr><td colspan="12" class="muted">Nessun atto con questi filtri.</td></tr>`}
         </tbody></table></div></section>`;
       const aggiorna = () => { f.tipologia = $("f-tip").value; f.comunicazione = $("f-com").value; f.solo = $("f-solo").checked; f.q = $("f-q").value; const pos = $("f-q").selectionStart; schedaAtti(); $("f-q").focus(); $("f-q").setSelectionRange(pos, pos); };
       ["f-tip", "f-com", "f-solo"].forEach(id => $(id).onchange = () => { f.tipologia = $("f-tip").value; f.comunicazione = $("f-com").value; f.solo = $("f-solo").checked; schedaAtti(); });
       $("f-q").oninput = aggiorna;
+      $("f-rdp").onchange = () => { f.rdp = $("f-rdp").value; schedaAtti(); };
       const corpo = $("corpo-scheda");
       collegaRdp(corpo); collegaCandidati(corpo, 12); mostraCandidati();
       corpo.querySelectorAll(".apri-messaggio").forEach(b => b.onclick = () => apriMessaggio(b.dataset.c));
+      corpo.querySelectorAll("[data-verifica-atto]").forEach(b => b.onclick = () => verificaDaAtti(Number(b.dataset.verificaAtto)));
       corpo.querySelectorAll(".spunta-inviata").forEach(c => c.onchange = async () => {
         try { await chiama(`/api/monitoraggi/${m.mese}/solleciti/${encodeURIComponent(c.dataset.c)}`, corpoJson("PUT", { inviata: c.checked })); await dettaglio(); }
         catch (err) { toast(err.message); }
@@ -273,7 +307,10 @@
       const m = stato.m;
       let d;
       try { d = await chiama(`/api/monitoraggi/${m.mese}/comunicazioni/${encodeURIComponent(codice)}/messaggio`); } catch (err) { return toast(err.message); }
-      const lavoro = { oggetto: d.oggetto, corpo: d.corpo, modifica: false };
+      const urlMessaggio = `/api/monitoraggi/${m.mese}/comunicazioni/${encodeURIComponent(codice)}/messaggio`;
+      const sollecitabile = ["inviata", "inviata_a_mano", "da_confermare"].includes(d.stato) && d.n_difformita > 0;
+      if (sollecitabile) { try { d = await chiama(`${urlMessaggio}?sollecito=1`); } catch (err) { return toast(err.message); } }
+      const lavoro = { oggetto: d.oggetto, corpo: d.corpo, modifica: false, sollecito: sollecitabile };
       const p = d.posta, chiuso = d.chiuso, inviata = ["inviata", "inviata_a_mano"].includes(d.stato);
       const PILL = { da_inviare: ["p-ko", "da inviare"], da_confermare: ["p-warn", "da confermare"], inviata: ["p-ok", "inviata"], inviata_a_mano: ["p-ok", "inviata"], in_regola: ["p-na", "in regola"] }[d.stato];
       const o = apriFinestra(`<header><div><b>Comunicazione difformità · bando ${esc(codice)}</b><div class="mono small muted">${esc(d.id_monitoraggio)}/${esc(d.numero_bando || codice)}/${esc(d.n_gestione)}</div></div><span class="pillola ${PILL[0]}">${PILL[1]}</span></header>
@@ -281,9 +318,10 @@
           <div class="small"><b>Da:</b> ${p.nome_mittente ? `${esc(p.nome_mittente)} &lt;${esc(p.mittente || "non impostata")}&gt;` : esc(p.mittente || "non impostata")} · casella dell'ufficio</div>
           <div class="small" id="area-a"></div>
           <div class="small" id="area-cc"></div>
+          ${sollecitabile ? `<div class="schede" style="align-self:flex-start"><button type="button" id="t-sollecito" aria-selected="true">Sollecito</button><button type="button" id="t-prima" aria-selected="false">Prima comunicazione</button></div>` : ""}
           <div class="schede" style="align-self:flex-start"><button type="button" id="v-ant" aria-selected="true">Anteprima</button><button type="button" id="v-mod" aria-selected="false">Modifica testo</button></div>
           <div id="area-testo"></div>
-          ${d.storico.length ? `<details><summary class="small">Storico (${d.storico.length})</summary>${d.storico.map(s => `<div class="small">${ora(s.data)} · ${esc(s.canale)} · ${esc(s.stato)} · <span class="mono">${esc(s.id)}</span></div>`).join("")}</details>` : ""}
+          ${d.storico.length ? `<details><summary class="small">Storico (${d.storico.length})</summary>${d.storico.map(s => `<div class="small">${ora(s.data)} · ${(s.oggetto || "").startsWith("Promemoria") ? "sollecito · " : ""}${esc(s.canale)} · ${esc(s.stato)} · <span class="mono">${esc(s.id)}</span></div>`).join("")}</details>` : ""}
         </div>
         <footer><div class="riga" style="align-items:center"><button type="button" id="copia-msg">Copia messaggio</button><a class="pulsante" id="apri-client" href="#">Apri nel mio client email</a>
           ${chiuso ? "" : `<label class="spunta solo-admin"><input type="checkbox" id="spunta"${inviata ? " checked" : ""}> Email inviata</label>`}</div>
@@ -344,6 +382,20 @@
       }
       testo();
       indirizzi();
+      if (sollecitabile) {
+        const scegli = async (s) => {
+          try {
+            const n = await chiama(`${urlMessaggio}${s ? "?sollecito=1" : ""}`);
+            Object.assign(lavoro, { oggetto: n.oggetto, corpo: n.corpo, sollecito: s });
+            Object.assign(d, n);
+            o.querySelector("#t-sollecito").setAttribute("aria-selected", String(s));
+            o.querySelector("#t-prima").setAttribute("aria-selected", String(!s));
+            testo();
+          } catch (err) { toast(err.message); }
+        };
+        o.querySelector("#t-sollecito").onclick = () => scegli(true);
+        o.querySelector("#t-prima").onclick = () => scegli(false);
+      }
       o.querySelector("#v-ant").onclick = () => { lavoro.modifica = false; testo(); };
       o.querySelector("#v-mod").onclick = () => { lavoro.modifica = true; testo(); };
       o.querySelector("#chiudi-msg").onclick = chiudiFinestra;
@@ -354,7 +406,7 @@
       if (spunta) spunta.onchange = async () => { try { await chiama(`/api/monitoraggi/${m.mese}/solleciti/${encodeURIComponent(codice)}`, corpoJson("PUT", { inviata: spunta.checked })); toast("Stato aggiornato"); await dettaglio(); } catch (err) { toast(err.message); } };
       async function invia(modo, conferma = false) {
         try {
-          const r = await chiama(`/api/monitoraggi/${m.mese}/comunicazioni/${encodeURIComponent(codice)}/invia`, corpoJson("POST", { modo, oggetto: lavoro.oggetto, corpo: lavoro.corpo, conferma }));
+          const r = await chiama(`/api/monitoraggi/${m.mese}/comunicazioni/${encodeURIComponent(codice)}/invia`, corpoJson("POST", { modo, oggetto: lavoro.oggetto, corpo: lavoro.corpo, conferma, sollecito: lavoro.sollecito }));
           toast(r.prova ? `Prova inviata a ${p.indirizzo_prova}` : "Email inviata");
           if (!r.prova) chiudiFinestra();
           await dettaglio();
@@ -365,14 +417,14 @@
       }
       const bp = o.querySelector("#invia-prova"), bu = o.querySelector("#invia-uff");
       if (bp) bp.onclick = async () => { if (await pronto()) invia("prova"); };
-      if (bu) bu.onclick = async () => { if (await pronto() && confirm(`INVIO REALE a:\n${d.destinatari.join(", ")}${d.cc.length ? `\n\nIn copia:\n${d.cc.join(", ")}` : ""}\n\nProcedere?`)) invia("ufficiale"); };
+      if (bu) bu.onclick = async () => { if (await pronto() && confirm(`${lavoro.sollecito ? "SOLLECITO, " : ""}INVIO REALE a:\n${d.destinatari.join(", ")}${d.cc.length ? `\n\nIn copia:\n${d.cc.join(", ")}` : ""}\n\nProcedere?`)) invia("ufficiale"); };
     }
 
     // --- correzioni
     const BADGE = { da_correggere: "Da correggere", parziale: "Parzialmente corretta", corretta: "Corretta", da_controllare: "Da controllare" };
     const EVENTI = { rilevata: "rilevata", cambiata: "rilievi cambiati", corretta: "corretta", ricomparsa: "ricomparsa", non_trovata: "atto non più trovato" };
     const INDETERMINATO = ["tempo_indeterminato", "reclutamento_speciale"];
-    const filtriRegistro = { stato: "", tipologia: "" };
+    const filtriRegistro = { stato: "", tipologia: "", rdp: "", q: "" };
     let attesaRegistro = null;
     function esitoVerifica(v) {
       if (!v || v.in_corso || !v.fine) return "";
@@ -387,25 +439,33 @@
       let d;
       try { d = await chiama(`/api/monitoraggi/${mese}/difformita`); } catch (err) { box.innerHTML = `<div class="errore">${esc(err.message)}</div>`; return; }
       const v = d.verifica, inCorso = v.in_corso, qui = v.mese === mese, f = filtriRegistro;
-      const visibili = d.voci.filter(x => (!f.stato || x.badge === f.stato) && (!f.inviate || (x.sollecito && x.badge !== "corretta")) && (!f.tipologia || !x.tipologia || (f.tipologia === "indeterminato") === INDETERMINATO.includes(x.tipologia)));
+      const visibili = d.voci.filter(x => (!f.stato || x.badge === f.stato) && (!f.inviate || (x.sollecito && x.badge !== "corretta")) && (!f.rdp || x.rdp.some(p => idRdp(p) === f.rdp)) && (!f.tipologia || !x.tipologia || (f.tipologia === "indeterminato") === INDETERMINATO.includes(x.tipologia)));
+      const posizione = document.activeElement?.id === "r-q" ? document.activeElement.selectionStart : null;
       box.innerHTML = `<h2>Difformità e correzioni</h2>
         <p class="muted small">Restano qui anche dopo la correzione. Ultimo controllo: ${d.ultimo_controllo ? ora(d.ultimo_controllo) : "mai"}. Si aggiornano da sole dopo ogni aggiornamento dei dati, e subito con Verifica.</p>
         ${d.fonti_in_attesa.length || d.fonti_affidabili ? "" : `<div class="avviso">L'ultima raccolta di una fonte non è riuscita o non è stata fatta: finché non riesce, nessuna difformità viene segnata come corretta.</div>`}
         <div class="conteggi"><span class="badge da_correggere">Da correggere: ${d.conteggi.da_correggere}</span><span class="badge parziale">Parziali: ${d.conteggi.parziale}</span><span class="badge corretta">Corrette: ${d.conteggi.corretta}</span>${d.conteggi.da_controllare ? `<span class="badge da_controllare">Da controllare: ${d.conteggi.da_controllare}</span>` : ""}</div>
         <div class="riga" style="margin-bottom:10px"><label>Stato <select id="r-stato"><option value="">Tutti</option>${Object.entries(BADGE).map(([k, t]) => `<option value="${k}"${f.stato === k ? " selected" : ""}>${t}</option>`).join("")}</select></label>
           <label>Tipologia <select id="r-tip"><option value="">Tutte</option><option value="indeterminato"${f.tipologia === "indeterminato" ? " selected" : ""}>Tempo indeterminato (concorsi pubblici)</option><option value="mobilita"${f.tipologia === "mobilita" ? " selected" : ""}>Mobilità e comandi</option></select></label>
+          <label>RdP <select id="r-rdp"><option value="">Tutti</option>${opzioniRdp(d.voci.flatMap(x => x.rdp), f.rdp)}</select></label>
+          <label>Cerca <input type="search" id="r-q" placeholder="Codice, titolo, protocollo, RdP o testo" size="34" value="${esc(f.q)}"></label>
           <label class="spunta"><input type="checkbox" id="r-inviate"${f.inviate ? " checked" : ""}> Già inviate e ancora aperte</label>
           <button class="primario solo-admin" type="button" id="verifica-tutte"${inCorso || d.fonti_in_attesa.length ? " disabled" : ""}>Verifica tutte</button></div>
         ${inCorso ? `<div class="avviso" role="status">Verifica in corso${qui ? `: ${v.fatti} di ${v.totale} bandi` : " su un altro monitoraggio"}…</div>` : qui ? esitoVerifica(v) : ""}
         <div class="errore" id="errore-registro" role="alert" hidden></div>
         <div class="scroll"><table style="min-width:760px"><thead><tr><th>Stato</th><th>Atto</th><th>Rilievi</th><th>Sollecito</th><th></th></tr></thead><tbody>
-        ${visibili.map(x => `<tr><td><span class="badge ${x.badge}">${BADGE[x.badge]}</span>${x.corretta_il ? `<div class="muted small">il ${ora(x.corretta_il)}</div>` : ""}</td>
-          <td><b>${esc(x.codice || x.numero_bando)}</b> <span class="mono small muted2">${esc(x.n_gestione)}</span><div class="small">${esc(x.atto)} del ${esc(dataIt(x.data))}</div>${x.protocollo ? `<div class="muted small mono">prot. ${esc(x.protocollo)}</div>` : ""}</td>
+        ${visibili.map(x => `<tr data-cerca="${esc(`${x.codice} ${x.numero_bando} ${x.titolo_bando} ${x.n_gestione} ${x.protocollo} ${x.atto} ${x.rilievi.map(r => r.testo).join(" ")} ${x.rdp.map(p => `${p.nome} ${p.cognome} ${p.email}`).join(" ")}`)}"><td><span class="badge ${x.badge}">${BADGE[x.badge]}</span>${x.corretta_il ? `<div class="muted small">il ${ora(x.corretta_il)}</div>` : ""}</td>
+          <td><b>${esc(x.codice || x.numero_bando)}</b> <span class="mono small muted2">${esc(x.n_gestione)}</span>${x.titolo_bando ? `<div class="muted2 small" style="max-width:240px">${esc(x.titolo_bando)}</div>` : ""}<div class="small">${esc(x.atto)} del ${esc(dataIt(x.data))}</div>${x.protocollo ? `<div class="muted small mono">prot. ${esc(x.protocollo)}</div>` : ""}</td>
           <td><ul class="rilievi">${x.rilievi.map(r => `<li${r.risolto ? ' class="risolto"' : ""}>${esc(r.testo)}${r.nuovo ? " (nuovo)" : ""}</li>`).join("")}</ul>
             <details><summary>Storico</summary>${x.storico.map(e => `<div class="small">${ora(e.quando)}: ${esc(EVENTI[e.tipo] || e.tipo)} (${esc(e.origine)}${e.utente ? `, ${esc(e.utente)}` : ""})</div>`).join("")}</details></td>
           <td class="small">${x.sollecito ? `${x.sollecito.stato === "da_confermare" ? "Da confermare" : x.sollecito.stato === "inviata" ? "Inviata" : "Inviata a mano"}<div class="muted">${ora(x.sollecito.quando)}</div>` : `<span class="muted">Non inviata</span>`}</td>
           <td style="white-space:nowrap">${x.badge === "corretta" ? "" : `<button type="button" class="piccolo solo-admin" data-verifica="${x.id}"${inCorso || d.fonti_in_attesa.length ? " disabled" : ""}>Verifica</button> <button type="button" class="piccolo" data-messaggio="${esc(x.codice || x.numero_bando)}"${d.fonti_in_attesa.length ? " disabled" : ""}>Messaggio</button>`}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">${d.totale ? "Nessuna difformità con questi filtri." : "Nessuna difformità rilevata."}</td></tr>`}
-        </tbody></table></div>`;
+        </tbody></table></div><p class="muted" id="r-vuoto" hidden>Nessun risultato per questa ricerca.</p>`;
+      const filtraTesto = () => { const righe = [...box.querySelectorAll("tr[data-cerca]")]; righe.forEach(tr => { tr.hidden = !contieneTesto(f.q, tr.dataset.cerca); }); $("r-vuoto").hidden = !righe.length || righe.some(tr => !tr.hidden); };
+      filtraTesto();
+      $("r-q").oninput = (e) => { f.q = e.target.value; filtraTesto(); };
+      if (posizione !== null) { $("r-q").focus(); $("r-q").setSelectionRange(posizione, posizione); }
+      $("r-rdp").onchange = () => { f.rdp = $("r-rdp").value; caricaRegistro(); };
       $("r-stato").onchange = () => { f.stato = $("r-stato").value; caricaRegistro(); };
       $("r-tip").onchange = () => { f.tipologia = $("r-tip").value; caricaRegistro(); };
       $("r-inviate").onchange = () => { f.inviate = $("r-inviate").checked; caricaRegistro(); };

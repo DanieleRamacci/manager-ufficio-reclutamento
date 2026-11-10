@@ -88,13 +88,26 @@ def elenco(conn) -> list[dict]:
              for u in sorted(fissi)]
     righe += [{**dict(r), "iniziale": False} for r in conn.execute("SELECT * FROM utente ORDER BY username")
               if r["username"] not in fissi]
-    return [{**r, "ultimo_accesso": accessi.get(r["username"]), "link": link_accesso(r["username"], r["ruolo"])} for r in righe]
+    return [{**r, "ultimo_accesso": accessi.get(r["username"]), "link": link_accesso(r["username"])} for r in righe]
 
 
-def link_accesso(nome: str, ruolo_utente: str | None) -> str:
-    """Il link da dare alla persona: non contiene credenziali. Chi è in lettura trova già il suo nome utente."""
-    base = f"{config.sito_url()}/login"
-    return f"{base}?utente={quote(normalizza(nome))}" if ruolo_utente == LETTURA else base
+def link_accesso(nome: str) -> str:
+    """Il link da dare alla persona, con il suo nome utente già compilato: non contiene credenziali."""
+    return f"{config.sito_url()}/login?utente={quote(normalizza(nome))}"
+
+
+def nome_da_indicazione(testo: str | None) -> str:
+    """Dal nome utente o dall'email scritti nella pagina di accesso: un'email in tabella vale per il suo utente."""
+    testo = (testo or "").strip().lower()
+    if "@" in testo:
+        conn = _conn()
+        try:
+            riga = conn.execute("SELECT username FROM utente WHERE lower(email) = ?", (testo,)).fetchone()
+        finally:
+            conn.close()
+        if riga:
+            return riga["username"]
+    return normalizza(testo)
 
 
 def invia_accesso(conn, nome: str, autore: str | None) -> str | None:
@@ -104,13 +117,10 @@ def invia_accesso(conn, nome: str, autore: str | None) -> str | None:
     if not chi:
         return None
     email = email_di(nome)
-    link = link_accesso(nome, chi)
-    modo = (f"Puoi consultare il monitoraggio in sola lettura. Apri questo link: riceverai nella tua casella un'email con un "
-            f"link di accesso temporaneo, valido 15 minuti.\n{link}" if chi == LETTURA else
-            f"Il tuo profilo è amministratore. Apri questo link, premi «Scarica file» in alto a destra e avvia il programma scaricato: "
-            f"entri facendo il login su Selezioni Online. La prima volta il Mac lo blocca perché non è firmato: premi Fine, apri "
-            f"Impostazioni di Sistema, Privacy e sicurezza, scegli «Apri comunque» e riavvialo.\n{link}")
-    posta.invia([email], "Accesso al monitoraggio bandi", f"Buongiorno,\n\n{modo}\n", sempre_reale=True)
+    posta.invia([email], "Accesso al monitoraggio bandi",
+                "Buongiorno,\n\nper consultare il monitoraggio apri questo link. Se la pagina lo chiede, inserisci la tua email o il tuo "
+                f"nome utente (nome.cognome) e richiedi il link di accesso: lo riceverai in questa casella, valido 15 minuti.\n{link_accesso(nome)}\n",
+                sempre_reale=True)
     conn.execute("INSERT INTO utente_modifica (username, azione, autore, quando) VALUES (?, 'invito_accesso', ?, ?)", (nome, autore, _adesso()))
     return email
 

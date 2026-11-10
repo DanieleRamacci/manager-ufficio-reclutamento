@@ -359,3 +359,11 @@ def test_link_col_nome_chiede_da_solo_il_link_temporaneo(db, tmp_path, monkeypat
     pagina = c.get("/login?utente=dirigente.uno").get_data(as_text=True)
     assert 'value="dirigente.uno"' in pagina and 'getElementById("richiesta").submit()' in pagina
     assert ".submit()" not in c.get("/login?utente=x y").get_data(as_text=True)
+
+
+def test_si_puo_chiedere_il_link_con_l_email_in_tabella(db, tmp_path, monkeypatch):
+    inviate = _link_email(monkeypatch)
+    utenti.imposta(db, "dirigente.uno", "lettura", "x", "dirigente@cnr.it")
+    c = _app(tmp_path, monkeypatch).test_client()
+    assert c.post("/login/visualizzatore", data={"username": "Dirigente@cnr.it"}).status_code == 200
+    assert inviate[0][0] == ["dirigente@cnr.it"]

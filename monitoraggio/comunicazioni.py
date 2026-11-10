@@ -81,7 +81,7 @@ def anteprima(conn, mese_dati: str) -> dict:
 
 
 # rilievi dei punteggi che indicano: graduatoria già su SOL ma dati da completare (caso A)
-_RILIEVI_PUNTEGGI = ("mancano i punteggi", "esito (V/I", "protocollo graduatoria non valorizzato",
+_RILIEVI_PUNTEGGI = ("mancano i punteggi", "esito (V/I", "non valorizzato sui candidati",
                      "punteggi su SOL solo per", "nessuna domanda inviata su SOL")
 
 NOTA_GRADUATORIA = ("Per le graduatorie, il controllo riguarda la versione pubblica (oscurata) allegata su Selezioni Online "
@@ -103,7 +103,7 @@ def _graduatoria_su_sol(r: dict) -> bool:
 
 def da_sbloccare(riga: dict) -> bool:
     """La graduatoria è su SOL ma il protocollo non è valorizzato: potrebbe servire lo sblocco manuale."""
-    return riga.get("atto") == "graduatoria" and any("protocollo graduatoria non valorizzato" in t for t in riga.get("rilievi") or [])
+    return riga.get("atto") == "graduatoria" and any("non valorizzato sui candidati" in t for t in riga.get("rilievi") or [])
 
 
 def istruzioni_email(righe: list[dict]) -> list[str]:
@@ -119,14 +119,7 @@ def istruzioni_email(righe: list[dict]) -> list[str]:
     return out
 
 
-def _rilievo_email(riga: dict, testo: str) -> str:
-    """Nell'email si dice quale graduatoria: il registro delle difformità conserva il testo originale."""
-    if riga["atto"] != "graduatoria":
-        return testo
-    return re.sub(r"^(la )?graduatoria\b(?! pubblica)", lambda m: f"{m.group(0)} pubblica (oscurata)", testo, flags=re.I)
-
-
-def messaggio(conn, monitoraggio: dict, codice: str, righe_del_mese: list[dict] | None = None) -> dict | None:
+def messaggio(conn, monitoraggio: dict, codice: str, righe_del_mese: list[dict] | None = None, sollecito: bool = False) -> dict | None:
     """Il messaggio standard per un codice: i soli rilievi e i soli RdP di quel codice, tolti quelli esclusi a mano.
     `righe_del_mese` evita di ricalcolare il mese quando si preparano più messaggi."""
     tutte = [r for r in (righe_mese(conn, monitoraggio) if righe_del_mese is None else righe_del_mese) if r["chiave"] == codice]
@@ -151,11 +144,17 @@ def messaggio(conn, monitoraggio: dict, codice: str, righe_del_mese: list[dict] 
     for i, r in enumerate(righe, 1):
         tipo = {"graduatoria": "Graduatoria pubblica (oscurata)", "scorrimento": "Provvedimento di assunzione idoneo / scorrimento"}.get(r["atto"], r["atto"])
         testa = f"{i}) {tipo} del {_data_it(r.get('data'))}" + (f" – prot. {r['protocollo']}" if r.get("protocollo") else "")
-        voci.append("\n".join([testa, *[f"   – {_rilievo_email(r, t)}" for t in r["rilievi"]]]))
+        voci.append("\n".join([testa, *[f"   – {t}" for t in r["rilievi"]]]))
     saluto = f"Gentile {attivi[0]['nome']}," if len(attivi) == 1 and attivi[0]["nome"] else "Gentili tutte e tutti,"
     titolo = f" – {r0['titolo_bando']}" if r0.get("titolo_bando") else ""
-    corpo = (f"{saluto}\n\nnell'ambito del monitoraggio mensile di {mese_testo}, per il bando {codice}{titolo} "
-             f"risultano le seguenti difformità tra le fonti:\n\n" + "\n\n".join(voci))
+    if sollecito:
+        quando = r0["comunicazione"].get("quando")
+        apertura = (f"vi scriviamo con un gentile promemoria sulla comunicazione{f' del {_data_it(quando)}' if quando else ''} relativa al monitoraggio "
+                    f"mensile di {mese_testo}, per il bando {codice}{titolo}. Dai dati attualmente disponibili, risultano ancora da aggiornare i seguenti punti:")
+    else:
+        apertura = (f"nell'ambito del monitoraggio mensile di {mese_testo}, per il bando {codice}{titolo} "
+                    f"risultano le seguenti difformità tra le fonti:")
+    corpo = f"{saluto}\n\n{apertura}\n\n" + "\n\n".join(voci)
     con_graduatoria = any(r["atto"] == "graduatoria" for r in righe)
     if con_graduatoria:
         corpo += f"\n\n{NOTA_GRADUATORIA}"
@@ -164,13 +163,16 @@ def messaggio(conn, monitoraggio: dict, codice: str, righe_del_mese: list[dict] 
         corpo += "\n\nCome procedere:\n" + "\n".join(f"- {x}" for x in istruzioni)
     copia = f" (lasciando in copia {posta.contatto_ufficio()})" if posta.contatto_ufficio() else ""
     aggiornamento = "l'aggiornamento della graduatoria pubblica (oscurata) e dei dati" if con_graduatoria else "l'aggiornamento dei dati"
-    corpo += (f"\n\nUna volta completato {aggiornamento}, vi chiediamo di darne riscontro rispondendo a questa "
-              f"email{copia}.\n\nCordiali saluti,\n{posta.impostazioni_email()['firma']}\n")
+    if sollecito:
+        corpo += ("\n\nSe aveste già provveduto, vi preghiamo di scusarci: i nostri dati si aggiornano periodicamente e la correzione potrebbe "
+                  "non essere ancora visibile. In caso di dubbi o difficoltà, siamo a disposizione per aiutarvi.")
+    corpo += (f"\n\nUna volta completato {aggiornamento}, vi {'saremmo grati di un riscontro' if sollecito else 'chiediamo di darne riscontro'} rispondendo a questa "
+              f"email{copia}.{' Grazie per la collaborazione.' if sollecito else ''}\n\nCordiali saluti,\n{posta.impostazioni_email()['firma']}\n")
     if r0.get("link_codice"):
         corpo += f"\nScheda su Selezioni Online: {r0['link_codice']}\n"
     return {"chiave": codice, "n_gestione": r0.get("n_gestione"), "numero_bando": r0.get("numero_bando"), "titolo_bando": r0.get("titolo_bando"), "referenti": referenti,
             "destinatari": destinatari, "esclusi": scelte["esclusi"], "cc_ufficio": posta.copia_fissa(), "cc_aggiunti": scelte["cc"],
-            "cc": posta.copia_effettiva(destinatari, scelte["cc"]), "oggetto": f"Monitoraggio {mese_testo}. Bando n° {codice}: Aggiornamento Dati{' Graduatoria Pubblica' if con_graduatoria else ''} – Rif. {r0.get('n_gestione')}",
+            "cc": posta.copia_effettiva(destinatari, scelte["cc"]), "oggetto": f"{'Promemoria – ' if sollecito else ''}Monitoraggio {mese_testo}. Bando n° {codice}: Aggiornamento Dati{' Graduatoria Pubblica' if con_graduatoria else ''} – Rif. {r0.get('n_gestione')}",
             "corpo": corpo, "n_difformita": n, "stato": (righe or tutte)[0]["comunicazione"]["stato"],
             "storico": mensile.registro_comunicazioni(conn, monitoraggio["mese"], codice), "posta": posta.stato()}
 

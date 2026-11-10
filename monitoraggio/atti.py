@@ -7,7 +7,7 @@ from collections import defaultdict
 from . import config, punteggi, referenti, segreteria
 from .collegamento import _da_confrontare
 from .fonti.sol import url_punteggi
-from .normalizza import codice_sotto
+from .normalizza import nota_sottotipo, codice_sotto
 
 FONTI = ("sol", "urp", "segreteria")
 PRESENTE, MANCANTE, NON_APPLICABILE, NON_CARICATO = "presente", "mancante", "non_applicabile", "non_caricato"
@@ -269,7 +269,7 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
                     if sottotipo is None:
                         note.append("tipologia da completare nel file")
                     elif dal_titolo and (dal_titolo == "subentro") != (sottotipo == "subentro"):
-                        note.append(f"sottotipo diverso: file {sottotipo}, titolo {dal_titolo}")
+                        note.append(nota_sottotipo(sottotipo, dal_titolo))
                 else:
                     sottotipo = dal_titolo or "non_specificato"
                     origine = "titolo"
