@@ -59,3 +59,11 @@ def test_titoli_urp(titolo, atteso):
 ])
 def test_allegati_sol(nome, tipo, atteso):
     assert classifica(nome, tipo) == atteso
+
+
+@pytest.mark.parametrize("titolo, categoria", [
+    ("Pubblicazione nominativo vincitrice", "graduatoria"), ("Pubblicazione vincitori", "graduatoria"),
+    ("Provvedimento assunzione di n. 1 vincitore", "altro"), ("Assunzione dei vincitori della selezione", "altro"),
+])
+def test_pubblicazione_dei_vincitori_e_la_graduatoria(titolo, categoria):
+    assert classifica(titolo)[0] == categoria

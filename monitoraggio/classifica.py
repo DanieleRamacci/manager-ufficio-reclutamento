@@ -19,7 +19,7 @@ REGOLE_CATEGORIA = [
         r"utilizz\w*\b.{0,40}graduatori",
         r"assunzion\w*\b.{0,60}idone",
     ]),
-    ("graduatoria", [r"graduatori"]),
+    ("graduatoria", [r"graduatori", r"pubblicazion\w*\b.{0,30}\bvincit(?:or|ric)"]),
     ("criteri", [r"\bcriteri(?:di)?\b"]),
     ("tracce", [
         r"\btracc\w+",

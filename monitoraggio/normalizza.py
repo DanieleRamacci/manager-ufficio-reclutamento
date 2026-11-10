@@ -96,8 +96,8 @@ def nota_sottotipo(nel_file: str, nel_titolo: str) -> str:
         nel_file = "scorrimento e subentro insieme" if nel_file == "misto" else "scorrimento"
         return (f"nota per il monitoraggio: il titolo del documento indica un subentro, mentre nel file della segreteria risulta «{nel_file}». "
                 "Nel file degli scorrimenti va indicata la tipologia «subentro»")
-    return ("nota per il monitoraggio: nel file della segreteria risulta «subentro», mentre il titolo del documento indica uno scorrimento. "
-            "Nel file degli scorrimenti va controllato che la tipologia sia corretta")
+    return ("nota per il monitoraggio: il file della segreteria indica un subentro, che nel titolo del documento non compare. "
+            "Nel file degli scorrimenti va indicata la tipologia «subentro»")
 
 
 ANCORA_SCORRIMENTI = "i dati relativi agli scorrimenti del mese di {mese_dati}."

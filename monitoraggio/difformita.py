@@ -191,6 +191,8 @@ def reimposta(conn, mese: str) -> None:
 
 def _chiave_rilievo(testo: str) -> str:
     """Lo stesso problema con un testo un po' diverso (protocollo, conteggi) non è un problema risolto più uno nuovo."""
+    if testo.startswith("nota per il monitoraggio"):
+        return "nota per il monitoraggio"
     testo = re.sub(r"\s*\((?:prot\.[^)]*|[^)]*candidati[^)]*|per questo codice[^)]*)\)", "", testo)
     return testo.replace("graduatoria pubblica (oscurata) non allegata su SOL",
                          "la graduatoria pubblica (oscurata) non risulta tra i dati attualmente disponibili da Selezioni Online")

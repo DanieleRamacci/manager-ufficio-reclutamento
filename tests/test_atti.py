@@ -184,4 +184,4 @@ def test_nota_sottotipo_dice_cosa_fare():
     from monitoraggio.normalizza import nota_sottotipo
     assert "va indicata la tipologia «subentro»" in nota_sottotipo("ordinario", "subentro")
     assert "«scorrimento e subentro insieme»" in nota_sottotipo("misto", "subentro")
-    assert "va controllato che la tipologia sia corretta" in nota_sottotipo("subentro", "utilizzo")
+    assert "va indicata la tipologia «subentro»" in nota_sottotipo("subentro", "utilizzo") and "non compare" in nota_sottotipo("subentro", "utilizzo")
