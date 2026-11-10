@@ -132,7 +132,7 @@
   <div class="muted" id="barra-monitoraggio" hidden style="margin-bottom:8px"></div>
     <nav class="schede-atti" role="tablist" aria-label="Viste degli atti">
     <button type="button" role="tab" id="tab-stato-atti" aria-selected="true" aria-controls="panel-stato-atti">Stato complessivo</button>
-    <button type="button" role="tab" id="tab-graduatorie-mese" aria-selected="false" aria-controls="panel-graduatorie-mese">Graduatorie del mese <span id="conteggio-graduatorie-mese"></span></button>
+    <button type="button" role="tab" id="tab-graduatorie-mese" aria-selected="false" aria-controls="panel-graduatorie-mese">Graduatorie pubbliche del mese <span id="conteggio-graduatorie-mese"></span></button>
     <button type="button" role="tab" id="tab-scorrimenti-mese" aria-selected="false" aria-controls="panel-scorrimenti-mese">Scorrimenti del mese <span id="conteggio-scorrimenti-mese"></span></button>
     <label class="muted">Mese <input type="month" id="mese-solleciti"></label>
     <label class="muted">Tipologia <select id="tipologia-solleciti">
@@ -152,7 +152,7 @@
       <label class="muted">Al <input type="date" id="atti-al"></label>
       <select id="atti-tipo">
         <option value="">Tutti gli atti</option><option value="bando">Bandi pubblicati</option>
-        <option value="graduatoria">Graduatorie</option><option value="scorrimento">Scorrimenti</option>
+        <option value="graduatoria">Graduatorie pubbliche</option><option value="scorrimento">Scorrimenti</option>
         <option value="rettifica">Rettifiche graduatoria</option>
       </select>
       <select id="atti-tipologia"><option value="">Tutte le tipologie</option></select>
@@ -170,7 +170,7 @@
   </section>
 
   <section id="panel-graduatorie-mese" role="tabpanel" aria-labelledby="tab-graduatorie-mese" hidden>
-    <h2>Graduatorie del mese e difformità dei punteggi <span class="muted" id="conteggio-graduatorie-label"></span></h2>
+    <h2>Graduatorie pubbliche del mese e difformità dei punteggi <span class="muted" id="conteggio-graduatorie-label"></span></h2>
     <div class="muted" style="margin-bottom:8px">Le difformità delle verifiche punteggi sono unite alla graduatoria corrispondente. Apri la sottotabella da ogni graduatoria per vedere il dettaglio dei candidati e dei punteggi.</div>
     <div class="filtri">
       <button class="primario solo-admin" type="button" id="punteggi-verifica">Verifica punteggi SOL</button>
@@ -592,7 +592,7 @@ function righeGraduatoriaUnificate() {
     const fonteNessunDato = { stato: "non_caricato" };
     sintetiche.push({
       bando_id: p.bando_id, numero_bando: p.numero_bando, codice: p.codice,
-      codice_sotto: p.codice_sotto, tipologia: p.tipologia || contesto?.tipologia, titolo: p.documento || "Graduatoria",
+      codice_sotto: p.codice_sotto, tipologia: p.tipologia || contesto?.tipologia, titolo: p.documento || "Graduatoria pubblica (oscurata)",
       titolo_bando: contesto?.titolo_bando, atto: "graduatoria", data: p.data, protocollo: p.protocollo,
       fonti: { sol: { stato: p.allegato_sol ? "presente" : "mancante", protocollo: p.protocollo, url: p.url },
         urp: { ...fonteNessunDato }, segreteria: { ...fonteNessunDato } },
@@ -664,7 +664,7 @@ function tabellaSol(schede) {
     const docs = s.documenti.filter(d => d.categoria !== "altro");
     const haGrad = s.documenti.some(d => d.categoria === "graduatoria");
     if (s.data_pubbl_graduatoria && !haGrad && s.codice_sotto)
-      righe.push({ sede: etichettaSede(s), url: s.url, avviso: `data graduatoria ${dataIt(s.data_pubbl_graduatoria)} senza documento pubblico` });
+      righe.push({ sede: etichettaSede(s), url: s.url, avviso: `data della graduatoria pubblica (oscurata) ${dataIt(s.data_pubbl_graduatoria)} senza documento pubblico` });
     docs.forEach(d => {
       const k = `${d.categoria}|${d.protocollo}|${d.titolo}`;
       if (visti.has(k)) { visti.get(k).codici += 1; return; }

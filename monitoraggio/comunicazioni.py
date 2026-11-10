@@ -88,8 +88,8 @@ NOTA_GRADUATORIA = ("Per le graduatorie, il controllo riguarda la versione pubbl
                     "e pubblicata su URP, non quella riservata.")
 ISTRUZIONE_A = ("Graduatoria pubblica (oscurata) già presente su Selezioni Online: inserite i punteggi e gli esiti (V/I/R/S) di ogni "
                 "candidato, poi premete in alto il pulsante che valorizza automaticamente il numero di protocollo della "
-                "graduatoria. Se il pulsante non funziona, rispondete a questa email segnalando che avete aggiornato i "
-                "dati ma non riuscite a valorizzare il protocollo: provvederemo noi a sbloccare la graduatoria.")
+                "graduatoria pubblica (oscurata). Se il pulsante non funziona, rispondete a questa email segnalando che avete aggiornato i "
+                "dati ma non riuscite a valorizzare il protocollo: provvederemo noi a sbloccare la graduatoria pubblica (oscurata).")
 ISTRUZIONE_B = ("Graduatoria pubblica (oscurata) non ancora su Selezioni Online: compilate prima i punteggi e gli esiti, poi caricate la "
                 "graduatoria pubblica (oscurata) come allegato di tipo «graduatoria» indicando data e numero di protocollo; i campi si "
                 "valorizzeranno in automatico.")

@@ -6,7 +6,7 @@ import sqlite3
 from . import config
 from .normalizza import AGGIUNTA_TIPOLOGIE, ANCORA_SCORRIMENTI, nota_sottotipo
 
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 21
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -472,6 +472,7 @@ def testo_graduatoria_pubblica(testo: str) -> str:
             ("protocollo graduatoria non valorizzato su SOL (", "protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL ("),
             ("data protocollo graduatoria diversa su SOL (", "data del protocollo della graduatoria pubblica (oscurata) diversa tra allegato e candidati su SOL ("),
             ("protocollo graduatoria diverso su SOL (", "numero di protocollo della graduatoria pubblica (oscurata) diverso tra allegato e candidati su SOL ("),
+            ("data graduatoria su SOL senza documento pubblico", "data della graduatoria pubblica (oscurata) su SOL senza documento pubblico"),
             ("graduatoria non allegata su SOL", "graduatoria pubblica (oscurata) non allegata su SOL")):
         testo = testo.replace(vecchio, nuovo)
     sottotipo = re.fullmatch(r"sottotipo diverso: file (.+), titolo (.+)", testo)
@@ -580,6 +581,6 @@ def inizializza(conn: sqlite3.Connection) -> None:
                          f"(SELECT numero_bando FROM bando WHERE tipologia IN ({elenco}))")
                 conn.execute(f"DELETE FROM difformita_evento WHERE difformita_id IN (SELECT id {fuori})")
                 conn.execute(f"DELETE {fuori}")
-        if riga["versione"] < 20:
+        if riga["versione"] < 21:
             _migra_testi_graduatoria(conn)
         conn.execute("UPDATE schema_version SET versione = ?", (SCHEMA_VERSION,))

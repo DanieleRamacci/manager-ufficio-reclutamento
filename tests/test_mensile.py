@@ -1702,3 +1702,12 @@ def test_email_generale_e_excel_spiegano_le_tipologie_di_scorrimento(ambiente, d
     dbmod.inizializza(db)
     salvato = mensile.impostazioni_email(db)["testo"]
     assert salvato.count("Da adesso, nella colonna TIPOLOGIA") == 1 and salvato.endswith("\nDopo")
+
+
+def test_email_mai_graduatoria_generica(ambiente, db):
+    import re
+    from monitoraggio import comunicazioni
+    admin, mese, url = _mese_con_rdp(ambiente, db)
+    m = admin.get(url + "/messaggio").get_json()
+    assert not re.search(r"graduatoria(?! pubblica)", m["oggetto"] + m["corpo"], re.I)
+    assert not re.search(r"graduatoria(?! pubblica)", comunicazioni.ISTRUZIONE_A, re.I)
