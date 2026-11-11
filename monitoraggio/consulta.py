@@ -1,7 +1,7 @@
 """Consultazione per chi non è amministratore: Stato complessivo e Monitoraggi, solo in visualizzazione.
 
 Decisioni dell'utente del 2026-11-11: solo gli amministratori hanno il menu completo e possono operare. I dirigenti
-vedono tutti i bandi; gli utenti in lettura e gli RdP i bandi di cui sono RdP; i coordinatori anche i bandi dei profili
+vedono tutti i bandi; la segreteria tutti i bandi e le difformità, ma i punteggi solo dei bandi di cui è RdP; gli utenti in lettura e gli RdP i bandi di cui sono RdP; i coordinatori anche i bandi dei profili
 che coordinano (o tutta la mobilità, se coordinano «Mobilità»), con l'indicazione «come coordinatore» o «come RdP». Il filtro si fa qui e i campi che escono sono un
 elenco chiuso. Nomi e punteggi dei candidati solo a chi vede tutto ed è entrato con Selezioni Online.
 """
@@ -24,6 +24,7 @@ class Visitatore:
     email: str | None
     emails: set = field(default_factory=set)
     tutto: bool = False
+    punteggi: bool = True          # vede i punteggi di tutti i bandi che vede (la segreteria no: solo dove è RdP)
     profili: list | None = None   # None: non è coordinatore
     candidati: bool = False
     area: bool = False
@@ -31,7 +32,7 @@ class Visitatore:
     senza_bandi: bool = False      # in lettura ma non RdP: non dovrebbe entrare (si vede solo in anteprima)
 
     def descrizione(self) -> dict:
-        return {"email": self.email, "tutto": self.tutto, "coordinatore": self.profili is not None, "profili": self.profili or [],
+        return {"email": self.email, "tutto": self.tutto, "punteggi": self.punteggi, "coordinatore": self.profili is not None, "profili": self.profili or [],
                 "candidati": self.candidati, "area": self.area, "anteprima": self.anteprima, "senza_bandi": self.senza_bandi}
 
 
@@ -41,6 +42,8 @@ def visitatore_sito(intestazioni_sol) -> Visitatore | None:
     chi = anteprima or utenti.corrente()
     if ruolo in (utenti.AMMINISTRATORE, utenti.DIRIGENTE):
         return Visitatore(chi, tutto=True, candidati=bool(intestazioni_sol()), anteprima=bool(anteprima))
+    if ruolo == utenti.SEGRETERIA:  # tutti i bandi e le difformità; i punteggi solo dove è RdP
+        return Visitatore(chi, emails=utenti.email_correnti(), tutto=True, punteggi=False, anteprima=bool(anteprima))
     if ruolo == utenti.LETTURA:
         emails = utenti.email_correnti()
         return Visitatore(chi, emails=emails, anteprima=bool(anteprima), senza_bandi=not utenti.referente_attivo(emails))
@@ -66,8 +69,9 @@ def _email(persona: dict) -> str:
 
 
 def come(v: Visitatore, riga: dict, profili_bandi: tuple[dict, dict], esclusi=()) -> list[str]:
-    """Perché il visitatore vede la riga; vuoto se non la vede (chi vede tutto non ha bisogno di motivi)."""
-    if v.tutto:
+    """Perché il visitatore vede la riga; vuoto se non la vede (chi vede tutto con i punteggi non ha bisogno di motivi;
+    la segreteria vede tutto ma le serve sapere dove è RdP)."""
+    if v.tutto and v.punteggi:
         return []
     motivi = []
     per_bando, per_numero = profili_bandi
@@ -80,8 +84,13 @@ def come(v: Visitatore, riga: dict, profili_bandi: tuple[dict, dict], esclusi=()
     return motivi
 
 
+def _punteggi_visibili(v: Visitatore, motivi: list[str]) -> bool:
+    return v.punteggi or "rdp" in motivi
+
+
 def _riga(r: dict, v: Visitatore, motivi: list[str]) -> dict:
-    p = r.get("punteggi") or {}
+    con_punteggi = _punteggi_visibili(v, motivi)
+    p = (r.get("punteggi") or {}) if con_punteggi else {}
     scheda = p.get("scheda_id") if v.candidati else None
     sol = (r.get("fonti") or {}).get("sol") or {}
     return {
@@ -90,14 +99,14 @@ def _riga(r: dict, v: Visitatore, motivi: list[str]) -> dict:
         "protocollo_diverso": bool(r.get("protocollo_diverso")), "note": list(r.get("note") or []), "difforme": bool(r.get("difforme")),
         "rdp": [{k: x.get(k) for k in ("nome", "cognome", "email")} for x in r.get("rdp") or []],
         "link_sol": r.get("link_codice") or sol.get("url"),
-        "url_punteggi": r.get("url_punteggi") if v.tutto or "rdp" in motivi else None,
+        "url_punteggi": r.get("url_punteggi") if (v.tutto and v.punteggi) or "rdp" in motivi else None,
         "punteggi": {**{k: p.get(k) for k in ("domande", "con_punteggi", "esito", "verificato_il")}, "scheda_id": scheda} if p else None,
         "sede_da_abbinare": bool(r.get("sede_da_abbinare")), "come": motivi,
         "subentro_atteso": bool(r.get("subentro_atteso")), "file_scorrimenti": r.get("file_scorrimenti"), "coordinatore": r.get("coordinatore"),
         "sedi": [{"codice": s.get("codice"), "link_sol": s.get("link_sol"), "note": list(s.get("note") or []),
-                  "url_punteggi": s.get("url_punteggi") if v.tutto or "rdp" in motivi else None,
+                  "url_punteggi": s.get("url_punteggi") if (v.tutto and v.punteggi) or "rdp" in motivi else None,
                   "punteggi": {**{k: (s.get("punteggi") or {}).get(k) for k in ("domande", "con_punteggi", "esito", "verificato_il")},
-                               "scheda_id": s["scheda_id"] if v.candidati else None} if s.get("punteggi") or v.candidati else None,
+                               "scheda_id": s["scheda_id"] if v.candidati else None} if con_punteggi and (s.get("punteggi") or v.candidati) else None,
                   "rdp": [{k: x.get(k) for k in ("nome", "cognome", "email")} for x in s.get("rdp") or []]} for s in r.get("sedi") or []],
     }
 

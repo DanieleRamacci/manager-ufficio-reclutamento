@@ -103,6 +103,31 @@ def test_lettura_vede_solo_la_consultazione_dei_suoi_bandi(ambiente, db):
         assert getattr(c, metodo)(url).status_code == 403, url
 
 
+def test_segreteria_vede_tutti_i_bandi_e_i_punteggi_solo_dove_e_rdp(ambiente, db):
+    admin = ambiente()
+    assert admin.post("/api/utenti", json={"username": "sara.segreteria", "ruolo": "segreteria"}).status_code == 200
+    _rdp(db, "altro@cnr.it", "367.479")
+    _rdp(db, "sara.segreteria@cnr.it", "367.500")
+    c = ambiente("sara.segreteria")
+    d = c.get("/api/consulta/stato").get_json()
+    assert d["visitatore"]["tutto"] is True and d["visitatore"]["punteggi"] is False
+    assert c.get("/api/menu").get_json()["ruolo"] == "segreteria"
+    assert c.get("/api/monitoraggi").status_code == 403 and c.get("/api/punteggi/candidati/1").status_code == 403
+    assert c.get("/monitoraggio").headers["Location"] == utenti.PAGINA_MONITORAGGI
+    # i punteggi: solo dove è RdP; mai nomi e punteggi dei candidati
+    v = consulta.Visitatore("sara.segreteria@cnr.it", emails={"sara.segreteria@cnr.it"}, tutto=True, punteggi=False)
+    riga = {"numero_bando": "367.479", "rdp": [{"email": "altro@cnr.it"}], "url_punteggi": "https://sol/p", "note": ["manca su URP"],
+            "punteggi": {"domande": 10, "con_punteggi": 8, "scheda_id": 5}, "sedi": [{"codice": "01", "punteggi": {"domande": 3}, "scheda_id": 6}]}
+    pb = ({}, {})
+    altrui = consulta._riga(riga, v, consulta.come(v, riga, pb))
+    assert altrui["come"] == [] and altrui["url_punteggi"] is None and altrui["punteggi"] is None and altrui["sedi"][0]["punteggi"] is None
+    assert altrui["note"] == ["manca su URP"]  # le difformità sì
+    mia = {**riga, "rdp": [{"email": "Sara.Segreteria@cnr.it "}]}
+    propria = consulta._riga(mia, v, consulta.come(v, mia, pb))
+    assert propria["come"] == ["rdp"] and propria["url_punteggi"] == "https://sol/p"
+    assert propria["punteggi"]["domande"] == 10 and propria["punteggi"]["scheda_id"] is None
+
+
 def test_voce_utenti_solo_per_amministratori(ambiente):
     ambiente().post("/api/utenti", json={"username": "dirigente.uno", "ruolo": "dirigente"})
     voci = lambda c: {v["titolo"] for g in c.get("/api/menu").get_json()["gruppi"] for v in g["voci"]}  # noqa: E731

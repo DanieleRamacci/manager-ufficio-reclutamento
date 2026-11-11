@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS referenti_aggiornamento (
 SCHEMA_4 = """
 CREATE TABLE IF NOT EXISTS utente (
     username TEXT PRIMARY KEY,
-    ruolo TEXT NOT NULL CHECK (ruolo IN ('amministratore', 'dirigente', 'lettura')),
+    ruolo TEXT NOT NULL CHECK (ruolo IN ('amministratore', 'dirigente', 'segreteria', 'lettura')),
     email TEXT,
     aggiunto_da TEXT,
     aggiunto_il TEXT NOT NULL
@@ -573,13 +573,13 @@ def inizializza(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_3)
     conn.executescript(SCHEMA_4)
     sql_utente = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'utente'").fetchone()[0]
-    if "'dirigente'" not in sql_utente:  # versione 24: ruolo dirigente; SQLite non cambia un CHECK, si ricrea la tabella
+    if "'segreteria'" not in sql_utente:  # versioni 24 e 26: ruoli dirigente e segreteria; SQLite non cambia un CHECK, si ricrea la tabella
         email = "email" if "email" in {r[1] for r in conn.execute("PRAGMA table_info(utente)")} else "NULL"
         conn.executescript(f"""
             ALTER TABLE utente RENAME TO utente_vecchia;
             CREATE TABLE utente (
                 username TEXT PRIMARY KEY,
-                ruolo TEXT NOT NULL CHECK (ruolo IN ('amministratore', 'dirigente', 'lettura')),
+                ruolo TEXT NOT NULL CHECK (ruolo IN ('amministratore', 'dirigente', 'segreteria', 'lettura')),
                 email TEXT,
                 aggiunto_da TEXT,
                 aggiunto_il TEXT NOT NULL

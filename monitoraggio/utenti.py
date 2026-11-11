@@ -12,8 +12,8 @@ from flask import jsonify, redirect, request, session
 
 from . import config, db, posta
 
-AMMINISTRATORE, DIRIGENTE, LETTURA = "amministratore", "dirigente", "lettura"
-RUOLI = (AMMINISTRATORE, DIRIGENTE, LETTURA)
+AMMINISTRATORE, DIRIGENTE, SEGRETERIA, LETTURA = "amministratore", "dirigente", "segreteria", "lettura"
+RUOLI = (AMMINISTRATORE, DIRIGENTE, SEGRETERIA, LETTURA)
 PAGINA_CONSULTAZIONE = "/monitoraggio/consulta/stato"
 # chi non è amministratore vede solo la consultazione (decisione dell'utente del 2026-11-11)
 PERCORSI_CONSULTAZIONE = ("/monitoraggio/consulta/", "/api/consulta/", "/api/menu", "/monitoraggio/menu.js", "/monitoraggio/app.css",

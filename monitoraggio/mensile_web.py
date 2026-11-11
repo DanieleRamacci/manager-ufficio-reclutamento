@@ -153,8 +153,8 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
     def api_vista_come(nome: str):
         """Anteprima del sito come un utente in lettura: valgono le sue regole, ma nessuna azione viene eseguita."""
         nome = utenti.normalizza(nome)
-        if utenti.ruolo(nome) not in (utenti.LETTURA, utenti.DIRIGENTE):
-            return jsonify({"error": "L'anteprima serve per dirigenti e utenti in lettura: un amministratore vede quello che vedi tu"}), 400
+        if utenti.ruolo(nome) not in (utenti.LETTURA, utenti.DIRIGENTE, utenti.SEGRETERIA):
+            return jsonify({"error": "L'anteprima serve per dirigenti, segreteria e utenti in lettura: un amministratore vede quello che vedi tu"}), 400
         conn = _conn()
         try:
             utenti.traccia_anteprima(conn, nome, utente_corrente(), "anteprima")
