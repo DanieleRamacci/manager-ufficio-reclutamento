@@ -21,6 +21,8 @@ PERCORSI_CONSULTAZIONE = ("/monitoraggio/consulta/", "/api/consulta/", "/api/men
 
 
 PAGINA_MONITORAGGI = "/monitoraggio/consulta/monitoraggi"
+# la segreteria vede anche la pagina dei suoi file e li carica (decisione dell'utente del 2026-11-11)
+PERCORSI_SEGRETERIA = ("/monitoraggio/segreteria", "/api/segreteria/")
 
 
 def _pagina_consultazione_per(percorso: str) -> str:
@@ -230,8 +232,9 @@ def referente_attivo(emails: set[str]) -> bool:
         conn.close()
 
 
-def _consentito(percorso: str) -> bool:
-    return percorso == "/" or any(percorso.startswith(p) or percorso == p.rstrip("/") for p in PERCORSI_CONSULTAZIONE)
+def _consentito(percorso: str, ruolo: str | None = None) -> bool:
+    percorsi = PERCORSI_CONSULTAZIONE + (PERCORSI_SEGRETERIA if ruolo == SEGRETERIA else ())
+    return percorso == "/" or any(percorso.startswith(p) or percorso == p.rstrip("/") for p in percorsi)
 
 
 def _rifiuta(messaggio: str):
@@ -259,7 +262,7 @@ def protezioni(base, uscita=None):
                     uscita()
                 session.clear()
                 return _rifiuta("Non risulti responsabile del procedimento (RdP) di nessun bando: l'accesso non è consentito.")
-            if attuale != AMMINISTRATORE and not _consentito(request.path):
+            if attuale != AMMINISTRATORE and not _consentito(request.path, attuale):
                 if request.method == "GET" and not request.path.startswith("/api/"):
                     return redirect(_pagina_consultazione_per(request.path))
                 return jsonify({"error": "Operazione riservata agli amministratori"}), 403

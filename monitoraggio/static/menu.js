@@ -45,7 +45,8 @@
     barra.className = "mm-barra";
     barra.setAttribute("role", "navigation");
     const amministratore = info.ruolo === "amministratore";
-    const principali = amministratore ? PRINCIPALI : CONSULTAZIONE;
+    const principali = amministratore ? PRINCIPALI
+      : info.ruolo === "segreteria" ? [...CONSULTAZIONE, { titolo: "File segreteria", url: "/monitoraggio/segreteria" }] : CONSULTAZIONE;
     const url = new Set(PRINCIPALI.map(v => v.url));
     const altre = amministratore ? info.gruppi.flatMap(g => g.voci).filter(v => v.disponibile && !url.has(v.url) && !v.url.startsWith("/monitoraggio/segreteria")) : [];
     const corrente = altre.some(v => v.url === percorso);

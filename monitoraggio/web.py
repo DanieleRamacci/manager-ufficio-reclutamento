@@ -523,8 +523,9 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
 
     @bp.post("/api/segreteria/carica")
     @protezione
-    @solo_admin
     def api_segreteria_carica():
+        if ruolo_corrente() not in ("amministratore", "segreteria"):  # la segreteria carica i propri file
+            return jsonify({"error": "Operazione riservata agli amministratori e alla segreteria"}), 403
         file = request.files.get("file")
         if not file or not file.filename:
             return jsonify({"error": "Nessun file selezionato"}), 400

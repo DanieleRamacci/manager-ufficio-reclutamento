@@ -114,6 +114,15 @@ def test_segreteria_vede_tutti_i_bandi_e_i_punteggi_solo_dove_e_rdp(ambiente, db
     assert c.get("/api/menu").get_json()["ruolo"] == "segreteria"
     assert c.get("/api/monitoraggi").status_code == 403 and c.get("/api/punteggi/candidati/1").status_code == 403
     assert c.get("/monitoraggio").headers["Location"] == utenti.PAGINA_MONITORAGGI
+    # la pagina dei file della segreteria: la vede e carica i file
+    assert c.get("/monitoraggio/segreteria").status_code == 200 and c.get("/api/segreteria/versioni").status_code == 200
+    assert c.get("/api/segreteria/atti").status_code == 200
+    r = c.post("/api/segreteria/carica", data={"file": (io.BytesIO(b"non excel"), "riepilogo.xlsx")}, content_type="multipart/form-data")
+    assert r.status_code == 400 and "error" in r.get_json()  # arriva alla lettura del file: non è un divieto
+    admin.post("/api/utenti", json={"username": "dino.dirigente", "ruolo": "dirigente"})
+    d = ambiente("dino.dirigente")
+    assert d.post("/api/segreteria/carica", data={"file": (io.BytesIO(b"x"), "r.xlsx")}, content_type="multipart/form-data").status_code == 403
+    assert d.get("/monitoraggio/segreteria").status_code == 302
     # i punteggi: solo dove è RdP; mai nomi e punteggi dei candidati
     v = consulta.Visitatore("sara.segreteria@cnr.it", emails={"sara.segreteria@cnr.it"}, tutto=True, punteggi=False)
     riga = {"numero_bando": "367.479", "rdp": [{"email": "altro@cnr.it"}], "url_punteggi": "https://sol/p", "note": ["manca su URP"],
