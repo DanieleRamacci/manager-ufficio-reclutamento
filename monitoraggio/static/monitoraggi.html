@@ -361,7 +361,8 @@
           aggiunti.map(x => `<span class="chip t-altro">${esc(x)}${bottone("togli-cc", x, "×", `Togli ${x} dalla copia`)}</span>`).join(" ") +
           (d.coordinatore?.incluso ? ` <span class="chip t-altro" title="Coordinatore del profilo ${esc(d.coordinatore.profilo)}">${esc(d.coordinatore.email)} (coordinatore)</span>` : "") +
           (chiuso ? "" : ` <span class="solo-admin"><input type="text" id="nuovo-cc" size="30" autocomplete="off" aria-label="Aggiungi in copia" placeholder="altre email, separate da virgola"> <button type="button" class="piccolo" id="aggiungi-cc">Aggiungi in copia</button></span>`) +
-          (d.coordinatore ? `<div class="solo-admin" style="margin-top:4px"><label class="spunta"><input type="checkbox" id="con-coordinatore"${d.coordinatore.incluso ? " checked" : ""}${chiuso ? " disabled" : ""}> Inserisci il coordinatore in copia: ${esc(d.coordinatore.email)} <span class="muted">(${esc(d.coordinatore.profilo)})</span></label></div>` : "");
+          (d.coordinatore?.destinatario ? `<div class="muted small" style="margin-top:4px">Il coordinatore (${esc(d.coordinatore.email)}) è anche RdP: riceve l'email come destinatario.</div>`
+            : d.coordinatore ? `<div class="solo-admin" style="margin-top:4px"><label class="spunta"><input type="checkbox" id="con-coordinatore"${d.coordinatore.incluso ? " checked" : ""}${chiuso ? " disabled" : ""}> Inserisci il coordinatore in copia: ${esc(d.coordinatore.email)} <span class="muted">(${esc(d.coordinatore.profilo)})</span></label></div>` : "");
         const conCoordinatore = areaCc.querySelector("#con-coordinatore");
         if (conCoordinatore) conCoordinatore.onchange = () => salvaIndirizzi({ esclusi: d.esclusi, cc: d.cc_aggiunti, coordinatore: conCoordinatore.checked });
         const nuovo = areaCc.querySelector("#nuovo-cc");

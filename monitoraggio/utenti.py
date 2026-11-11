@@ -20,6 +20,19 @@ PERCORSI_CONSULTAZIONE = ("/monitoraggio/consulta/", "/api/consulta/", "/api/men
                           "/monitoraggio/app.js", "/api/sol/", "/api/vista-come/esci")
 
 
+PAGINA_MONITORAGGI = "/monitoraggio/consulta/monitoraggi"
+
+
+def _pagina_consultazione_per(percorso: str) -> str:
+    """Chi non è amministratore e apre /monitoraggio (o un monitoraggio mensile) trova l'elenco dei monitoraggi."""
+    if percorso.rstrip("/") == "/monitoraggio":
+        return PAGINA_MONITORAGGI
+    if percorso.startswith("/monitoraggio/mensili"):
+        mese = percorso[len("/monitoraggio/mensili"):].strip("/").split("/")[0]
+        return f"{PAGINA_MONITORAGGI}/{mese}" if mese.replace("-", "").isdigit() else PAGINA_MONITORAGGI
+    return PAGINA_CONSULTAZIONE
+
+
 class UtenteProtetto(Exception):
     pass
 
@@ -248,7 +261,7 @@ def protezioni(base, uscita=None):
                 return _rifiuta("Non risulti responsabile del procedimento (RdP) di nessun bando: l'accesso non è consentito.")
             if attuale != AMMINISTRATORE and not _consentito(request.path):
                 if request.method == "GET" and not request.path.startswith("/api/"):
-                    return redirect(PAGINA_CONSULTAZIONE)
+                    return redirect(_pagina_consultazione_per(request.path))
                 return jsonify({"error": "Operazione riservata agli amministratori"}), 403
             return fn(*args, **kwargs)
         return base(_controllo)

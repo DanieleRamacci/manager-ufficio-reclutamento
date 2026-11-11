@@ -6,7 +6,7 @@ import sqlite3
 from . import config
 from .normalizza import AGGIUNTA_TIPOLOGIE, ANCORA_SCORRIMENTI, codice_sede, nota_sottotipo
 
-SCHEMA_VERSION = 25
+SCHEMA_VERSION = 26
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -653,4 +653,23 @@ def inizializza(conn: sqlite3.Connection) -> None:
                 else:
                     conn.execute("UPDATE difformita SET rilievi_iniziali = ?, rilievi_attuali = ? WHERE id = ?",
                                  (*(json.dumps(x, ensure_ascii=False) for x in restano), d["id"]))
+        if riga["versione"] < 26:
+            _migra_profili_senza_livello(conn)
         conn.execute("UPDATE schema_version SET versione = ?", (SCHEMA_VERSION,))
+
+
+def _migra_profili_senza_livello(conn) -> None:
+    """I profili scelti con il livello di Selezioni Online diventano il profilo senza livello; se due coordinatori avevano
+    due livelli dello stesso profilo, lo tiene chi l'aveva scelto per primo."""
+    from .profili import famiglia
+    righe = conn.execute("SELECT profilo, email, dal FROM profilo_coordinato ORDER BY dal, email").fetchall()
+    conn.execute("DELETE FROM profilo_coordinato")
+    for r in righe:
+        conn.execute("INSERT OR IGNORE INTO profilo_coordinato (profilo, email, dal) VALUES (?, ?, ?)",
+                     (famiglia(r["profilo"]) or r["profilo"], r["email"], r["dal"]))
+    for r in conn.execute("SELECT id, profilo FROM profilo_richiesta").fetchall():
+        conn.execute("UPDATE profilo_richiesta SET profilo = ? WHERE id = ?", (famiglia(r["profilo"]) or r["profilo"], r["id"]))
+    titolari = {r["profilo"]: r["email"] for r in conn.execute("SELECT profilo, email FROM profilo_coordinato")}
+    for r in conn.execute("SELECT id, profilo, richiedente FROM profilo_richiesta WHERE stato = 'aperta' ORDER BY id").fetchall():
+        if titolari.get(r["profilo"]) == r["richiedente"]:  # ora ha già il profilo
+            conn.execute("UPDATE profilo_richiesta SET stato = 'accolta', gestita_il = datetime('now') WHERE id = ?", (r["id"],))

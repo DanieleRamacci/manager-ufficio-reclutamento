@@ -4,7 +4,7 @@ import re
 
 import pytest
 
-from monitoraggio import collegamento, mensile, portale, posta, punteggi, utenti
+from monitoraggio import collegamento, db as db_mod, mensile, portale, posta, profili, punteggi, utenti
 from tests.test_collegamento import doc, salva, scheda
 from tests.test_mensile import _configura_posta, ambiente  # noqa: F401
 
@@ -220,12 +220,13 @@ def test_il_referente_apre_solo_le_pagine_dell_area(area):
 
 
 # --- coordinatori
-CTER, RIC = "Collaboratore tecnico VI livello", "Ricercatore III livello"
+CTER_SOL, RIC_SOL = "Collaboratore tecnico VI livello", "Ricercatore III livello"  # come li scrive Selezioni Online
+CTER, RIC = "Collaboratore tecnico enti di ricerca", "Ricercatore"  # il profilo senza livello
 COORD = "coord@cnr.it"
 
 
 def _profili(db):
-    for id_esterno, profilo in (("s1", CTER), ("s2", RIC)):
+    for id_esterno, profilo in (("s1", CTER_SOL), ("s2", RIC_SOL)):
         db.execute("UPDATE scheda SET dati_extra = ? WHERE id_esterno = ?", (json.dumps({"profilo": profilo}), id_esterno))
 
 
@@ -240,7 +241,8 @@ def test_coordinatore_sceglie_i_profili_e_vede_quei_bandi_in_sola_consultazione(
     c = _coordinatore(admin, db, inviati)
     assert c.get("/api/area-referenti/chi").get_json() == {"email": COORD, "coordinatore": True, "profili": [], "anteprima": False}
     d = c.get("/api/area-referenti/profili").get_json()
-    assert [(p["profilo"], p["titolare"]) for p in d["profili"]] == [(CTER, None), (RIC, None)]
+    # l'elenco è completo, senza livelli, anche per i profili di cui non c'è ancora un bando
+    assert [(p["profilo"], p["titolare"]) for p in d["profili"]] == [(x, None) for x in (*profili.CATALOGO, profili.MOBILITA)]
     assert c.get(f"/api/area-referenti/consulta/monitoraggi/{mese}").get_json()["righe"] == []
     assert c.post("/api/area-referenti/profili/prendi", json={"profilo": CTER}).get_json() == {"ok": True}
     righe = c.get(f"/api/area-referenti/consulta/monitoraggi/{mese}").get_json()["righe"]
@@ -269,7 +271,7 @@ def test_un_profilo_un_coordinatore_e_la_richiesta_avvisa_entrambi(area, db):
     assert altro.post("/api/area-referenti/profili/richiedi", json={"profilo": CTER}).get_json() == {"ok": True}
     assert altro.post("/api/area-referenti/profili/richiedi", json={"profilo": CTER}).get_json() == {"ok": True}  # niente doppioni
     assert len(inviati) == n + 1 and {*inviati[-1]["To"].split(", ")} == {COORD, "altro@cnr.it"} and CTER in inviati[-1]["Subject"]
-    assert altro.get("/api/area-referenti/profili").get_json()["profili"][0]["chiesto"] is True
+    assert next(p for p in altro.get("/api/area-referenti/profili").get_json()["profili"] if p["profilo"] == CTER)["chiesto"] is True
     richiesta = c.get("/api/area-referenti/profili").get_json()["richieste_ricevute"][0]
     assert altro.post(f"/api/area-referenti/profili/richieste/{richiesta['id']}/cedi").status_code == 404  # cede solo chi lo ha
     assert c.post(f"/api/area-referenti/profili/richieste/{richiesta['id']}/cedi").get_json() == {"ok": True}
@@ -427,7 +429,7 @@ def test_vista_come_utente_in_lettura(area):
     assert registro[0]["azione"] == "anteprima" and registro[0]["username"] == "lettore.uno"
 
 
-def test_coordinatore_del_profilo_visibile_e_in_copia_solo_con_la_spunta(area, db):
+def test_rdp_destinatari_e_coordinatore_in_copia_solo_con_la_spunta(area, db):
     admin, mese, inviati = area
     c = _coordinatore(admin, db, inviati)
     c.post("/api/area-referenti/profili/prendi", json={"profilo": CTER})
@@ -436,7 +438,8 @@ def test_coordinatore_del_profilo_visibile_e_in_copia_solo_con_la_spunta(area, d
     assert next(r for r in righe if r["codice"] == CODICE_B)["coordinatore"] is None
     url = f"/api/monitoraggi/{mese}/comunicazioni/{CODICE_A}"
     d = admin.get(url + "/messaggio").get_json()
-    assert d["coordinatore"] == {"email": COORD, "profilo": CTER, "incluso": False} and COORD not in d["cc"]
+    # RdP come destinatari; il coordinatore in copia solo se spuntato
+    assert d["coordinatore"] == {"email": COORD, "profilo": CTER, "incluso": False, "destinatario": False} and COORD not in d["cc"] and d["destinatari"] == [ANNA]
     d = admin.put(url + "/indirizzi", json={"esclusi": [], "cc": [], "coordinatore": True}).get_json()
     assert d["coordinatore"]["incluso"] is True and COORD in d["cc"]
     d = admin.put(url + "/indirizzi", json={"esclusi": [], "cc": ["altro@cnr.it"]}).get_json()  # senza la voce resta com'era
@@ -444,3 +447,67 @@ def test_coordinatore_del_profilo_visibile_e_in_copia_solo_con_la_spunta(area, d
     n = len(inviati)
     assert admin.post(url + "/invia", json={"modo": "ufficiale"}).status_code == 200
     assert len(inviati) == n + 1 and COORD in inviati[-1]["Cc"] and inviati[-1]["To"] == ANNA
+
+
+def test_famiglia_del_profilo_senza_livello():
+    for testo, atteso in (("Collaboratore tecnico enti di ricerca VI livello", CTER), ("Collaboratore Tecnico E.R. - IV livello", CTER),
+                          ("C.T.E.R. V livello", CTER), ("I Tecnologo II livello", "Tecnologo"), ("Dirigente tecnologo I livello", "Tecnologo"),
+                          ("Primo Ricercatore II livello", RIC), ("Dirigente di ricerca I livello", RIC), ("Ricercatore III livello", RIC),
+                          ("Operatore Tecnico VIII livello", "Operatore tecnico"), ("Funzionario di Amministrazione V livello", "Funzionario di amministrazione"),
+                          ("Collaboratore di Amministrazione VII livello", "Collaboratore di amministrazione"),
+                          ("Operatore di amministrazione VIII livello", "Operatore di amministrazione"),
+                          ("Ausiliario tecnico IX livello", "Ausiliario tecnico"), ("", None), (None, None)):
+        assert profili.famiglia(testo) == atteso, testo
+
+
+def test_profilo_scelto_prima_vale_per_i_bandi_letti_dopo(area, db):
+    admin, mese, inviati = area
+    admin.post("/api/coordinatori", json={"email": COORD})
+    c = _entra(admin, inviati, COORD)
+    assert c.post("/api/area-referenti/profili/prendi", json={"profilo": CTER}).get_json() == {"ok": True}  # nessun bando ancora letto
+    assert c.get(f"/api/area-referenti/consulta/monitoraggi/{mese}").get_json()["righe"] == []
+    _profili(db)  # arriva il bando da Selezioni Online, con il livello
+    righe = c.get(f"/api/area-referenti/consulta/monitoraggi/{mese}").get_json()["righe"]
+    assert [x["codice"] for x in righe] == [CODICE_A] and righe[0]["come"] == ["coordinatore"]
+
+
+def test_mobilita_e_una_voce_esclusiva_con_tutti_i_bandi_di_mobilita(area, db):
+    admin, mese, inviati = area
+    _profili(db)
+    db.execute("UPDATE scheda SET tipologia = 'mobilita' WHERE numero_bando = '367.500'")
+    db.execute("UPDATE bando SET tipologia = 'mobilita' WHERE numero_bando = '367.500'")
+    c = _coordinatore(admin, db, inviati)
+    assert c.get("/api/area-referenti/profili").get_json()["profili"][-1]["profilo"] == profili.MOBILITA
+    # il bando di mobilità è di un Ricercatore, ma lo vede solo chi coordina la mobilità
+    c.post("/api/area-referenti/profili/prendi", json={"profilo": RIC})
+    assert c.get(f"/api/area-referenti/consulta/monitoraggi/{mese}").get_json()["righe"] == []
+    assert c.post("/api/area-referenti/profili/prendi", json={"profilo": profili.MOBILITA}).get_json() == {"ok": True}
+    righe = c.get(f"/api/area-referenti/consulta/monitoraggi/{mese}").get_json()["righe"]
+    assert [(x["codice"], x["come"]) for x in righe] == [(CODICE_B, ["coordinatore"])]
+    assert next(r for r in admin.get(f"/api/monitoraggi/{mese}/atti").get_json()["righe"] if r["codice"] == CODICE_B)["coordinatore"] == \
+        {"email": COORD, "profilo": profili.MOBILITA}
+    # esclusiva come un profilo: un altro coordinatore può solo chiederla
+    admin.post("/api/coordinatori", json={"email": "altro@cnr.it"})
+    portale._ultima_email.clear()
+    altro = _entra(admin, inviati, "altro@cnr.it")
+    assert altro.post("/api/area-referenti/profili/prendi", json={"profilo": profili.MOBILITA}).status_code == 409
+    assert altro.post("/api/area-referenti/profili/richiedi", json={"profilo": profili.MOBILITA}).get_json() == {"ok": True}
+
+
+def test_migrazione_dei_profili_con_il_livello(db):
+    db.execute("INSERT INTO profilo_coordinato (profilo, email, dal) VALUES ('Collaboratore tecnico VI livello', 'primo@cnr.it', '2026-01-01')")
+    db.execute("INSERT INTO profilo_coordinato (profilo, email, dal) VALUES ('C.T.E.R. IV livello', 'secondo@cnr.it', '2026-02-01')")
+    db.execute("INSERT INTO profilo_richiesta (profilo, richiedente, titolare, quando) VALUES ('Collaboratore tecnico V livello', 'primo@cnr.it', 'x', 'x')")
+    db_mod._migra_profili_senza_livello(db)
+    assert profili.titolari(db) == {CTER: "primo@cnr.it"}
+    assert [(r["profilo"], r["stato"]) for r in profili.richieste(db, solo_aperte=False)] == [(CTER, "accolta")]
+
+
+def test_coordinatore_anche_rdp_resta_solo_destinatario(area, db):
+    admin, mese, inviati = area
+    _profili(db)
+    admin.post("/api/coordinatori", json={"email": ANNA})
+    _entra(admin, inviati, ANNA).post("/api/area-referenti/profili/prendi", json={"profilo": CTER})
+    admin.put(f"/api/monitoraggi/{mese}/comunicazioni/{CODICE_A}/indirizzi", json={"esclusi": [], "cc": [], "coordinatore": True})
+    d = admin.get(f"/api/monitoraggi/{mese}/comunicazioni/{CODICE_A}/messaggio").get_json()
+    assert d["destinatari"] == [ANNA] and ANNA not in d["cc"] and d["coordinatore"]["destinatario"] is True

@@ -5,8 +5,8 @@ mai verso uno deciso da chi lo chiede. La sessione è separata da quella degli u
 non entra in nessun'altra pagina. I dati escono da un elenco esplicito di campi: niente altri RdP e niente dati dei candidati.
 Chi è RdP trova il link ai punteggi su Selezioni Online, dove entra con le proprie credenziali.
 
-I coordinatori usano la stessa area: scelgono i profili che coordinano (uno per profilo, monitoraggio/profili.py) e vedono
-anche i bandi di quei profili in sola consultazione, con il link ai punteggi solo dove sono RdP. Stanno in una tabella propria,
+I coordinatori usano la stessa area: scelgono i profili che coordinano (uno per profilo, monitoraggio/profili.py; «Mobilità»
+vale come un profilo) e vedono anche i bandi di quei profili in sola consultazione, con il link ai punteggi solo dove sono RdP. Stanno in una tabella propria,
 non tra gli utenti del sito. Le pagine di consultazione sono quelle di monitoraggio/consulta.py.
 """
 import json
@@ -126,14 +126,9 @@ def _puo_entrare(conn, email: str) -> bool:
 
 
 def _profili_schede(conn) -> tuple[dict, dict, list[str]]:
-    """Il profilo di Selezioni Online per scheda e per bando, e l'elenco dei profili tra cui scegliere."""
-    per_scheda, per_bando = {}, {}
-    for s in conn.execute("SELECT id, bando_id, tipologia, dati_extra FROM scheda WHERE fonte = 'sol' AND presente = 1 AND dati_extra IS NOT NULL"):
-        profilo = json.loads(s["dati_extra"]).get("profilo")
-        if profilo and config.nel_monitoraggio(s["tipologia"]):
-            per_scheda[s["id"]] = profilo
-            per_bando.setdefault(s["bando_id"], profilo)
-    return per_scheda, per_bando, sorted({*per_scheda.values()})
+    """Il profilo (senza livello) per scheda e per bando, e l'elenco dei profili tra cui scegliere."""
+    per_scheda, per_bando, _ = profili.per_bando(conn)
+    return per_scheda, per_bando, profili.disponibili(conn)
 
 
 def _troppe_richieste(ip: str, ora: datetime) -> bool:
@@ -169,15 +164,15 @@ def _righe_di(conn, monitoraggio: dict, email: str, tutte: list[dict] | None = N
             and email not in esclusi.get(r["chiave"], [])]
 
 
-def _vista(conn, monitoraggio: dict, email: str, profili: list[str], schede_profilo: tuple[dict, dict]) -> dict:
+def _vista(conn, monitoraggio: dict, email: str, scelti: list[str], schede_profilo: tuple[dict, dict]) -> dict:
     fatte = {(s["chiave"], s["atto"], s["protocollo"], s["data"], s["rilievo"]): s
              for s in conn.execute("SELECT * FROM segnalazione WHERE mese = ? AND email = ?", (monitoraggio["mese"], email))}
     tutte = comunicazioni.righe_mese(conn, monitoraggio)
     mie = _righe_di(conn, monitoraggio, email, tutte)
     gia = {id(r) for r in mie}
     per_scheda, per_bando = schede_profilo
-    profilo_di = lambda r: per_scheda.get(r.get("scheda_sol_id")) or per_bando.get(r.get("bando_id"))  # noqa: E731
-    seguite = [r for r in tutte if profili and r["atto"] in difformita.ATTI_SEGUITI and id(r) not in gia and profilo_di(r) in profili]
+    profilo_di = lambda r: profili.voce(r.get("tipologia"), per_scheda.get(r.get("scheda_sol_id")) or per_bando.get(r.get("bando_id")))  # noqa: E731
+    seguite = [r for r in tutte if scelti and r["atto"] in difformita.ATTI_SEGUITI and id(r) not in gia and profilo_di(r) in scelti]
     bandi = []
     for r in [*mie, *seguite]:
         atto, protocollo, data = _chiave_atto(r)
@@ -303,7 +298,7 @@ def chi():
 @_solo_se_attiva
 @_serve_referente
 def elenco_profili():
-    """Tutti i profili di Selezioni Online, con chi li coordina oggi e le richieste in corso."""
+    """Tutti i profili (senza livello) e «Mobilità», con chi li coordina oggi e le richieste in corso."""
     conn = _conn()
     try:
         email = _referente()
@@ -313,7 +308,7 @@ def elenco_profili():
         aperte = profili.richieste(conn)
         return _senza_cache(jsonify({
             "email": email, "anteprima": bool(_anteprima()),
-            "profili": [{"profilo": p, "titolare": titolari.get(p), "mio": titolari.get(p) == email,
+            "profili": [{"profilo": p, "livelli": profili.LIVELLI.get(p), "titolare": titolari.get(p), "mio": titolari.get(p) == email,
                          "chiesto": any(r["profilo"] == p and r["richiedente"] == email for r in aperte)} for p in profili.disponibili(conn)],
             "richieste_ricevute": [r for r in aperte if titolari.get(r["profilo"]) == email and r["richiedente"] != email],
             "richieste_fatte": [r for r in aperte if r["richiedente"] == email]}))

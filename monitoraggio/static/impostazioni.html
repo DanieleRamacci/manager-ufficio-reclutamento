@@ -100,11 +100,11 @@
     if (!io) io = (await chiama("/api/menu")).utente;
     const { utenti, registro, coordinatori, link_aree: aree, profili, richieste_profili: richieste } = await chiama("/api/utenti");
     const opzioniCoord = (scelto) => `<option value="">— nessuno —</option>` + coordinatori.map(c => `<option value="${esc(c.email)}"${c.email === scelto ? " selected" : ""}>${esc(c.email)}</option>`).join("");
-    $("profili-coordinati").innerHTML = `<h3>Profili dei coordinatori</h3><p class="muted small">Ogni profilo di Selezioni Online ha al più un coordinatore. I coordinatori li scelgono dalla loro pagina; qui decidi tu, anche sulle richieste.</p>` +
+    $("profili-coordinati").innerHTML = `<h3>Profili dei coordinatori</h3><p class="muted small">Ogni profilo (con tutti i suoi livelli) ha al più un coordinatore; «Mobilità» vale come un profilo e comprende tutti i bandi di mobilità. I coordinatori li scelgono dalla loro pagina; qui decidi tu, anche sulle richieste.</p>` +
       (richieste.length ? `<div class="avviso" style="margin-bottom:8px">${richieste.map(r => `<div style="margin:4px 0">${esc(r.richiedente)} chiede «${esc(r.profilo)}»${r.titolare ? `, oggi di ${esc(r.titolare)}` : ""} (${ora(r.quando)})
         <button type="button" class="piccolo" data-richiesta="${r.id}" data-accolta="1">Assegna a ${esc(r.richiedente)}</button> <button type="button" class="piccolo" data-richiesta="${r.id}" data-accolta="">Respingi</button></div>`).join("")}</div>` : "") +
       `<div class="scroll"><table style="min-width:600px"><thead><tr><th>Profilo</th><th>Coordinatore</th></tr></thead><tbody>${profili.map(p => `<tr><td>${esc(p.profilo)}</td>
-        <td><select data-profilo="${esc(p.profilo)}" aria-label="Coordinatore di ${esc(p.profilo)}">${opzioniCoord(p.titolare)}</select></td></tr>`).join("") || `<tr><td colspan="2" class="muted">Nessun profilo: servono i dati di Selezioni Online.</td></tr>`}</tbody></table></div>`;
+        <td><select data-profilo="${esc(p.profilo)}" aria-label="Coordinatore di ${esc(p.profilo)}">${opzioniCoord(p.titolare)}</select></td></tr>`).join("") || `<tr><td colspan="2" class="muted">Nessun profilo.</td></tr>`}</tbody></table></div>`;
     document.querySelectorAll("[data-profilo]").forEach(s => s.onchange = async () => {
       try { errore("errore-utenti"); await chiama("/api/profili-coordinati/assegna", json("POST", { profilo: s.dataset.profilo, email: s.value })); toast("Profilo aggiornato"); await caricaUtenti(); }
       catch (err) { errore("errore-utenti", err.message); await caricaUtenti(); }

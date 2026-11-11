@@ -119,8 +119,8 @@
 
   // --- elenco dei monitoraggi
   function disegnaElenco() {
+    // sempre l'elenco, anche con un solo monitoraggio: si apre il mese con un clic
     const v = dati.visitatore, aperti = dati.monitoraggi.filter(m => m.stato === "aperto");
-    if (!v.tutto && aperti.length === 1) { location.replace(`${BASE}/monitoraggi/${aperti[0].mese}`); return; }
     $("contenuto").innerHTML = `<section><h1>Monitoraggi</h1>${presentazione(v)}</section>
       ${aperti.length ? "" : `<section><div class="avviso">Nessun monitoraggio in corso.</div></section>`}
       ${dati.monitoraggi.length ? `<section><div class="scroll"><table><thead><tr><th>Mese dei dati</th><th>Stato</th><th>Chiuso il</th></tr></thead><tbody>

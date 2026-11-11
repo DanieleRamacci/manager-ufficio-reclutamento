@@ -91,7 +91,9 @@ def test_lettura_vede_solo_la_consultazione_dei_suoi_bandi(ambiente, db):
     assert r.status_code == 403 and "RdP" in r.get_json()["error"]
     _rdp(db, "anna.bianchi@cnr.it")
     c = ambiente("anna.bianchi")
-    assert c.get("/monitoraggio").headers["Location"] == utenti.PAGINA_CONSULTAZIONE
+    assert c.get("/monitoraggio").headers["Location"] == utenti.PAGINA_MONITORAGGI  # l'elenco dei monitoraggi
+    assert c.get("/monitoraggio/mensili/2026-05").headers["Location"] == f"{utenti.PAGINA_MONITORAGGI}/2026-05"
+    assert c.get("/monitoraggio/segreteria").headers["Location"] == utenti.PAGINA_CONSULTAZIONE
     assert c.get("/monitoraggio/consulta/stato").status_code == 200 and c.get("/api/consulta/stato").status_code == 200
     assert c.get("/api/menu").get_json()["ruolo"] == "lettura"
     assert c.get("/api/monitoraggi").status_code == 403 and c.get("/api/atti").status_code == 403

@@ -2,7 +2,7 @@
 
 Decisioni dell'utente del 2026-11-11: solo gli amministratori hanno il menu completo e possono operare. I dirigenti
 vedono tutti i bandi; gli utenti in lettura e gli RdP i bandi di cui sono RdP; i coordinatori anche i bandi dei profili
-che coordinano, con l'indicazione «come coordinatore» o «come RdP». Il filtro si fa qui e i campi che escono sono un
+che coordinano (o tutta la mobilità, se coordinano «Mobilità»), con l'indicazione «come coordinatore» o «come RdP». Il filtro si fa qui e i campi che escono sono un
 elenco chiuso. Nomi e punteggi dei candidati solo a chi vede tutto ed è entrato con Selezioni Online.
 """
 import json
@@ -11,7 +11,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, redirect, request, send_from_directory
 
-from . import atti, comunicazioni, config, difformita, mensile, portale, punteggi, utenti
+from . import atti, comunicazioni, config, difformita, mensile, portale, profili, punteggi, utenti
 
 _STATIC = Path(__file__).resolve().parent / "static"
 PAGINE_SITO = "/monitoraggio/consulta"
@@ -56,12 +56,8 @@ def visitatore_area(conn) -> Visitatore | None:
 
 
 def _profili_bandi(conn) -> tuple[dict, dict]:
-    per_bando, per_numero = {}, {}
-    for s in conn.execute("SELECT bando_id, numero_bando, dati_extra FROM scheda WHERE fonte = 'sol' AND presente = 1 AND dati_extra IS NOT NULL"):
-        profilo = json.loads(s["dati_extra"]).get("profilo")
-        if profilo:
-            per_bando.setdefault(s["bando_id"], profilo)
-            per_numero.setdefault(s["numero_bando"], profilo)
+    """La voce dell'elenco (profilo senza livello o «Mobilità») per bando e per numero del bando."""
+    _, per_bando, per_numero = profili.per_bando(conn)
     return per_bando, per_numero
 
 
@@ -75,7 +71,8 @@ def come(v: Visitatore, riga: dict, profili_bandi: tuple[dict, dict], esclusi=()
         return []
     motivi = []
     per_bando, per_numero = profili_bandi
-    if v.profili and (per_bando.get(riga.get("bando_id")) or per_numero.get(riga.get("numero_bando"))) in v.profili:
+    profilo = per_bando.get(riga.get("bando_id")) or per_numero.get(riga.get("numero_bando"))
+    if v.profili and profili.voce(riga.get("tipologia"), profilo) in v.profili:
         motivi.append("coordinatore")
     # se il codice non ha RdP propri l'elenco è di tutti i codici del bando: non si sa di chi sia l'atto
     if riga.get("rdp_origine") != "tutti i codici" and (v.emails & {_email(p) for p in riga.get("rdp") or []}) - set(esclusi):
