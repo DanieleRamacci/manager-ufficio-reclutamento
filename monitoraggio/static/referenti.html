@@ -21,6 +21,7 @@
 <body>
 <main class="area">
   <div class="tra"><h1>Area referenti</h1><button type="button" id="esci" hidden>Esci</button></div>
+  <div class="avviso" id="anteprima" role="status" hidden></div>
   <p class="muted small" id="chi"></p>
   <div id="contenuto"><p class="muted">Caricamento…</p></div>
   <div class="errore" id="errore" role="alert" hidden></div>
@@ -64,7 +65,7 @@
     };
   }
 
-  let voci = [];
+  let voci = [], anteprima = false;
   function rigaRilievo(v, i) {
     const s = v.rilievo.segnalazione;
     const stato = s ? `<span class="pillola ${s.stato === "gestita" ? "p-ok" : "p-warn"}">${s.stato === "gestita" ? "segnalazione gestita" : `segnalata il ${esc(dataIt(s.quando))}`}</span>` : "";
@@ -73,6 +74,9 @@
   }
   function disegna(d) {
     voci = [];
+    anteprima = !!d.anteprima;
+    $("esci").textContent = anteprima ? "Chiudi l'anteprima" : "Esci";
+    $("anteprima").hidden = !anteprima; $("anteprima").textContent = `Anteprima dell'amministratore: stai vedendo l'area come ${d.email}. Segnalazioni e salvataggio dei profili sono disattivati.`;
     $("esci").hidden = false; $("chi").textContent = `Accesso come ${d.email}. ${d.coordinatore ? "Vedi le difformità dei bandi dei profili che hai scelto. Il link ai punteggi compare solo dove sei referente." : "Vedi solo i bandi di cui risulti referente."}`;
     const filtro = d.coordinatore ? `<section><h2>I profili che segui</h2><div class="profili">${d.profili_disponibili.map(p => `<label class="spunta"><input type="checkbox" data-profilo="${esc(p)}"${d.profili.includes(p) ? " checked" : ""}> ${esc(p)}</label>`).join("") || `<span class="muted">Nessun profilo disponibile.</span>`}</div>
       <div class="riga" style="align-items:center;margin-top:8px"><button class="primario piccolo" type="button" id="salva-profili">Salva i profili</button><span class="muted small">Li ritrovi a ogni accesso.</span></div></section>` : "";
@@ -91,6 +95,7 @@
     }).join("")}</section>`).join("") || `<section><p class="muted">${d.coordinatore && !d.profili.length ? "Scegli i profili che segui e premi Salva per vedere i bandi." : "Non risultano atti da controllare per i tuoi bandi nei monitoraggi in corso."}</p></section>`);
     collegaProfili();
     document.querySelectorAll("[data-segnala]").forEach(b => b.onclick = () => apriSegnala(Number(b.dataset.segnala)));
+    if (anteprima) document.querySelectorAll("[data-segnala], #salva-profili, [data-profilo]").forEach(x => { x.disabled = true; x.title = "Disattivato nell'anteprima"; });
   }
   function collegaProfili() {
     const b = $("salva-profili");
@@ -120,7 +125,11 @@
     try { disegna(await api("/api/area-referenti/bandi")); }
     catch (err) { if (err.status === 401) moduloAccesso(); else errore(err.message); }
   }
-  $("esci").onclick = async () => { await api("/api/area-referenti/esci", {}); moduloAccesso(); };
+  $("esci").onclick = async () => {
+    await api("/api/area-referenti/esci", {});
+    if (anteprima) { $("anteprima").hidden = true; anteprima = false; $("contenuto").innerHTML = `<p>Anteprima chiusa. Puoi chiudere questa scheda.</p>`; $("esci").hidden = true; $("chi").textContent = ""; return; }
+    moduloAccesso();
+  };
   const codice = new URLSearchParams(location.search).get("codice");
   if (codice) conferma(codice); else carica();
 </script>

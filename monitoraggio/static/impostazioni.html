@@ -35,6 +35,7 @@
         <p class="muted small">Entrano dalla pagina dei referenti, scelgono i profili che seguono e vedono le difformità di quei bandi in sola consultazione. Non inviano email; per i bandi di cui sono anche RdP trovano il link ai punteggi su Selezioni Online.</p>
         <form id="aggiungi-coordinatore" class="riga"><label>Coordinatore <input type="text" id="email-coordinatore" autocomplete="off" size="30" placeholder="nome.cognome o email" required></label><button type="submit">Abilita come coordinatore</button></form>
         <div class="scroll" style="margin-top:8px"><table id="tabella-coordinatori" style="min-width:720px"></table></div>
+        <form id="vedi-referente" class="riga" style="margin-top:12px"><label>Vedi l'area di un referente (RdP) <input type="email" id="email-vedi" autocomplete="off" size="30" placeholder="email da referente su SOL" required></label><button type="submit">Apri in sola visualizzazione</button></form>
         <h3>Ultime modifiche</h3><div class="scroll"><table id="registro"></table></div>
       </section>
 
@@ -98,7 +99,7 @@
     if (!io) io = (await chiama("/api/menu")).utente;
     const { utenti, registro, coordinatori, link_aree: aree } = await chiama("/api/utenti");
     $("tabella-coordinatori").innerHTML = `<thead><tr><th>Email</th><th>Profili scelti</th><th>Abilitato il</th><th></th></tr></thead><tbody>` + (coordinatori.map(c => `<tr><td>${esc(c.email)}</td><td class="small">${esc(c.profili.join(", ")) || `<span class="muted2">nessuno ancora</span>`}</td><td>${ora(c.aggiunto_il)}</td>
-      <td style="white-space:nowrap"><button type="button" class="piccolo" data-copia="${esc(aree.referenti)}">Copia link</button> <button type="button" class="piccolo" data-invia-coord="${esc(c.email)}">Invia email</button> <button type="button" class="piccolo" data-togli-coord="${esc(c.email)}">Rimuovi</button></td></tr>`).join("") || `<tr><td colspan="4" class="muted">Nessun coordinatore.</td></tr>`) + `</tbody>`;
+      <td style="white-space:nowrap"><button type="button" class="piccolo" data-copia="${esc(aree.referenti)}">Copia link</button> <button type="button" class="piccolo" data-vedi-area="${esc(c.email)}" title="Apre in un'altra scheda la sua area, in sola visualizzazione">Vedi la sua area</button> <button type="button" class="piccolo" data-invia-coord="${esc(c.email)}">Invia email</button> <button type="button" class="piccolo" data-togli-coord="${esc(c.email)}">Rimuovi</button></td></tr>`).join("") || `<tr><td colspan="4" class="muted">Nessun coordinatore.</td></tr>`) + `</tbody>`;
     const rigaLink = (titolo, nota, url, extra = "") => `<div style="padding:8px 0;border-top:1px solid var(--border-soft)"><b>${titolo}</b> ${extra}<div class="muted small">${nota}</div>
       <div class="riga" style="align-items:center;margin-top:4px"><span class="mono small" style="word-break:break-all">${esc(url)}</span><button type="button" class="piccolo" data-copia="${esc(url)}">Copia</button></div></div>`;
     $("link-aree").innerHTML = `<h3 style="margin-top:0">Link di accesso alle aree</h3>` +
@@ -110,9 +111,9 @@
       <td>${esc(u.username)}${u.username === mioNome ? ` <span class="muted2">(tu)</span>` : ""}</td><td>${esc(u.email || `${u.username}@cnr.it`)}</td>
       <td>${u.iniziale ? "Amministratore (dalla configurazione)" : `<select data-ruolo="${esc(u.username)}" aria-label="Ruolo"><option value="lettura"${u.ruolo === "lettura" ? " selected" : ""}>Lettura</option><option value="amministratore"${u.ruolo === "amministratore" ? " selected" : ""}>Amministratore</option></select>`}</td>
       <td>${ora(u.aggiunto_il)}${u.aggiunto_da ? `<div class="muted2 small">${esc(u.aggiunto_da)}</div>` : ""}</td><td>${ora(u.ultimo_accesso) || `<span class="muted2">mai</span>`}</td>
-      <td style="white-space:nowrap"><button type="button" class="piccolo" data-copia="${esc(u.link)}">Copia link</button> <button type="button" class="piccolo" data-invia="${esc(u.username)}" data-email="${esc(u.email || `${u.username}@cnr.it`)}">Invia email</button>
+      <td style="white-space:nowrap">${u.ruolo === "lettura" && !u.iniziale && u.username !== mioNome ? `<button type="button" class="piccolo" data-vedi="${esc(u.username)}" title="Vedi il sito con le sue regole, in sola visualizzazione">Vedi come</button> ` : ""}<button type="button" class="piccolo" data-copia="${esc(u.link)}">Copia link</button> <button type="button" class="piccolo" data-invia="${esc(u.username)}" data-email="${esc(u.email || `${u.username}@cnr.it`)}">Invia email</button>
         ${u.iniziale || u.username === mioNome ? "" : `<button type="button" class="piccolo" data-togli="${esc(u.username)}">Rimuovi</button>`}</td></tr>`).join("") + `</tbody>`;
-    $("registro").innerHTML = `<thead><tr><th>Quando</th><th>Chi</th><th>Modifica</th></tr></thead><tbody>` + (registro.map(r => `<tr><td>${ora(r.quando)}</td><td>${esc(r.autore)}</td><td>${r.azione === "togli" ? `Tolto ${esc(r.username)}` : r.azione === "link_accesso" ? `Link di accesso a ${esc(r.username)}` : r.azione === "invito_accesso" ? `Email con il link di accesso a ${esc(r.username)}` : `${esc(r.username)}: ${esc(r.ruolo)}`}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">Nessuna modifica</td></tr>`) + `</tbody>`;
+    $("registro").innerHTML = `<thead><tr><th>Quando</th><th>Chi</th><th>Modifica</th></tr></thead><tbody>` + (registro.map(r => `<tr><td>${ora(r.quando)}</td><td>${esc(r.autore)}</td><td>${r.azione === "togli" ? `Tolto ${esc(r.username)}` : r.azione === "link_accesso" ? `Link di accesso a ${esc(r.username)}` : r.azione === "invito_accesso" ? `Email con il link di accesso a ${esc(r.username)}` : r.azione === "anteprima" ? `Anteprima del sito come ${esc(r.username)}` : r.azione === "anteprima_area" ? `Anteprima dell'area referenti come ${esc(r.username)}` : `${esc(r.username)}: ${esc(r.ruolo)}`}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">Nessuna modifica</td></tr>`) + `</tbody>`;
     document.querySelectorAll("[data-ruolo]").forEach(s => s.onchange = () => imposta(s.dataset.ruolo, s.value));
     document.querySelectorAll("[data-copia]").forEach(b => b.onclick = () => copia(b.dataset.copia, "Link copiato"));
     document.querySelectorAll("[data-invia-coord]").forEach(b => b.onclick = async () => {
@@ -140,6 +141,20 @@
     catch (e) { errore("errore-utenti", e.message); return false; }
   }
   $("nome").oninput = () => { $("email-utente").placeholder = `${$("nome").value.trim().toLowerCase() || "nome.cognome"}@cnr.it`; };
+  async function apriArea(email) {
+    const scheda = window.open("about:blank", "_blank");  // aperta subito: dopo l'attesa il browser la bloccherebbe
+    try { errore("errore-utenti"); const r = await chiama("/api/area-referenti/anteprima", json("POST", { email })); if (scheda) scheda.location = r.url; else location.href = r.url; await caricaUtenti(); }
+    catch (err) { scheda?.close(); errore("errore-utenti", err.message); }
+  }
+  $("vedi-referente").onsubmit = (e) => { e.preventDefault(); apriArea($("email-vedi").value); };
+  document.addEventListener("click", async (e) => {
+    const area = e.target.closest("[data-vedi-area]");
+    if (area) return apriArea(area.dataset.vediArea);
+    const utente = e.target.closest("[data-vedi]");
+    if (!utente) return;
+    try { errore("errore-utenti"); await chiama(`/api/utenti/${encodeURIComponent(utente.dataset.vedi)}/vista`, { method: "POST" }); location.href = "/monitoraggio"; }
+    catch (err) { errore("errore-utenti", err.message); }
+  });
   $("aggiungi-coordinatore").onsubmit = async (e) => {
     e.preventDefault();
     try { errore("errore-utenti"); await chiama("/api/coordinatori", json("POST", { email: $("email-coordinatore").value })); $("email-coordinatore").value = ""; await caricaUtenti(); toast("Coordinatore abilitato"); }

@@ -99,6 +99,15 @@
       const info = await r.json();
       if (info.ruolo === "lettura") document.documentElement.classList.add("sola-lettura");
       disegna(info);
+      if (info.vista_come) {
+        const barra = document.createElement("div");
+        barra.setAttribute("role", "status");
+        barra.style.cssText = "background:#7a4b00;color:#fff;padding:10px 18px;font:600 14px system-ui,sans-serif;display:flex;gap:12px;align-items:center;flex-wrap:wrap";
+        barra.innerHTML = `<span></span><button type="button" style="font:inherit;padding:4px 10px;cursor:pointer">Torna amministratore</button>`;
+        barra.querySelector("span").textContent = `Anteprima: stai vedendo il sito come ${info.vista_come} (sola lettura). Le azioni non vengono eseguite.`;
+        barra.querySelector("button").onclick = async () => { await fetch("/api/vista-come/esci", { method: "POST" }); location.href = "/monitoraggio/impostazioni#utenti"; };
+        document.body.insertBefore(barra, document.body.firstChild);
+      }
       if (info.avviso_dati) {
         const barra = document.createElement("div");
         barra.setAttribute("role", "alert");

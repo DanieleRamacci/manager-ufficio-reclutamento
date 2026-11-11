@@ -54,16 +54,45 @@ def _in_background(fn, *argomenti) -> None:
     threading.Thread(target=fn, args=argomenti, daemon=True, name="link-referente").start()
 
 
+def _anteprima() -> str | None:
+    """Un amministratore vede l'area come un referente o un coordinatore, senza poter fare nulla a suo nome."""
+    email, fino = session.get("anteprima_referente"), session.get("anteprima_fino")
+    if not (email and fino and datetime.fromisoformat(fino) > _adesso()):
+        return None
+    amministratore = utenti.ruolo(session.get("user")) == utenti.AMMINISTRATORE and not session.get("solo_lettura")
+    return email if amministratore and not session.get("vista_come") else None
+
+
+def avvia_anteprima(email: str) -> None:
+    session["anteprima_referente"] = email
+    session["anteprima_fino"] = (_adesso() + DURATA_SESSIONE).isoformat()
+
+
+def puo_entrare(conn, email: str) -> bool:
+    return _puo_entrare(conn, email.strip().lower())
+
+
+def _non_in_anteprima(fn):
+    @wraps(fn)
+    def _controllo(*args, **kwargs):
+        if _anteprima():
+            return jsonify({"error": "Anteprima dell'amministratore: questa azione non viene eseguita."}), 403
+        return fn(*args, **kwargs)
+    return _controllo
+
+
 def _solo_se_attiva(fn):
     @wraps(fn)
     def _controllo(*args, **kwargs):
-        if not posta.impostazioni_email()["portale_referenti"]:
+        if not posta.impostazioni_email()["portale_referenti"] and not _anteprima():
             abort(404)
         return fn(*args, **kwargs)
     return _controllo
 
 
 def _referente() -> str | None:
+    if _anteprima():
+        return _anteprima()
     email, fino = session.get("referente"), session.get("referente_fino")
     return email if email and fino and datetime.fromisoformat(fino) > _adesso() else None
 
@@ -222,6 +251,10 @@ def entra():
 @bp.post("/api/area-referenti/esci")
 @_solo_se_attiva
 def esci():
+    if _anteprima():  # resta collegato come amministratore
+        session.pop("anteprima_referente", None)
+        session.pop("anteprima_fino", None)
+        return jsonify({"ok": True, "anteprima": True})
     session.clear()
     return jsonify({"ok": True})
 
@@ -235,7 +268,7 @@ def bandi():
     try:
         scelti = _profili_coordinatore(conn, email)
         per_scheda, per_bando, disponibili = _profili_schede(conn)
-        base = {"email": email, "coordinatore": scelti is not None, "profili": scelti or [],
+        base = {"email": email, "anteprima": bool(_anteprima()), "coordinatore": scelti is not None, "profili": scelti or [],
                 "profili_disponibili": disponibili if scelti is not None else []}
         if atti.fonti_in_attesa(conn):  # finché SOL e URP non concludono le difformità non sono affidabili
             return _senza_cache(jsonify({**base, "in_aggiornamento": True, "monitoraggi": []}))
@@ -249,6 +282,7 @@ def bandi():
 @bp.post("/api/area-referenti/profili")
 @_solo_se_attiva
 @_serve_referente
+@_non_in_anteprima
 def salva_profili():
     """I profili restano salvati per il coordinatore: li ritrova a ogni accesso."""
     email = _referente()
@@ -268,6 +302,7 @@ def salva_profili():
 @bp.post("/api/area-referenti/segnala")
 @_solo_se_attiva
 @_serve_referente
+@_non_in_anteprima
 def segnala():
     """La riga si ricalcola sul server: si può segnalare solo una difformità presente tra i propri bandi."""
     email = _referente()

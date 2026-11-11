@@ -4,7 +4,7 @@ import logging
 import threading
 from pathlib import Path
 
-from flask import Blueprint, jsonify, redirect, request, send_file, send_from_directory
+from flask import Blueprint, jsonify, redirect, request, send_file, send_from_directory, session
 
 from . import atti, attivita, comunicazioni, config, db, difformita, excel_mese, impostazioni, mensile, portale, posta, punteggi, referenti, sol_sessione, utenti
 
@@ -144,6 +144,44 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             return jsonify({"error": str(e)}), 400
         finally:
             conn.close()
+
+    @bp.post("/api/utenti/<nome>/vista")
+    @protezione
+    @solo_admin
+    def api_vista_come(nome: str):
+        """Anteprima del sito come un utente in lettura: valgono le sue regole, ma nessuna azione viene eseguita."""
+        nome = utenti.normalizza(nome)
+        if utenti.ruolo(nome) != utenti.LETTURA:
+            return jsonify({"error": "L'anteprima serve per gli utenti in lettura: un amministratore vede quello che vedi tu"}), 400
+        conn = _conn()
+        try:
+            utenti.traccia_anteprima(conn, nome, utente_corrente(), "anteprima")
+        finally:
+            conn.close()
+        session["vista_come"] = nome
+        return jsonify({"ok": True})
+
+    @bp.post(utenti.ESCI_ANTEPRIMA)
+    @protezione
+    def api_vista_esci():
+        session.pop("vista_come", None)
+        return jsonify({"ok": True})
+
+    @bp.post("/api/area-referenti/anteprima")
+    @protezione
+    @solo_admin
+    def api_anteprima_area():
+        """Anteprima dell'area referenti come un RdP o un coordinatore: vede i suoi bandi, non può segnalare né salvare."""
+        email = str((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
+        conn = _conn()
+        try:
+            if not email or not portale.puo_entrare(conn, email):
+                return jsonify({"error": "Questo indirizzo non risulta tra i referenti attivi né tra i coordinatori"}), 404
+            utenti.traccia_anteprima(conn, email, utente_corrente(), "anteprima_area")
+        finally:
+            conn.close()
+        portale.avvia_anteprima(email)
+        return jsonify({"ok": True, "url": portale.PAGINA})
 
     @bp.post("/api/coordinatori")
     @protezione

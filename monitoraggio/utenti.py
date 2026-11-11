@@ -125,6 +125,11 @@ def invia_accesso(conn, nome: str, autore: str | None) -> str | None:
     return email
 
 
+def traccia_anteprima(conn, chi: str, autore: str | None, cosa: str) -> None:
+    conn.execute("INSERT INTO utente_modifica (username, azione, ruolo, autore, quando) VALUES (?, ?, NULL, ?, ?)",
+                 (chi, cosa, autore, _adesso()))
+
+
 def registro(conn, limite: int = 50) -> list[dict]:
     return [dict(r) for r in conn.execute("SELECT * FROM utente_modifica ORDER BY id DESC LIMIT ?", (limite,))]
 
@@ -162,8 +167,22 @@ def corrente() -> str | None:
     return session.get("user")
 
 
+ESCI_ANTEPRIMA = "/api/vista-come/esci"
+
+
+def vista_come() -> str | None:
+    """Anteprima: un amministratore vede il sito come un altro utente, senza poter fare nulla a suo nome."""
+    nome = session.get("vista_come")
+    if not nome or session.get("solo_lettura") or ruolo(corrente()) != AMMINISTRATORE or ruolo(nome) is None:
+        return None
+    return nome
+
+
 def ruolo_corrente() -> str | None:
     """Chi entra col link via email resta in lettura qualunque sia il suo ruolo."""
+    anteprima = vista_come()
+    if anteprima:
+        return ruolo(anteprima)
     attuale = ruolo(corrente())
     return LETTURA if attuale and session.get("solo_lettura") else attuale
 
@@ -178,6 +197,9 @@ def protezioni(base, uscita=None):
                     uscita()
                 session.clear()
                 return jsonify({"error": "Utente non autorizzato"}), 403
+            anteprima = vista_come()
+            if anteprima and request.method not in ("GET", "HEAD") and request.path != ESCI_ANTEPRIMA:
+                return jsonify({"error": f"Anteprima come {anteprima}: le azioni non vengono eseguite. Torna amministratore per farle."}), 403
             return fn(*args, **kwargs)
         return base(_controllo)
 

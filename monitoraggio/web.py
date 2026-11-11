@@ -14,7 +14,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, redirect, request, send_from_directory
 from werkzeug.utils import secure_filename
 
-from . import accessibilita, atti, collegamento, comunicazioni, compat, config, db, difformita, impostazioni, notifiche, punteggi, referenti, segreteria, sol_sessione
+from . import accessibilita, atti, collegamento, comunicazioni, compat, config, db, difformita, impostazioni, notifiche, punteggi, referenti, segreteria, sol_sessione, utenti
 
 # esito dell'ultima verifica dei punteggi (solo conteggi, in memoria)
 ULTIMA_VERIFICA: dict = {}
@@ -440,7 +440,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
             fonti = {f["fonte"]: f["aggiornata_il"] for f in comunicazioni.allineamento(conn, config.monitoraggio_dal().isoformat()[:7])}
         finally:
             conn.close()
-        return jsonify({"gruppi": gruppi, "utente": utente_corrente(), "ruolo": ruolo, "avviso_dati": avviso_dati(),
+        return jsonify({"gruppi": gruppi, "utente": utente_corrente(), "ruolo": ruolo, "vista_come": utenti.vista_come(), "avviso_dati": avviso_dati(),
                         "da_comunicare": da_comunicare, "fonti": fonti, "login": login_url, "logout": logout_url})
 
     @bp.post("/api/raccolta/avvia")

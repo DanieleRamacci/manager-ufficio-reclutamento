@@ -324,3 +324,66 @@ def test_gestione_coordinatori(area, db):
     d = c.get("/api/area-referenti/bandi").get_json()  # toglierlo ha effetto subito
     assert d["coordinatore"] is False and d["monitoraggi"][0]["bandi"] == []
     assert admin.delete(f"/api/coordinatori/{COORD}").status_code == 404
+
+
+# --- anteprima dell'amministratore
+
+def _come(admin, nome="capo.ufficio"):
+    c = admin.application.test_client()
+    with c.session_transaction() as s:
+        s["user"] = nome
+    return c
+
+def test_anteprima_area_come_referente_senza_poter_segnalare(area, db):
+    admin, mese, inviati = area
+    c = _come(admin)
+    assert c.post("/api/area-referenti/anteprima", json={"email": "nessuno@cnr.it"}).status_code == 404
+    assert c.post("/api/area-referenti/anteprima", json={"email": ANNA.upper()}).get_json()["url"] == portale.PAGINA
+    d = c.get("/api/area-referenti/bandi").get_json()
+    assert d["email"] == ANNA and d["anteprima"] is True
+    assert {b["chiave"] for m in d["monitoraggi"] for b in m["bandi"]} <= {CODICE_A}
+    r = c.post("/api/area-referenti/segnala", json={"mese": mese, "nota": "x"})
+    assert r.status_code == 403 and "Anteprima" in r.get_json()["error"]
+    assert not db.execute("SELECT 1 FROM segnalazione").fetchone()
+    assert c.post("/api/area-referenti/esci").get_json()["anteprima"] is True
+    assert c.get("/api/utenti").status_code == 200  # resta amministratore
+    assert c.get("/api/area-referenti/bandi").status_code == 401
+    assert inviati == []  # nessuna email al referente
+
+
+def test_anteprima_area_solo_per_amministratori(area):
+    admin, _, _ = area
+    utenti_conn = _come(admin)
+    assert utenti_conn.post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"}).status_code == 200
+    lettore = _come(admin, "lettore.uno")
+    assert lettore.post("/api/area-referenti/anteprima", json={"email": ANNA}).status_code == 403
+    with lettore.session_transaction() as s:  # anche forzando la sessione, senza ruolo di amministratore non vale
+        s["anteprima_referente"], s["anteprima_fino"] = ANNA, "2999-01-01T00:00:00+00:00"
+    assert lettore.get("/api/area-referenti/bandi").status_code == 401
+
+
+def test_anteprima_area_anche_se_spenta(area):
+    admin, _, _ = area
+    posta.salva_email({"portale_referenti": False}, "t")
+    c = _come(admin)
+    assert c.post("/api/area-referenti/anteprima", json={"email": ANNA}).status_code == 200
+    assert c.get(portale.PAGINA).status_code == 200
+    assert admin.application.test_client().get(portale.PAGINA).status_code == 404  # per gli altri resta spenta
+
+
+def test_vista_come_utente_in_lettura(area):
+    admin, mese, _ = area
+    c = _come(admin)
+    assert c.post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"}).status_code == 200
+    assert c.post("/api/utenti/capo.ufficio/vista").status_code == 400
+    assert c.post("/api/utenti/lettore.uno/vista").status_code == 200
+    menu = c.get("/api/menu").get_json()
+    assert menu["ruolo"] == "lettura" and menu["vista_come"] == "lettore.uno" and menu["utente"] == "capo.ufficio"
+    assert c.get("/api/utenti").status_code == 403  # come lui: niente pagine da amministratore
+    assert c.get(f"/api/monitoraggi/{mese}").status_code == 200
+    r = c.post("/api/sol/esci")
+    assert r.status_code == 403 and "Anteprima come lettore.uno" in r.get_json()["error"]
+    assert c.post("/api/vista-come/esci").status_code == 200
+    assert c.get("/api/menu").get_json()["ruolo"] == "amministratore"
+    registro = c.get("/api/utenti").get_json()["registro"]
+    assert registro[0]["azione"] == "anteprima" and registro[0]["username"] == "lettore.uno"
