@@ -8,7 +8,7 @@ from . import config, punteggi, referenti, segreteria
 from .collegamento import _da_confrontare
 from . import sedi
 from .fonti.sol import url_punteggi
-from .normalizza import nota_sottotipo, codice_sotto
+from .normalizza import codice_sotto
 
 FONTI = ("sol", "urp", "segreteria")
 PRESENTE, MANCANTE, NON_APPLICABILE, NON_CARICATO = "presente", "mancante", "non_applicabile", "non_caricato"
@@ -272,7 +272,7 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
             if len(set(protocolli.values())) > 1:
                 nomi = {"urp": "URP", "sol": "SOL", "segreteria": "file"}
                 note.append("protocollo diverso: " + ", ".join(f"{nomi[f]} {protocolli[f]}" for f in FONTI if f in protocolli))
-            sottotipo, origine = None, None
+            sottotipo, origine, subentro_atteso = None, None, False
             if categoria == "scorrimento":
                 dal_titolo = next((v["sottotipo"] for f, v in gruppo.items()
                                    if f != "segreteria" and v["sottotipo"] and v["sottotipo"] != "non_specificato"), None)
@@ -280,12 +280,12 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
                     sottotipo, origine = gruppo["segreteria"]["sottotipo"], "segreteria"
                     if sottotipo is None:
                         note.append("tipologia da completare nel file")
-                    elif dal_titolo and (dal_titolo == "subentro") != (sottotipo == "subentro"):
-                        note.append(nota_sottotipo(sottotipo, dal_titolo))
                 else:
                     sottotipo = dal_titolo or "non_specificato"
                     origine = "titolo"
-            righe.append({**base, "atto": categoria, "sottotipo": sottotipo, "sottotipo_origine": origine,
+                # un subentro non è una difformità: va indicato nel file scorrimenti del mese (scorrimenti_compilato.py)
+                subentro_atteso = "subentro" in (sottotipo, dal_titolo)
+            righe.append({**base, "atto": categoria, "sottotipo": sottotipo, "sottotipo_origine": origine, "subentro_atteso": subentro_atteso,
                           "codice_sotto": next((gruppo[f]["codice_sotto"] for f in FONTI
                                                 if f in gruppo and gruppo[f].get("codice_sotto")), None),
                           "data": data,
@@ -335,6 +335,12 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
                 r["note"] += difformita_sol(r, s)
             else:
                 r["punteggi"], r["url_punteggi"] = None, None
+            if info and len(info["figli"]) > 1:  # atto unico per più sedi: una sotto-riga per sede, sotto quella del padre
+                seguito = r["atto"] in ("graduatoria", "scorrimento")
+                r["sedi"] = [{"scheda_id": x["id"], "codice": x["codice_originale"], "link_sol": x["url"], "url_punteggi": url_punteggi(x["id_esterno"]),
+                              "punteggi": punteggi_riga(x) if seguito else None, "note": difformita_sol(r, x) if seguito else [],
+                              "rdp": persone(rdp_scheda.get(x["id"], []))}
+                             for x in sorted(info["figli"], key=lambda x: x["codice_originale"] or "")]
             # celle senza documento: link alla pagina della fonte, per verificare se l'atto manca davvero
             if not r["fonti"]["sol"].get("url"):
                 principale = info["padre"] if info else schede.get(r["bando_id"], {}).get("sol")
@@ -347,7 +353,7 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
             r["fonti"]["segreteria"]["url"] = url_file_segreteria(foglio=FOGLIO_SEGRETERIA[r["atto"]])
         r.pop("_protocolli", None)
         r["incompleto"] = any(c["stato"] == MANCANTE for c in r["fonti"].values())
-        r["difforme"] = r["incompleto"] or bool(r["note"])
+        r["difforme"] = r["incompleto"] or bool(r["note"]) or any(s["note"] for s in r.get("sedi") or [])
         r["protocollo_diverso"] = any(n.startswith("protocollo diverso") for n in r["note"])
     attesa = {f["fonte"] for f in fonti_in_attesa(conn)}
     if attesa:  # con una fonte incompleta un atto "mancante" non vuol dire niente

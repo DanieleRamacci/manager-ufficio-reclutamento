@@ -1697,8 +1697,8 @@ def test_vecchi_rilievi_riscritti_con_la_graduatoria_pubblica(ambiente, db):
     dbmod.inizializza(db)
     attuali = json.loads(db.execute("SELECT rilievi_attuali FROM difformita WHERE codice = '1 X'").fetchone()[0])
     assert attuali == ["data del protocollo della graduatoria pubblica (oscurata) diversa tra allegato e candidati su SOL (22 candidati)",
-                       "la graduatoria pubblica (oscurata) (prot. 5) non risulta tra i dati attualmente disponibili da URP", "protocollo diverso: SOL 1, URP 2",
-                       "nota per il monitoraggio: il titolo del documento indica un subentro, mentre nel file della segreteria risulta «scorrimento». Nel file degli scorrimenti va indicata la tipologia «subentro»"]
+                       "la graduatoria pubblica (oscurata) (prot. 5) non risulta tra i dati attualmente disponibili da URP", "protocollo diverso: SOL 1, URP 2"]
+    # la nota sul subentro non è più una difformità: si controlla nel file scorrimenti compilato
     assert db.execute("SELECT versione FROM schema_version").fetchone()[0] == dbmod.SCHEMA_VERSION
 
 

@@ -173,9 +173,30 @@
     const idRdp = (p) => p.email || `${p.nome} ${p.cognome}`;
     const opzioniRdp = (persone, scelto) => [...new Map(persone.map(p => [idRdp(p), `${p.cognome || ""} ${p.nome || ""}`.trim() || p.email])).entries()]
       .sort((a, b) => a[1].localeCompare(b[1])).map(([id, nome]) => `<option value="${esc(id)}"${id === scelto ? " selected" : ""}>${esc(nome)}</option>`).join("");
+    // il subentro non è una difformità: si controlla nel file scorrimenti compilato
+    function chipSubentro(r) {
+      if (!r.subentro_atteso) return "";
+      const f = r.file_scorrimenti;
+      return !f ? `<div><span class="pillola p-blu" title="Nel file scorrimenti del mese va indicata la tipologia subentro: si controlla quando ricarichi il file compilato">subentro da indicare nel file scorrimenti</span></div>`
+        : f.subentro_indicato ? `<div><span class="pillola p-ok">subentro indicato nel file</span></div>`
+        : `<div><span class="pillola p-ko" title="${esc(f.trovato ? `Tipologia nel file: ${f.tipologia || "vuota"}` : "Scorrimento non trovato nel file")}">subentro non indicato nel file</span></div>`;
+    }
+    function vociRilievi(r) {
+      const reg = r.registro;
+      return reg ? [...reg.rilievi, ...r.rilievi.filter(t => !reg.rilievi.some(v => v.testo === t)).map(testo => ({ testo }))] : r.rilievi.map(testo => ({ testo }));
+    }
+    // atto unico per più sedi: una sotto-riga per sede, con il suo link, i suoi punteggi e i suoi rilievi
+    function sottoRigheSedi(r) {
+      const { perSede } = App.dividiPerSede(vociRilievi(r));
+      return App.sediDellaRiga(r, perSede).map(s => `<tr class="sotto-sede"><td></td>
+        <td colspan="3"><div class="sede">↳ <b>${esc(s.codice)}</b>${s.link_sol ? ` · <a href="${esc(s.link_sol)}" target="_blank" rel="noopener">Selezioni Online ↗</a>` : ""}</div></td>
+        <td>${s.punteggi || s.url_punteggi ? celleCandidati(s) : ""}</td><td></td>
+        <td colspan="3" class="small">${r.fonti?.urp?.url ? `<a href="${esc(r.fonti.urp.url)}" target="_blank" rel="noopener">URP del bando ↗</a>` : ""}</td>
+        <td>${App.elencoRilievi(perSede.get(s.codice) || (s.note || []).map(testo => ({ testo })))}</td>${s.rdp ? cellaRdp(s) : "<td></td>"}<td></td></tr>`).join("");
+    }
     function cellaRilievi(r) {
       const reg = r.registro;
-      const voci = reg ? [...reg.rilievi, ...r.rilievi.filter(t => !reg.rilievi.some(v => v.testo === t)).map(testo => ({ testo }))] : r.rilievi.map(testo => ({ testo }));
+      const voci = App.dividiPerSede(vociRilievi(r)).generali;
       if (!voci.length) return "";
       const testata = reg && reg.badge !== "da_correggere" ? `<div style="margin-bottom:4px"><span class="badge ${reg.badge}">${BADGE[reg.badge]}</span>${reg.corretta_il ? ` <span class="muted small">il ${ora(reg.corretta_il)}</span>` : ""}</div>` : "";
       const verifica = reg && reg.badge !== "corretta" && stato.m.stato !== "chiuso" ? `<button type="button" class="piccolo solo-admin" data-verifica-atto="${reg.id}"${stato.verificaAtti || stato.atti.fonti_in_attesa.length ? " disabled" : ""}>Verifica</button>` : "";
@@ -268,10 +289,10 @@
         <section style="padding:0"><div class="scroll"><table style="min-width:1250px"><thead><tr><th>Data</th><th>Bando</th><th>Tipologia</th><th>N. gest.</th><th>Atto</th><th>Prot.</th><th>SOL</th><th>URP</th><th>Segreteria</th><th>Difformità rilevate</th><th>RdP</th><th>Comunicazione</th></tr></thead><tbody id="righe-atti">
         ${righe.map(r => `<tr class="${r.con_difformita ? "difforme" : r.comunicazione.stato === "in_attesa" ? "" : "in-regola"}"><td style="white-space:nowrap">${esc(dataIt(r.data))}</td>
           <td style="min-width:170px"><b>${esc(r.codice || r.numero_bando)}</b>${r.sede_da_abbinare ? ` <span class="pillola p-warn" title="Non si riesce a capire con certezza a quale sotto-bando si riferisce quest'atto: i punteggi di una singola sede non vengono attribuiti alla riga">sede da abbinare</span>` : ""}<div class="muted2 small" style="max-width:240px">${esc(r.titolo_bando)}</div></td><td>${chipTipologia(r.tipologia)}</td><td class="mono small">${esc(r.n_gestione)}</td>
-          <td>${esc(ATTI[r.atto] || r.atto)}${r.sottotipo && r.sottotipo !== "non_specificato" ? ` <span class="chip t-altro">${esc(r.sottotipo)}</span>` : ""}${r.persone ? `<div class="muted2 small">${r.persone} persone nel file segreteria</div>` : ""}${celleCandidati(r)}</td>
+          <td>${esc(ATTI[r.atto] || r.atto)}${r.sottotipo && r.sottotipo !== "non_specificato" ? ` <span class="chip t-altro">${esc(r.sottotipo)}</span>` : ""}${chipSubentro(r)}${r.persone ? `<div class="muted2 small">${r.persone} persone nel file segreteria</div>` : ""}${celleCandidati(r)}</td>
           <td class="mono small">${esc(r.protocollo)}</td>${cellaFonte(r, "sol")}${cellaFonte(r, "urp")}${cellaFonte(r, "segreteria")}
           <td style="min-width:240px">${r.sblocco_graduatoria ? `<div style="margin-bottom:4px"><span class="pillola p-warn" title="La graduatoria è su Selezioni Online ma il protocollo non è valorizzato: se il referente non riesce a premere il pulsante, va sbloccata">graduatoria da sbloccare</span></div>` : ""}${cellaRilievi(r) || (r.comunicazione.stato === "in_attesa" ? `<span class="muted2">Non ancora confrontabile</span>` : r.punteggi_da_verificare ? `<span class="muted2">Fonti in regola</span>` : `<span style="color:var(--ok)" class="small">Nessuna difformità</span>`)}${r.punteggi_da_verificare ? `<div class="etichetta small" style="margin-top:4px">Punteggi da verificare: V, I e protocolli non ancora controllati</div>` : ""}</td>
-          ${cellaRdp(r)}${cellaComunicazione(r)}</tr>`).join("") || `<tr><td colspan="12" class="muted">Nessun atto con questi filtri.</td></tr>`}
+          ${cellaRdp(r)}${cellaComunicazione(r)}</tr>${sottoRigheSedi(r)}`).join("") || `<tr><td colspan="12" class="muted">Nessun atto con questi filtri.</td></tr>`}
         </tbody></table></div></section>`;
       const aggiorna = () => { f.tipologia = $("f-tip").value; f.comunicazione = $("f-com").value; f.solo = $("f-solo").checked; f.q = $("f-q").value; const pos = $("f-q").selectionStart; schedaAtti(); $("f-q").focus(); $("f-q").setSelectionRange(pos, pos); };
       ["f-tip", "f-com", "f-solo"].forEach(id => $(id).onchange = () => { f.tipologia = $("f-tip").value; f.comunicazione = $("f-com").value; f.solo = $("f-solo").checked; schedaAtti(); });
@@ -514,6 +535,10 @@
           <p class="muted small">Scorrimenti: vuoto, lo compilano i colleghi. Graduatorie: già compilato con i dati di ${esc(m.etichetta_dati)} da Selezioni Online e con i dati personali dei candidati, se la verifica è stata eseguita. Caricali su OneDrive nella cartella dell'anno e del mese, poi incolla qui sotto i due link.</p>
           ${m.graduatorie_senza_elenco ? `<div class="avviso">${m.graduatorie_senza_elenco} graduatorie senza elenco dei candidati: lancia prima la verifica dei punteggi.</div>` : ""}
           <details><summary class="small">File graduatorie vuoto</summary><p class="small"><a id="scarica-graduatorie-vuoto" href="/api/monitoraggi/${m.mese}/excel/graduatorie">Scarica il modello con le sole intestazioni</a></p></details></section>
+        <section class="solo-admin"><h2>Verifica del file scorrimenti compilato</h2>
+          <p class="muted small">Carica il file scorrimenti compilato dai colleghi: il sistema controlla che ci siano gli scorrimenti del mese e che i subentri siano indicati come tali. Si leggono solo bando, protocolli e tipologia: i nominativi no, e il file non viene conservato.</p>
+          <form id="carica-scorrimenti" class="riga" style="align-items:center"><input type="file" id="file-scorrimenti" accept=".xlsx" required${chiuso ? " disabled" : ""}><button type="submit"${chiuso ? " disabled" : ""}>Carica e verifica</button></form>
+          <div id="esito-scorrimenti" style="margin-top:10px"></div></section>
         <section class="solo-admin"><h2>Email di richiesta di compilazione</h2>
           <div class="griglia2"><label class="campo-largo">Link del file scorrimenti <input id="link-scorrimenti" type="url" value="${esc(m.link_scorrimenti)}" placeholder="https://"></label><label class="campo-largo">Link del file graduatorie <input id="link-graduatorie" type="url" value="${esc(m.link_graduatorie)}" placeholder="https://"></label></div>
           <div class="riga" style="margin-top:8px"><button type="button" id="salva-link"${chiuso ? " disabled" : ""}>Salva i link</button></div>
@@ -533,6 +558,24 @@
       azione("salva-mese", () => aggiorna({ oggetto: $("modello-oggetto").value, testo: $("modello-testo").value }));
       azione("salva-generale", async () => { await chiama("/api/impostazioni/email", corpoJson("PUT", { oggetto: $("modello-oggetto").value, testo: $("modello-testo").value })); await aggiorna({ oggetto: "", testo: "" }); });
       azione("ripristina", () => aggiorna({ oggetto: "", testo: "" }));
+      const esitoScorrimenti = (d) => {
+        if (!d.caricato) { $("esito-scorrimenti").innerHTML = `<span class="muted small">Nessun file caricato per questo monitoraggio.</span>`; return; }
+        const attesi = d.atti.filter(a => a.subentro_atteso);
+        $("esito-scorrimenti").innerHTML = `<p class="small">File «${esc(d.caricato.nome_file)}» caricato da ${esc(d.caricato.caricato_da || "")} il ${ora(d.caricato.caricato_il)}.
+          ${d.atti.filter(a => a.trovato).length} scorrimenti del mese su ${d.atti.length} trovati nel file${attesi.length ? ` · subentri indicati: ${attesi.filter(a => a.subentro_indicato).length} su ${attesi.length}` : ""}.</p>
+          <div class="scroll"><table style="min-width:760px"><thead><tr><th>Bando</th><th>Prot.</th><th>Data</th><th>Nel file</th><th>Tipologia nel file</th><th>Subentro</th></tr></thead><tbody>
+          ${d.atti.map(a => `<tr><td>${esc(a.codice || a.numero_bando)}</td><td class="mono small">${esc(a.protocollo || "")}</td><td>${esc(dataIt(a.data))}</td>
+            <td>${a.trovato ? `<span class="pillola p-ok">sì</span> <span class="muted small">${esc(a.righe_file.join("; "))}</span>` : `<span class="pillola p-ko">non trovato</span>`}</td><td class="small">${esc(a.tipologia)}</td>
+            <td>${!a.subentro_atteso ? `<span class="muted2">–</span>` : a.subentro_indicato ? `<span class="pillola p-ok">indicato</span>` : `<span class="pillola p-ko">da indicare</span>`}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">Nessuno scorrimento in questo monitoraggio.</td></tr>`}</tbody></table></div>
+          ${d.solo_nel_file.length ? `<details style="margin-top:8px"><summary class="small">${d.solo_nel_file.length} righe del file senza uno scorrimento del mese</summary><ul class="small">${d.solo_nel_file.map(v => `<li>${esc(v.foglio)}, riga ${v.riga}: ${esc(v.bando)}${v.protocolli.length ? ` (prot. ${esc(v.protocolli.join(", "))})` : ""}</li>`).join("")}</ul></details>` : ""}`;
+      };
+      chiama(`/api/monitoraggi/${m.mese}/scorrimenti-compilato`).then(esitoScorrimenti).catch(() => {});
+      if ($("carica-scorrimenti")) $("carica-scorrimenti").onsubmit = async (ev) => {
+        ev.preventDefault();
+        const dati = new FormData(); dati.append("file", $("file-scorrimenti").files[0]);
+        try { esitoScorrimenti(await chiama(`/api/monitoraggi/${m.mese}/scorrimenti-compilato`, { method: "POST", body: dati })); toast("File verificato"); stato.atti = await chiama(`/api/monitoraggi/${m.mese}/atti`); }
+        catch (err) { toast(err.message); }
+      };
       azione("copia", async () => { await copia(`Oggetto: ${e.oggetto}\n\n${e.corpo}`, "Testo copiato"); });
       azione("invia", async () => {
         if (!confirm(`Inviare l'email?\n\n${p.prova ? `In prova, solo a ${p.prova}` : `INVIO REALE a: ${e.destinatari.join(", ")}`}`)) return;

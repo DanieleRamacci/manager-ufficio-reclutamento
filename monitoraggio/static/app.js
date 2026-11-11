@@ -137,6 +137,26 @@ window.App = (() => {
       </tbody></table></div>`;
   }
 
+  // Atto unico per più sedi: i rilievi «sede «X»: …» vanno nella sotto-riga di quella sede, sotto la riga del bando padre.
+  const PREFISSO_SEDE = /^sede «([^»]*)»: /;
+  function dividiPerSede(voci) {
+    const perSede = new Map(), generali = [];
+    voci.forEach(v => {
+      const m = PREFISSO_SEDE.exec(v.testo);
+      if (!m) { generali.push(v); return; }
+      if (!perSede.has(m[1])) perSede.set(m[1], []);
+      perSede.get(m[1]).push({ ...v, testo: v.testo.slice(m[0].length) });
+    });
+    return { generali, perSede };
+  }
+  // Le sedi di una riga: quelle note dal server, più quelle che compaiono solo nei rilievi
+  function sediDellaRiga(riga, perSede) {
+    const sedi = [...(riga.sedi || [])];
+    perSede.forEach((_, codice) => { if (!sedi.some(s => s.codice === codice)) sedi.push({ codice }); });
+    return sedi.length > 1 || perSede.size ? sedi : [];
+  }
+  const elencoRilievi = (voci) => voci.length ? `<ul class="rilievi">${voci.map(v => `<li class="${v.risolto ? "risolto" : ""}">${esc(v.testo)}</li>`).join("")}</ul>` : `<span class="muted small">nessuna difformità</span>`;
+
   // Testata dell'area referenti (RdP e coordinatori): le stesse due pagine del sito, più i profili per i coordinatori.
   function testataArea(v, attiva) {
     const voci = [["stato", "Stato complessivo", "/referenti/stato"], ["monitoraggi", "Monitoraggi", "/referenti/monitoraggi"],
@@ -163,5 +183,5 @@ window.App = (() => {
     };
   }
 
-  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, json, toast, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati, contieneTesto, pannelloCandidati, testataArea };
+  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, json, toast, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati, contieneTesto, pannelloCandidati, testataArea, dividiPerSede, sediDellaRiga, elencoRilievi };
 })();

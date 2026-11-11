@@ -17,7 +17,7 @@
 <body>
 <main id="contenuto"><p class="muted">Caricamento…</p></main>
 <script>
-  const { $, esc, ora, dataIt, ATTI, chiama, json, toast, contieneTesto, chipTipologia, cellaFonte, cellaRdp, collegaRdp, pannelloCandidati, testataArea } = App;
+  const { $, esc, ora, dataIt, ATTI, chiama, json, toast, contieneTesto, chipTipologia, cellaFonte, cellaRdp, collegaRdp, pannelloCandidati, testataArea, dividiPerSede, sediDellaRiga, elencoRilievi } = App;
   const AREA = location.pathname.startsWith("/referenti");
   const API = AREA ? "/api/area-referenti/consulta" : "/api/consulta";
   const BASE = AREA ? "/referenti" : "/monitoraggio/consulta";
@@ -50,6 +50,14 @@
     const candidati = p?.scheda_id ? `<div><button type="button" class="piccolo candidati" data-scheda="${p.scheda_id}">Nomi e punteggi ▾</button></div>` : "";
     return `<td>${conteggio}${verificati}${link}${candidati}</td>`;
   }
+  // atto unico per più sedi: una sotto-riga per sede sotto la riga del bando padre
+  function sottoRighe(r, voci, colonne) {
+    const { perSede } = dividiPerSede(voci);
+    return sediDellaRiga(r, perSede).map(s => `<tr class="sotto-sede"><td></td><td colspan="2"><div class="sede">↳ <b>${esc(s.codice)}</b>${s.link_sol ? ` · <a href="${esc(s.link_sol)}" target="_blank" rel="noopener noreferrer">Selezioni Online ↗</a>` : ""}</div></td>
+      <td colspan="${colonne - 6}" class="small">${r.fonti?.urp?.url ? `<a href="${esc(r.fonti.urp.url)}" target="_blank" rel="noopener noreferrer">URP del bando ↗</a>` : ""}</td>
+      <td>${elencoRilievi(perSede.get(s.codice) || (s.note || []).map(testo => ({ testo })))}</td>${s.rdp ? cellaRdp(s) : "<td></td>"}${cellaPunteggi({ ...s, atto: r.atto })}</tr>`).join("");
+  }
+  const chipSubentro = (r) => !r.subentro_atteso ? "" : `<div><span class="pillola ${r.file_scorrimenti ? (r.file_scorrimenti.subentro_indicato ? "p-ok" : "p-ko") : "p-blu"}">${r.file_scorrimenti ? (r.file_scorrimenti.subentro_indicato ? "subentro indicato nel file" : "subentro non indicato nel file") : "subentro da indicare nel file scorrimenti"}</span></div>`;
   function filtrate(righe) {
     return righe.filter(r => (!filtri.atto || r.atto === filtri.atto) && (!filtri.difformi || r.difforme) && (!filtri.come || (r.come || []).includes(filtri.come))
       && contieneTesto(filtri.q, `${r.numero_bando} ${r.codice} ${r.titolo_bando} ${r.protocollo} ${ATTI[r.atto] || r.atto} ${(r.note || []).join(" ")} ${(r.rilievi || []).map(x => x.testo).join(" ")} ${(r.rdp || []).map(p => `${p.nome} ${p.cognome} ${p.email}`).join(" ")}`));
@@ -99,9 +107,9 @@
       const righe = filtrate(dati.righe);
       $("tabella").innerHTML = `<div class="muted small" style="margin-bottom:6px">${righe.length} atti su ${dati.righe.length}</div><div class="scroll"><table style="min-width:1150px"><thead><tr>
         <th>Data</th><th>Bando</th><th>Tipologia</th><th>Atto</th><th>Prot.</th><th>SOL</th><th>URP</th><th>Segreteria</th><th>Note</th><th>RdP</th><th>Punteggi</th></tr></thead><tbody>
-        ${righe.map(r => `<tr><td>${esc(dataIt(r.data))}</td>${cellaBando(r)}<td>${chipTipologia(r.tipologia)}</td><td>${esc(ATTI[r.atto] || r.atto)}</td><td class="mono small">${esc(r.protocollo || "")}</td>
+        ${righe.map(r => `<tr><td>${esc(dataIt(r.data))}</td>${cellaBando(r)}<td>${chipTipologia(r.tipologia)}</td><td>${esc(ATTI[r.atto] || r.atto)}${chipSubentro(r)}</td><td class="mono small">${esc(r.protocollo || "")}</td>
           ${cellaFonte(r, "sol")}${cellaFonte(r, "urp")}${cellaFonte(r, "segreteria")}
-          <td>${r.note.length ? `<ul class="rilievi">${r.note.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}</td>${cellaRdp(r)}${cellaPunteggi(r)}</tr>`).join("")
+          <td>${r.note.length ? `<ul class="rilievi">${r.note.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}</td>${cellaRdp(r)}${cellaPunteggi(r)}</tr>${sottoRighe(r, r.note.map(testo => ({ testo })), 11)}`).join("")
           || `<tr><td colspan="11" class="muted">Nessun atto.</td></tr>`}</tbody></table></div>`;
       collegaRdp($("tabella")); collegaCandidati($("tabella"), 11);
     };
@@ -123,8 +131,9 @@
   // --- un monitoraggio
   function cellaRilievi(r, i) {
     const badge = r.badge && r.badge !== "da_correggere" ? `<div style="margin-bottom:4px"><span class="badge ${r.badge}">${{ corretta: "Corretta", parziale: "Parzialmente corretta", da_controllare: "Da controllare" }[r.badge] || r.badge}</span></div>` : "";
-    if (!r.rilievi.length) return `<td>${badge}</td>`;
-    return `<td style="min-width:240px">${badge}<ul class="rilievi">${r.rilievi.map((x, j) => {
+    const generali = r.rilievi.map((x, j) => ({ ...x, j })).filter(x => !/^sede «/.test(x.testo));
+    if (!generali.length) return `<td>${badge}</td>`;
+    return `<td style="min-width:240px">${badge}<ul class="rilievi">${generali.map(x => { const j = x.j;
       const s = x.segnalazione;
       const stato = s ? `<span class="pillola ${s.stato === "gestita" ? "p-ok" : "p-warn"}">${s.stato === "gestita" ? "segnalazione gestita" : `segnalata il ${esc(dataIt(s.quando))}`}</span> ` : "";
       const segnala = x.segnalabile ? `<button type="button" class="piccolo" data-segnala="${i}:${j}">${s ? "Modifica la segnalazione" : "Segnala falso positivo"}</button>` : "";
@@ -148,8 +157,8 @@
       $("tabella").innerHTML = `<div class="muted small" style="margin-bottom:6px">${righe.length} atti su ${dati.righe.length} · ${dati.righe.filter(r => r.difforme).length} con difformità</div><div class="scroll"><table style="min-width:1250px"><thead><tr>
         <th>Data</th><th>Bando</th><th>Tipologia</th><th>N. gest.</th><th>Atto</th><th>Prot.</th><th>SOL</th><th>URP</th><th>Segreteria</th><th>Difformità</th><th>RdP</th><th>Comunicazione</th><th>Punteggi</th></tr></thead><tbody>
         ${righe.map(r => { const i = dati.righe.indexOf(r); return `<tr><td>${esc(dataIt(r.data))}</td>${cellaBando(r)}<td>${chipTipologia(r.tipologia)}</td><td class="mono small">${esc(r.n_gestione || "")}</td>
-          <td>${esc(ATTI[r.atto] || r.atto)}</td><td class="mono small">${esc(r.protocollo || "")}</td>${cellaFonte(r, "sol")}${cellaFonte(r, "urp")}${cellaFonte(r, "segreteria")}
-          ${cellaRilievi(r, i)}${cellaRdp(r)}${cellaComunicazione(r.comunicazione || {})}${cellaPunteggi(r)}</tr>`; }).join("")
+          <td>${esc(ATTI[r.atto] || r.atto)}${chipSubentro(r)}</td><td class="mono small">${esc(r.protocollo || "")}</td>${cellaFonte(r, "sol")}${cellaFonte(r, "urp")}${cellaFonte(r, "segreteria")}
+          ${cellaRilievi(r, i)}${cellaRdp(r)}${cellaComunicazione(r.comunicazione || {})}${cellaPunteggi(r)}</tr>${sottoRigheMese(r)}`; }).join("")
           || `<tr><td colspan="13" class="muted">${v.tutto ? "Nessun atto in questo monitoraggio." : "Nessun atto dei tuoi bandi in questo monitoraggio."}</td></tr>`}</tbody></table></div>`;
       collegaRdp($("tabella")); collegaCandidati($("tabella"), 13);
       document.querySelectorAll("[data-segnala]").forEach(b => {
@@ -158,6 +167,15 @@
       });
     };
     collegaFiltri(tabella); tabella();
+  }
+  // nel monitoraggio la sotto-riga ha le colonne: … Difformità | RdP | Comunicazione | Punteggi
+  function sottoRigheMese(r) {
+    const i = dati.righe.indexOf(r);
+    const { perSede } = dividiPerSede((r.rilievi || []).map((x, j) => ({ ...x, j })));
+    const rilieviSede = (voci) => voci.length ? `<ul class="rilievi">${voci.map(x => `<li class="${x.risolto ? "risolto" : ""}">${esc(x.testo)}${x.segnalabile || x.segnalazione ? `<div style="margin-top:3px">${x.segnalazione ? `<span class="pillola ${x.segnalazione.stato === "gestita" ? "p-ok" : "p-warn"}">${x.segnalazione.stato === "gestita" ? "segnalazione gestita" : `segnalata il ${esc(dataIt(x.segnalazione.quando))}`}</span> ` : ""}${x.segnalabile ? `<button type="button" class="piccolo" data-segnala="${i}:${x.j}">${x.segnalazione ? "Modifica la segnalazione" : "Segnala falso positivo"}</button>` : ""}</div><div id="form-${i}-${x.j}"></div>` : ""}</li>`).join("")}</ul>` : "";
+    return sediDellaRiga(r, perSede).map(s => `<tr class="sotto-sede"><td></td><td colspan="3"><div class="sede">↳ <b>${esc(s.codice)}</b>${s.link_sol ? ` · <a href="${esc(s.link_sol)}" target="_blank" rel="noopener noreferrer">Selezioni Online ↗</a>` : ""}</div></td>
+      <td colspan="5" class="small">${r.fonti?.urp?.url ? `<a href="${esc(r.fonti.urp.url)}" target="_blank" rel="noopener noreferrer">URP del bando ↗</a>` : ""}</td>
+      <td>${perSede.get(s.codice) ? rilieviSede(perSede.get(s.codice)) : elencoRilievi((s.note || []).map(testo => ({ testo })))}</td>${s.rdp ? cellaRdp(s) : "<td></td>"}<td></td>${cellaPunteggi({ ...s, atto: r.atto })}</tr>`).join("");
   }
   function apriSegnala(i, j) {
     const r = dati.righe[i], x = r.rilievi[j], area = $(`form-${i}-${j}`);

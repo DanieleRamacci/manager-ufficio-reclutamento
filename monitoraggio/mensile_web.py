@@ -6,7 +6,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, redirect, request, send_file, send_from_directory, session
 
-from . import atti, attivita, comunicazioni, config, db, difformita, excel_mese, impostazioni, mensile, portale, posta, profili, punteggi, referenti, sol_sessione, utenti
+from . import atti, attivita, comunicazioni, config, db, difformita, excel_mese, impostazioni, mensile, portale, posta, profili, punteggi, referenti, scorrimenti_compilato, sol_sessione, utenti
 
 STATIC = Path(__file__).resolve().parent / "static"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -755,6 +755,36 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         if not difformita.avvia_verifica(mese, ids, intestazioni_sol() or None, utente_corrente()):
             return jsonify({"error": "Una verifica è già in corso"}), 409
         return jsonify({"ok": True, "verifica": difformita.stato_verifica()}), 202
+
+    @bp.route("/api/monitoraggi/<mese>/scorrimenti-compilato", methods=["GET", "POST"])
+    @protezione
+    @solo_admin
+    def api_scorrimenti_compilato(mese: str):
+        """Il file scorrimenti compilato dai colleghi: si leggono bando, protocolli e tipologia, mai i nominativi."""
+        conn = _conn()
+        try:
+            m = _trova(conn, mese)
+            if not m:
+                return jsonify({"error": "Monitoraggio non trovato"}), 404
+            if request.method == "POST":
+                file = request.files.get("file")
+                if not file or not file.filename.lower().endswith(".xlsx"):
+                    return jsonify({"error": "Serve il file Excel .xlsx compilato"}), 400
+                contenuto = file.read(15 * 1024 * 1024 + 1)
+                if len(contenuto) > 15 * 1024 * 1024:
+                    return jsonify({"error": "File troppo grande (massimo 15 MB)"}), 413
+                try:
+                    voci = scorrimenti_compilato.leggi(contenuto)
+                except scorrimenti_compilato.FileNonValido as e:
+                    return jsonify({"error": str(e)}), 400
+                scorrimenti_compilato.salva(conn, mese, file.filename, voci, utente_corrente())
+            caricato = scorrimenti_compilato.caricato(conn, mese)
+            if not caricato:
+                return jsonify({"caricato": None})
+            esito = scorrimenti_compilato.confronta(comunicazioni.righe_mese(conn, m), caricato["voci"])
+            return jsonify({"caricato": {k: caricato[k] for k in ("nome_file", "caricato_da", "caricato_il")}, **esito})
+        finally:
+            conn.close()
 
     @bp.get("/api/monitoraggi/<mese>/excel/<tipo>")
     @protezione

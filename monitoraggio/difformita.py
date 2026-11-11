@@ -251,6 +251,11 @@ def reimposta(conn, mese: str) -> None:
     conn.execute("DELETE FROM difformita WHERE mese = ?", (mese,))
 
 
+def _senza_note(testi: list[str]) -> list[str]:
+    """Le vecchie note sul subentro non sono difformità (decisione dell'utente del 2026-11-11): si controllano nel file scorrimenti."""
+    return [t for t in testi if not t.startswith("nota per il monitoraggio")]
+
+
 def _chiave_rilievo(testo: str) -> str:
     """Lo stesso problema con un testo un po' diverso (protocollo, conteggi) non è un problema risolto più uno nuovo."""
     if testo.startswith("nota per il monitoraggio"):
@@ -283,7 +288,7 @@ def _rilievi_da_tenere(e: dict, riga: dict, testi: list[str], affidabili: bool) 
     """I rilievi passati non più rilevati ma senza prova di correzione: restano aperti."""
     tenuti, viste = [], {_chiave_rilievo(t) for t in testi}
     viste |= {_PREFISSO_SEDE.sub("", k) for k in viste}  # il vecchio testo senza sede è lo stesso rilievo
-    for t in [*json.loads(e["rilievi_attuali"]), *json.loads(e["rilievi_iniziali"])]:
+    for t in _senza_note([*json.loads(e["rilievi_attuali"]), *json.loads(e["rilievi_iniziali"])]):
         chiave = _chiave_rilievo(t)
         if chiave not in viste and not (affidabili and _correzione_accertata(t, riga)):
             viste.add(chiave)
@@ -293,7 +298,7 @@ def _rilievi_da_tenere(e: dict, riga: dict, testi: list[str], affidabili: bool) 
 
 def _stato_rilievi(e: dict) -> tuple[list[dict], str]:
     """I rilievi di una voce del registro, con quelli risolti spuntati, e il suo stato per la pagina."""
-    iniziali, attuali = json.loads(e["rilievi_iniziali"]), json.loads(e["rilievi_attuali"])
+    iniziali, attuali = _senza_note(json.loads(e["rilievi_iniziali"])), _senza_note(json.loads(e["rilievi_attuali"]))
     correnti = {_chiave_rilievo(t): t for t in attuali}
     per_sede = {_PREFISSO_SEDE.sub("", k) for k in correnti if _PREFISSO_SEDE.match(k)}
     voci_rilievo, viste = [], set()

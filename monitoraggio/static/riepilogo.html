@@ -381,6 +381,11 @@ function renderTabellaAtti(id, righe, conSollecito) {
     segreteria: "Apri il file della segreteria" };
   const diverso = (c, a) => c.stato === "presente" && a.protocollo_diverso && c.protocollo && a.protocollo && String(c.protocollo) !== String(a.protocollo);
   const cella = (c, fonte, a) => `<td class="f ${diverso(c, a) ? "diverso" : c.stato}${c.url ? " apribile" : ""}"${c.url ? ` data-url="${esc(c.url)}" title="${DOVE[fonte]}"` : ""}>${diverso(c, a) ? "protocollo diverso" : CELLE[c.stato]}${c.protocollo && c.stato === "presente" ? `<div class="muted" style="font-weight:400">${esc(c.protocollo)}</div>` : ""}</td>`;
+  const sottoRighe = (a) => (a.sedi || []).length > 1 ? a.sedi.map((s, j) => `<tr class="sotto-sede" data-riga-sede="${righe.indexOf(a)}:${j}"><td></td>
+      <td colspan="2"><div class="sede">↳ <b>${esc(s.codice)}</b>${s.link_sol ? `<div><a class="punteggi-sol" href="${esc(s.link_sol)}" target="_blank" rel="noopener">Selezioni Online ↗</a></div>` : ""}</div></td><td></td>
+      <td>${s.punteggi ? chipPunteggi(s.punteggi) : ""}${s.punteggi?.scheda_id || s.scheda_id ? `<button type="button" class="btn-candidati btn-candidati-sede" data-scheda="${s.punteggi?.scheda_id || s.scheda_id}">${s.punteggi?.candidati ? `👥 ${s.punteggi.con_punteggi ?? ""} candidati ▾` : "👥 Apri dettaglio punteggi ▾"}</button>` : ""}${linkPunteggi(s.url_punteggi)}</td>
+      <td></td><td colspan="3" class="small">${a.fonti.urp?.url ? `<a class="punteggi-sol" href="${esc(a.fonti.urp.url)}" target="_blank" rel="noopener">URP del bando ↗</a>` : ""}</td>
+      ${App.cellaRdp(s)}<td class="difformita">${(s.note || []).map(n => `<span class="chip ${/^protocollo/.test(n) ? "protdiv" : "err"}">${esc(n)}</span>`).join("") || `<span class="muted">nessuna difformità</span>`}</td></tr>`).join("") : "";
   const righeHtml = righe.slice(0, 1000).map((a, i) => `<tr class="cliccabile ${a.difforme ? "difforme" : fontiInAttesa.length ? "" : "in-regola"}" data-id="${a.bando_id}" data-riga="${i}"><td>${dataIt(a.data)}</td><td><b>${esc(a.numero_bando || "")}</b></td>
       <td>${esc(a.codice || "")}</td><td>${TIPOLOGIE[a.tipologia] || esc(a.tipologia)}</td>
       <td><b>${ATTI[a.atto] || a.atto}</b>${a.sottotipo && a.sottotipo !== "non_specificato"
@@ -388,7 +393,7 @@ function renderTabellaAtti(id, righe, conSollecito) {
             ? ` <span class="chip ok" title="dal file della segreteria">${SOTTOTIPI[a.sottotipo]}</span>`
             : ` <span class="muted" title="ricavato dal titolo: indicativo">(${SOTTOTIPI[a.sottotipo]}?)</span>`) : ""}
         ${a.persone ? `<div class="muted">${a.persone} ${a.persone === 1 ? "persona" : "persone"} nel file segreteria</div>` : ""}
-        ${a.atto === "graduatoria" ? chipPunteggi(a.punteggi) + riepilogoPunteggi(a.punteggi) +
+        ${a.atto === "graduatoria" && !(a.sedi || []).length ? chipPunteggi(a.punteggi) + riepilogoPunteggi(a.punteggi) +
           `<button type="button" class="btn-candidati btn-candidati-atto" data-scheda="${a.punteggi?.scheda_id || ""}">${a.punteggi?.candidati ? `👥 ${a.punteggi.con_punteggi ?? ""} candidati ▾` : "👥 Apri dettaglio punteggi ▾"}</button>`
           : a.punteggi ? chipPunteggi(a.punteggi) + (a.punteggi.candidati
             ? `<button type="button" class="btn-candidati btn-candidati-atto" data-scheda="${a.punteggi.scheda_id}">👥 ${a.punteggi.con_punteggi} candidati ▾</button>`
@@ -396,7 +401,7 @@ function renderTabellaAtti(id, righe, conSollecito) {
         ${linkPunteggi(a.url_punteggi)}</td>
       <td>${esc(a.protocollo || "")}</td>${cella(a.fonti.sol, "sol", a)}${cella(a.fonti.urp, "urp", a)}${cella(a.fonti.segreteria, "segreteria", a)}
       ${App.cellaRdp(a)}
-      <td class="difformita">${a.note.map(n => `<span class="chip ${/^protocollo/.test(n) ? "protdiv" : "err"}">${esc(n)}</span>`).join("")}${conSollecito ? `<div class="azioni-sollecito">${righeDelCodice(a).some(x => (x.rdp || []).some(r => r.email)) ? `<button type="button" class="btn-copia-email">Copia destinatari RdP</button>` : `<span class="chip warn">email RdP non disponibile</span>`}<button type="button" class="btn-copia-sollecito">Copia messaggio completo</button>${controlliInvio(a)}</div><span class="muted stato-copia" aria-live="polite"></span>` : ""}</td></tr>`).join("");
+      <td class="difformita">${a.note.map(n => `<span class="chip ${/^protocollo/.test(n) ? "protdiv" : "err"}">${esc(n)}</span>`).join("")}${conSollecito ? `<div class="azioni-sollecito">${righeDelCodice(a).some(x => (x.rdp || []).some(r => r.email)) ? `<button type="button" class="btn-copia-email">Copia destinatari RdP</button>` : `<span class="chip warn">email RdP non disponibile</span>`}<button type="button" class="btn-copia-sollecito">Copia messaggio completo</button>${controlliInvio(a)}</div><span class="muted stato-copia" aria-live="polite"></span>` : ""}</td></tr>${sottoRighe(a)}`).join("");
   $(id).innerHTML = `<thead><tr><th>Data</th><th>N. bando</th><th>Codice</th><th>Tipologia</th><th>Atto</th><th>Protocollo</th>
       <th>Selezioni Online</th><th>URP</th><th>File segreteria</th><th>RdP</th><th>Note</th></tr></thead><tbody>` +
     (righeHtml || `<tr><td colspan="11" class="muted">${conSollecito ? "Nessuna difformità rilevata per questo mese." : "Nessun atto nel periodo selezionato."}</td></tr>`) + "</tbody>" +
@@ -414,6 +419,15 @@ function renderTabellaAtti(id, righe, conSollecito) {
         messaggio_non_disponibile: punteggi.scheda_id
           ? "Collega Selezioni Online e premi Verifica punteggi per caricare la sottotabella dei candidati."
           : "Non è disponibile una scheda punteggi SOL collegata a questa graduatoria." } });
+  });
+  document.querySelectorAll(`#${id} button.btn-candidati-sede`).forEach(b => b.onclick = (e) => {
+    e.stopPropagation();
+    const [i, j] = b.closest("tr").dataset.rigaSede.split(":").map(Number);
+    const a = righe[i], s = a.sedi[j], p = s.punteggi || {};
+    apriCandidati(Number(b.dataset.scheda), b.closest("tr"), { tabella: `#${id}`, colonne: 11,
+      r: { ...(p.record || {}), protocollo: a.protocollo, data: a.data, scorrimento: a.atto === "scorrimento" ? a.protocollo : undefined,
+        domande: p.domande, candidati_disponibili: !!p.candidati,
+        messaggio_non_disponibile: "Collega Selezioni Online e premi Verifica punteggi per caricare la sottotabella dei candidati." } });
   });
   document.querySelectorAll(`#${id} a.punteggi-sol`).forEach(l => l.onclick = (e) => e.stopPropagation());
   document.querySelectorAll(`#${id} td.f[data-url]`).forEach(td => td.onclick = (e) => {
@@ -565,6 +579,15 @@ function righeGraduatoriaUnificate() {
 
   problemi.forEach(p => {
     const note = problemiGraduatoriaPunteggi(p);
+    // atto unico per più sedi: i punteggi della sede vanno nella sua sotto-riga, non nella riga del padre
+    const conSede = righe.find(a => (a.sedi || []).some(s => s.scheda_id === p.scheda_id));
+    if (conSede) {
+      const s = conSede.sedi.find(x => x.scheda_id === p.scheda_id);
+      s.note = [...new Set([...(s.note || []), ...note.filter(n => n !== "graduatoria pubblica (oscurata) non allegata su SOL")])];
+      s.punteggi = punteggiPerRiga(p);
+      if (s.note.length) conSede.difforme = true;
+      return;
+    }
     const candidate = righe.filter(a => a.atto === "graduatoria" && stessaScheda(a, p));
     const esatte = candidate.filter(a => a.codice === p.codice ||
       (p.codice_sotto && String(a.codice_sotto || "") === String(p.codice_sotto)));

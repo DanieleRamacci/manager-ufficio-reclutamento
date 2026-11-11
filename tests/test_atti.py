@@ -227,6 +227,9 @@ def test_atto_unico_per_piu_sedi_dice_di_quale_sede_e_ogni_rilievo(db):
     assert r["url_punteggi"] is None
     assert r["punteggi"]["domande"] == 7 and r["punteggi"]["candidati"] is False
     assert r["sede_da_abbinare"] is False
+    # una sotto-riga per sede, con il suo link e i suoi rilievi
+    assert [(s["codice"], s["link_sol"]) for s in r["sedi"]] == [("367.535 CTER - 01 ISMAR VE", "http://sol/01 ISMAR VE"), ("367.535 CTER - 06 STEMS NA", "http://sol/06 STEMS NA")]
+    assert ["(2 candidati)" in " ".join(s["note"]) for s in r["sedi"]] == [True, False]
 
 
 def test_una_sola_sede_prende_il_link_di_quella_sede(db):

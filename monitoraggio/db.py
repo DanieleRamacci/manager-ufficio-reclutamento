@@ -6,7 +6,7 @@ import sqlite3
 from . import config
 from .normalizza import AGGIUNTA_TIPOLOGIE, ANCORA_SCORRIMENTI, codice_sede, nota_sottotipo
 
-SCHEMA_VERSION = 24
+SCHEMA_VERSION = 25
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -278,6 +278,14 @@ CREATE TABLE IF NOT EXISTS coordinatore (
     profili TEXT NOT NULL DEFAULT '[]',
     aggiunto_da TEXT,
     aggiunto_il TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS scorrimenti_compilato (
+    mese TEXT PRIMARY KEY,
+    nome_file TEXT,
+    caricato_da TEXT,
+    caricato_il TEXT NOT NULL,
+    voci TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS profilo_coordinato (
@@ -630,4 +638,16 @@ def inizializza(conn: sqlite3.Connection) -> None:
                 for profilo in json.loads(c["profili"] or "[]"):
                     conn.execute("INSERT OR IGNORE INTO profilo_coordinato (profilo, email, dal) VALUES (?, ?, datetime('now'))",
                                  (profilo, c["email"]))
+        if riga["versione"] < 25:  # le note sul subentro escono dal registro: non tengono più aperta la riga
+            for d in conn.execute("SELECT id, rilievi_iniziali, rilievi_attuali FROM difformita").fetchall():
+                iniziali, attuali = (json.loads(d[k] or "[]") for k in ("rilievi_iniziali", "rilievi_attuali"))
+                restano = [[t for t in lista if not t.startswith("nota per il monitoraggio")] for lista in (iniziali, attuali)]
+                if restano == [iniziali, attuali]:
+                    continue
+                if not restano[0] and not restano[1]:
+                    conn.execute("DELETE FROM difformita_evento WHERE difformita_id = ?", (d["id"],))
+                    conn.execute("DELETE FROM difformita WHERE id = ?", (d["id"],))
+                else:
+                    conn.execute("UPDATE difformita SET rilievi_iniziali = ?, rilievi_attuali = ? WHERE id = ?",
+                                 (*(json.dumps(x, ensure_ascii=False) for x in restano), d["id"]))
         conn.execute("UPDATE schema_version SET versione = ?", (SCHEMA_VERSION,))

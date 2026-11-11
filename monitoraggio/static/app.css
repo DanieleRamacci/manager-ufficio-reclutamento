@@ -73,6 +73,8 @@ tr.difforme > td:first-child { box-shadow: inset 3px 0 0 #d6453a; } tr.in-regola
 .selezione.attiva { border-color: var(--primary); background: #e7effb; color: var(--primary); font-weight: 500; }
 .creazione { border-color: var(--primary); box-shadow: 0 0 0 3px #e7effb; }
 .barra-progresso { height: 5px; background: var(--border-soft); border-radius: 3px; overflow: hidden; margin-top: 3px; } .barra-progresso i { display: block; height: 100%; background: #2f9a5c; }
+tr.sotto-sede > td { background: #fafbfc; border-top: 0; font-size: 12.5px; } tr.sotto-sede > td:first-child { box-shadow: none; }
+tr.sotto-sede .sede { padding-left: 14px; border-left: 2px solid var(--border); }
 .pannello-candidati { background: #f8f9fb; padding: 12px; font-size: 12.5px; } .pannello-candidati td, .pannello-candidati th { font-size: 12px; padding: 5px 6px; }
 .rilievi { margin: 0; padding: 0; list-style: none; }
 .rilievi li { margin-bottom: 5px; padding-left: 16px; position: relative; font-size: 12.5px; color: var(--ko); }

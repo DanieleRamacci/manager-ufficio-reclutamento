@@ -96,6 +96,12 @@ def _riga(r: dict, v: Visitatore, motivi: list[str]) -> dict:
         "url_punteggi": r.get("url_punteggi") if v.tutto or "rdp" in motivi else None,
         "punteggi": {**{k: p.get(k) for k in ("domande", "con_punteggi", "esito", "verificato_il")}, "scheda_id": scheda} if p else None,
         "sede_da_abbinare": bool(r.get("sede_da_abbinare")), "come": motivi,
+        "subentro_atteso": bool(r.get("subentro_atteso")), "file_scorrimenti": r.get("file_scorrimenti"),
+        "sedi": [{"codice": s.get("codice"), "link_sol": s.get("link_sol"), "note": list(s.get("note") or []),
+                  "url_punteggi": s.get("url_punteggi") if v.tutto or "rdp" in motivi else None,
+                  "punteggi": {**{k: (s.get("punteggi") or {}).get(k) for k in ("domande", "con_punteggi", "esito", "verificato_il")},
+                               "scheda_id": s["scheda_id"] if v.candidati else None} if s.get("punteggi") or v.candidati else None,
+                  "rdp": [{k: x.get(k) for k in ("nome", "cognome", "email")} for x in s.get("rdp") or []]} for s in r.get("sedi") or []],
     }
 
 

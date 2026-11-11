@@ -1,7 +1,7 @@
 """Atti del monitoraggio, messaggi ai referenti e allineamento delle fonti (specifiche grafiche, sezioni 3.2-3.5)."""
 import re
 
-from . import atti, compat, difformita, excel_mese, mensile, posta, punteggi
+from . import atti, compat, difformita, excel_mese, mensile, posta, punteggi, scorrimenti_compilato
 
 MESI_LUNGHI = excel_mese.MESI
 
@@ -42,6 +42,7 @@ def righe_mese(conn, monitoraggio: dict, tipologie: list[str] | None = None) -> 
                       "comunicazione": {"stato": "in_attesa"} if in_attesa else {"stato": "in_regola"} if not testi else (
                           {k: c.get(k) for k in ("stato", "quando", "id", "canale")} if c else {"stato": "da_inviare"})})
     righe.sort(key=lambda r: (not r["con_difformita"], tuple(-ord(x) for x in (r.get("data") or ""))))
+    scorrimenti_compilato.per_riga(conn, monitoraggio["mese"], righe)
     return righe
 
 
