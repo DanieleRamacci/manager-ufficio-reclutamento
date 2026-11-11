@@ -327,6 +327,7 @@ CREATE TABLE IF NOT EXISTS comunicazione_indirizzi (
     chiave TEXT NOT NULL,
     esclusi TEXT NOT NULL DEFAULT '[]',
     cc TEXT NOT NULL DEFAULT '[]',
+    coordinatore INTEGER NOT NULL DEFAULT 0,
     modificata_da TEXT,
     modificata_il TEXT,
     PRIMARY KEY (mese, chiave)
@@ -587,6 +588,8 @@ def inizializza(conn: sqlite3.Connection) -> None:
                 SELECT username, ruolo, {email}, aggiunto_da, aggiunto_il FROM utente_vecchia;
             DROP TABLE utente_vecchia;
         """)
+    if "coordinatore" not in {r[1] for r in conn.execute("PRAGMA table_info(comunicazione_indirizzi)")}:  # versione 25
+        conn.execute("ALTER TABLE comunicazione_indirizzi ADD COLUMN coordinatore INTEGER NOT NULL DEFAULT 0")
     colonne_mese = {r[1] for r in conn.execute("PRAGMA table_info(monitoraggio_mese)")}
     for colonna, tipo in (("stato", "TEXT NOT NULL DEFAULT 'aperto'"), ("chiuso_da", "TEXT"), ("chiuso_il", "TEXT"),  # versione 9
                           ("difformita_aggiornate_il", "TEXT"),  # versione 11

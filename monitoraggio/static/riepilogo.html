@@ -387,7 +387,7 @@ function renderTabellaAtti(id, righe, conSollecito) {
       <td></td><td colspan="3" class="small">${a.fonti.urp?.url ? `<a class="punteggi-sol" href="${esc(a.fonti.urp.url)}" target="_blank" rel="noopener">URP del bando ↗</a>` : ""}</td>
       ${App.cellaRdp(s)}<td class="difformita">${(s.note || []).map(n => `<span class="chip ${/^protocollo/.test(n) ? "protdiv" : "err"}">${esc(n)}</span>`).join("") || `<span class="muted">nessuna difformità</span>`}</td></tr>`).join("") : "";
   const righeHtml = righe.slice(0, 1000).map((a, i) => `<tr class="cliccabile ${a.difforme ? "difforme" : fontiInAttesa.length ? "" : "in-regola"}" data-id="${a.bando_id}" data-riga="${i}"><td>${dataIt(a.data)}</td><td><b>${esc(a.numero_bando || "")}</b></td>
-      <td>${esc(a.codice || "")}</td><td>${TIPOLOGIE[a.tipologia] || esc(a.tipologia)}</td>
+      <td>${esc(a.codice || "")}${a.coordinatore ? `<div class="muted" title="Coordina il profilo ${esc(a.coordinatore.profilo)}">Coordinatore: ${esc(a.coordinatore.email)}</div>` : ""}</td><td>${TIPOLOGIE[a.tipologia] || esc(a.tipologia)}</td>
       <td><b>${ATTI[a.atto] || a.atto}</b>${a.sottotipo && a.sottotipo !== "non_specificato"
         ? (a.sottotipo_origine === "segreteria"
             ? ` <span class="chip ok" title="dal file della segreteria">${SOTTOTIPI[a.sottotipo]}</span>`

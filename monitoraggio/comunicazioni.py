@@ -140,6 +140,9 @@ def messaggio(conn, monitoraggio: dict, codice: str, righe_del_mese: list[dict] 
                                   "escluso": email in scelte["esclusi"]})
     attivi = [p for p in referenti if not p["escluso"]]
     destinatari = [p["email"] for p in attivi]
+    coordinatore = next((r["coordinatore"] for r in righe or tutte if r.get("coordinatore")), None)
+    incluso = bool(coordinatore and scelte["coordinatore"])
+    in_copia = [*scelte["cc"], *([coordinatore["email"]] if incluso and coordinatore["email"] not in scelte["cc"] else [])]
     mese_testo = titolo_mese(monitoraggio["mese_dati"])
     n = sum(len(r["rilievi"]) for r in righe)
     voci = []
@@ -179,7 +182,8 @@ def messaggio(conn, monitoraggio: dict, codice: str, righe_del_mese: list[dict] 
         oggetto = "R: " + re.sub(r"^(?:R: |Promemoria – )+", "", precedente.get("oggetto") or oggetto)
     return {"chiave": codice, "n_gestione": r0.get("n_gestione"), "numero_bando": r0.get("numero_bando"), "titolo_bando": r0.get("titolo_bando"), "referenti": referenti,
             "destinatari": destinatari, "esclusi": scelte["esclusi"], "cc_ufficio": posta.copia_fissa(), "cc_aggiunti": scelte["cc"],
-            "cc": posta.copia_effettiva(destinatari, scelte["cc"]), "oggetto": oggetto, "message_id_precedente": precedente.get("message_id"),
+            "coordinatore": {**coordinatore, "incluso": incluso} if coordinatore else None, "cc_invio": in_copia,
+            "cc": posta.copia_effettiva(destinatari, in_copia), "oggetto": oggetto, "message_id_precedente": precedente.get("message_id"),
             "corpo": corpo, "n_difformita": n, "stato": (righe or tutte)[0]["comunicazione"]["stato"],
             "storico": storico, "posta": posta.stato()}
 

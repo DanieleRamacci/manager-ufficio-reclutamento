@@ -2,9 +2,10 @@
 graduatoria, scorrimento o rettifica compare una sola volta, con lo stato su ogni fonte
 (Selezioni Online, URP, file della segreteria).
 """
+import json
 from collections import defaultdict
 
-from . import config, punteggi, referenti, segreteria
+from . import config, profili, punteggi, referenti, segreteria
 from .collegamento import _da_confrontare
 from . import sedi
 from .fonti.sol import url_punteggi
@@ -95,6 +96,13 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
             sol_per_codice[s["bando_id"]].setdefault(s["codice_sotto"], s)
 
     famiglie = sedi.famiglie(conn)
+    # chi coordina il profilo del bando (tabella dei profili dei coordinatori)
+    profilo_bando: dict = {}
+    for s in conn.execute("SELECT bando_id, dati_extra FROM scheda WHERE fonte = 'sol' AND presente = 1 AND bando_id IS NOT NULL AND dati_extra IS NOT NULL"):
+        profilo = json.loads(s["dati_extra"]).get("profilo")
+        if profilo:
+            profilo_bando.setdefault(s["bando_id"], profilo)
+    coordinatori = profili.titolari(conn)
     testi_sede = sedi.testi_sede(conn)
 
     # --- URP e SOL: documenti per bando
@@ -311,6 +319,8 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
     for r in righe:
         if r["bando_id"] is not None:
             r["rdp"], r["rdp_origine"] = rdp_riga(r["bando_id"], r.get("codice_sotto"))
+            profilo = profilo_bando.get(r["bando_id"])
+            r["coordinatore"] = {"email": coordinatori[profilo], "profilo": profilo} if profilo in coordinatori else None
             r["link_codice"] = link_codice(r["bando_id"], r.get("codice_sotto"))
             sotto = sol_per_codice.get(r["bando_id"], {}).get(r.get("codice_sotto")) if r.get("codice_sotto") else None
             if sotto is not None:
@@ -349,6 +359,7 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
                 r["fonti"]["urp"]["url"] = pagina_urp(schede[r["bando_id"]]["urp"])
         else:
             r["rdp"], r["rdp_origine"], r["link_codice"], r["punteggi"], r["url_punteggi"] = [], None, None, None, None
+            r["coordinatore"] = None
         if versione and not r["fonti"]["segreteria"].get("url") and r["atto"] in FOGLIO_SEGRETERIA:
             r["fonti"]["segreteria"]["url"] = url_file_segreteria(foglio=FOGLIO_SEGRETERIA[r["atto"]])
         r.pop("_protocolli", None)

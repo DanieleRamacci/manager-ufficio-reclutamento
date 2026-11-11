@@ -564,7 +564,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             return {"error": "Comunicazione già inviata", "gia_inviata": True}, 409
         try:
             message_id = posta.nuovo_message_id()
-            prova = posta.invia(messaggio["destinatari"], oggetto, testo, modo=modo, cc=messaggio["cc_aggiunti"], message_id=message_id,
+            prova = posta.invia(messaggio["destinatari"], oggetto, testo, modo=modo, cc=messaggio["cc_invio"], message_id=message_id,
                                 in_risposta_a=messaggio["message_id_precedente"] if sollecito else None)
         except posta.PostaErrore as e:
             mensile.registra_invio(conn, "sollecito", m["mese"], codice, utente_corrente(), messaggio["destinatari"], oggetto, "errore", str(e))

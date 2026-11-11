@@ -395,8 +395,9 @@ def registra_comunicazione(conn, mese: str, chiave: str, numero_bando: str | Non
 
 def indirizzi_messaggio(conn, mese: str, chiave: str) -> dict:
     """Le scelte per il messaggio di un codice: referenti tolti e persone aggiunte in copia."""
-    r = conn.execute("SELECT esclusi, cc FROM comunicazione_indirizzi WHERE mese = ? AND chiave = ?", (mese, chiave)).fetchone()
-    return {"esclusi": json.loads(r["esclusi"]), "cc": json.loads(r["cc"])} if r else {"esclusi": [], "cc": []}
+    r = conn.execute("SELECT esclusi, cc, coordinatore FROM comunicazione_indirizzi WHERE mese = ? AND chiave = ?", (mese, chiave)).fetchone()
+    return ({"esclusi": json.loads(r["esclusi"]), "cc": json.loads(r["cc"]), "coordinatore": bool(r["coordinatore"])} if r
+            else {"esclusi": [], "cc": [], "coordinatore": False})
 
 
 def salva_indirizzi_messaggio(conn, mese: str, chiave: str, dati: dict, autore: str | None) -> None:
@@ -404,13 +405,15 @@ def salva_indirizzi_messaggio(conn, mese: str, chiave: str, dati: dict, autore: 
         valore = dati.get(campo) or []
         return dividi_indirizzi(",".join(str(x) for x in valore) if isinstance(valore, list) else str(valore))
     esclusi, cc = elenco("esclusi"), elenco("cc")
+    # il coordinatore in copia è una scelta a parte: se la richiesta non ne parla resta com'era
+    coordinatore = bool(dati["coordinatore"]) if "coordinatore" in dati else indirizzi_messaggio(conn, mese, chiave)["coordinatore"]
     sbagliati = posta.indirizzi_non_validi(cc)
     if sbagliati:
         raise ValueError("Indirizzi in copia non validi: " + ", ".join(sbagliati))
-    conn.execute("INSERT INTO comunicazione_indirizzi (mese, chiave, esclusi, cc, modificata_da, modificata_il) VALUES (?, ?, ?, ?, ?, ?) "
-                 "ON CONFLICT(mese, chiave) DO UPDATE SET esclusi = excluded.esclusi, cc = excluded.cc, "
+    conn.execute("INSERT INTO comunicazione_indirizzi (mese, chiave, esclusi, cc, coordinatore, modificata_da, modificata_il) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                 "ON CONFLICT(mese, chiave) DO UPDATE SET esclusi = excluded.esclusi, cc = excluded.cc, coordinatore = excluded.coordinatore, "
                  "modificata_da = excluded.modificata_da, modificata_il = excluded.modificata_il",
-                 (mese, chiave, json.dumps(esclusi), json.dumps(cc), autore, _adesso()))
+                 (mese, chiave, json.dumps(esclusi), json.dumps(cc), int(coordinatore), autore, _adesso()))
 
 
 def segna(conn, mese: str, numero_bando: str, stato: str, autore: str | None, destinatari: list[str] | None = None,

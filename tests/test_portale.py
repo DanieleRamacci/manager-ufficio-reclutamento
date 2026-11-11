@@ -425,3 +425,22 @@ def test_vista_come_utente_in_lettura(area):
     assert c.get("/api/menu").get_json()["ruolo"] == "amministratore"
     registro = c.get("/api/utenti").get_json()["registro"]
     assert registro[0]["azione"] == "anteprima" and registro[0]["username"] == "lettore.uno"
+
+
+def test_coordinatore_del_profilo_visibile_e_in_copia_solo_con_la_spunta(area, db):
+    admin, mese, inviati = area
+    c = _coordinatore(admin, db, inviati)
+    c.post("/api/area-referenti/profili/prendi", json={"profilo": CTER})
+    righe = admin.get(f"/api/monitoraggi/{mese}/atti").get_json()["righe"]
+    assert next(r for r in righe if r["codice"] == CODICE_A)["coordinatore"] == {"email": COORD, "profilo": CTER}
+    assert next(r for r in righe if r["codice"] == CODICE_B)["coordinatore"] is None
+    url = f"/api/monitoraggi/{mese}/comunicazioni/{CODICE_A}"
+    d = admin.get(url + "/messaggio").get_json()
+    assert d["coordinatore"] == {"email": COORD, "profilo": CTER, "incluso": False} and COORD not in d["cc"]
+    d = admin.put(url + "/indirizzi", json={"esclusi": [], "cc": [], "coordinatore": True}).get_json()
+    assert d["coordinatore"]["incluso"] is True and COORD in d["cc"]
+    d = admin.put(url + "/indirizzi", json={"esclusi": [], "cc": ["altro@cnr.it"]}).get_json()  # senza la voce resta com'era
+    assert COORD in d["cc"] and "altro@cnr.it" in d["cc"]
+    n = len(inviati)
+    assert admin.post(url + "/invia", json={"modo": "ufficiale"}).status_code == 200
+    assert len(inviati) == n + 1 and COORD in inviati[-1]["Cc"] and inviati[-1]["To"] == ANNA

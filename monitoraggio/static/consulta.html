@@ -40,7 +40,8 @@
   const chipCome = (r) => (r.come || []).map(c => `<span class="come ${c}">${c === "coordinatore" ? "come coordinatore" : "come RdP"}</span>`).join("");
   function cellaBando(r) {
     return `<td style="min-width:170px"><b>${esc(r.codice || r.numero_bando)}</b><div class="muted2 small" style="max-width:260px">${esc(r.titolo_bando || "")}</div>${chipCome(r)}
-      ${r.sede_da_abbinare ? `<span class="pillola p-warn" title="Non è chiaro a quale sotto-bando si riferisce l'atto">sede da abbinare</span>` : ""}</td>`;
+      ${r.sede_da_abbinare ? `<span class="pillola p-warn" title="Non è chiaro a quale sotto-bando si riferisce l'atto">sede da abbinare</span>` : ""}
+      ${r.coordinatore ? `<div class="muted small" title="Coordina il profilo ${esc(r.coordinatore.profilo)}">Coordinatore: ${esc(r.coordinatore.email)}</div>` : ""}</td>`;
   }
   function cellaPunteggi(r) {
     const p = r.punteggi;
