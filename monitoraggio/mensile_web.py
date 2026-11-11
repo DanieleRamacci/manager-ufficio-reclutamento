@@ -6,7 +6,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, redirect, request, send_file, send_from_directory, session
 
-from . import atti, attivita, comunicazioni, config, db, difformita, excel_mese, impostazioni, mensile, portale, posta, punteggi, referenti, sol_sessione, utenti
+from . import atti, attivita, comunicazioni, config, db, difformita, excel_mese, impostazioni, mensile, portale, posta, profili, punteggi, referenti, sol_sessione, utenti
 
 STATIC = Path(__file__).resolve().parent / "static"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -50,8 +50,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
     def foglio_stile():
         return send_from_directory(STATIC, "app.css")
 
-    @bp.get("/monitoraggio/app.js")
-    @protezione
+    @bp.get("/monitoraggio/app.js")  # solo codice, nessun dato: serve anche all'area referenti
     def script_comune():
         return send_from_directory(STATIC, "app.js")
 
@@ -123,7 +122,10 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
     def api_utenti():
         conn = _conn()
         try:
+            titolari = profili.titolari(conn)
             return jsonify({"utenti": utenti.elenco(conn), "registro": utenti.registro(conn), "coordinatori": portale.elenco_coordinatori(conn),
+                            "profili": [{"profilo": p, "titolare": titolari.get(p)} for p in profili.disponibili(conn)],
+                            "richieste_profili": profili.richieste(conn),
                             "link_aree": {"utenti": f"{config.sito_url()}/login", "referenti": f"{config.sito_url()}{portale.PAGINA}",
                                           "referenti_attiva": posta.impostazioni_email()["portale_referenti"]}})
         finally:
@@ -151,8 +153,8 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
     def api_vista_come(nome: str):
         """Anteprima del sito come un utente in lettura: valgono le sue regole, ma nessuna azione viene eseguita."""
         nome = utenti.normalizza(nome)
-        if utenti.ruolo(nome) != utenti.LETTURA:
-            return jsonify({"error": "L'anteprima serve per gli utenti in lettura: un amministratore vede quello che vedi tu"}), 400
+        if utenti.ruolo(nome) not in (utenti.LETTURA, utenti.DIRIGENTE):
+            return jsonify({"error": "L'anteprima serve per dirigenti e utenti in lettura: un amministratore vede quello che vedi tu"}), 400
         conn = _conn()
         try:
             utenti.traccia_anteprima(conn, nome, utente_corrente(), "anteprima")
@@ -178,10 +180,46 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             if not email or not portale.puo_entrare(conn, email):
                 return jsonify({"error": "Questo indirizzo non risulta tra i referenti attivi né tra i coordinatori"}), 404
             utenti.traccia_anteprima(conn, email, utente_corrente(), "anteprima_area")
+            coordinatore = portale.profili_coordinatore(conn, email) is not None
         finally:
             conn.close()
         portale.avvia_anteprima(email)
-        return jsonify({"ok": True, "url": portale.PAGINA})
+        return jsonify({"ok": True, "url": f"{portale.PAGINA}/profili" if coordinatore else f"{portale.PAGINA}/stato"})
+
+    @bp.post("/api/profili-coordinati/assegna")
+    @protezione
+    @solo_admin
+    def api_profilo_assegna():
+        """L'amministratore decide chi coordina un profilo (anche nessuno)."""
+        corpo = request.get_json(silent=True) or {}
+        profilo, email = str(corpo.get("profilo") or ""), str(corpo.get("email") or "").strip().lower() or None
+        conn = _conn()
+        try:
+            if profilo not in profili.disponibili(conn):
+                return jsonify({"error": "Profilo non valido"}), 400
+            if email and portale.profili_coordinatore(conn, email) is None:
+                return jsonify({"error": "Questa persona non è tra i coordinatori"}), 400
+            profili.assegna(conn, profilo, email)
+            utenti.traccia_anteprima(conn, email or profilo, utente_corrente(), "profilo")
+            return jsonify({"ok": True})
+        finally:
+            conn.close()
+
+    @bp.post("/api/profili-coordinati/richieste/<int:richiesta_id>")
+    @protezione
+    @solo_admin
+    def api_profilo_richiesta(richiesta_id: int):
+        accolta = bool((request.get_json(silent=True) or {}).get("accolta"))
+        conn = _conn()
+        try:
+            richiesta = profili.chiudi(conn, richiesta_id, accolta, utente_corrente())
+        finally:
+            conn.close()
+        if not richiesta:
+            return jsonify({"error": "Richiesta non trovata o già gestita"}), 404
+        if accolta:
+            profili.avvisa_cessione(richiesta)
+        return jsonify({"ok": True})
 
     @bp.post("/api/coordinatori")
     @protezione

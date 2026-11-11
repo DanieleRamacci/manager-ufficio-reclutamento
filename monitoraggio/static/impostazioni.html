@@ -26,7 +26,7 @@
           <form id="aggiungi" class="riga">
             <label>Nome utente di Selezioni Online <input id="nome" placeholder="nome.cognome" autocomplete="off"></label>
             <label>Email, se diversa da nome.cognome@cnr.it <input id="email-utente" type="email" placeholder="nome.cognome@cnr.it" autocomplete="off" size="28"></label>
-            <label>Ruolo <select id="ruolo"><option value="lettura">Lettura</option><option value="amministratore">Amministratore</option></select></label>
+            <label>Ruolo <select id="ruolo"><option value="lettura">Lettura (solo i bandi di cui è RdP)</option><option value="dirigente">Dirigente ufficio (tutti i bandi)</option><option value="amministratore">Amministratore</option></select></label>
             <button class="primario" type="submit">Aggiungi</button>
           </form>
           <div class="errore" id="errore-utenti" role="alert" hidden style="margin-top:8px"></div></div>
@@ -35,6 +35,7 @@
         <p class="muted small">Entrano dalla pagina dei referenti, scelgono i profili che seguono e vedono le difformità di quei bandi in sola consultazione. Non inviano email; per i bandi di cui sono anche RdP trovano il link ai punteggi su Selezioni Online.</p>
         <form id="aggiungi-coordinatore" class="riga"><label>Coordinatore <input type="text" id="email-coordinatore" autocomplete="off" size="30" placeholder="nome.cognome o email" required></label><button type="submit">Abilita come coordinatore</button></form>
         <div class="scroll" style="margin-top:8px"><table id="tabella-coordinatori" style="min-width:720px"></table></div>
+        <div id="profili-coordinati" style="margin-top:14px"></div>
         <form id="vedi-referente" class="riga" style="margin-top:12px"><label>Vedi l'area di un referente (RdP) <input type="email" id="email-vedi" autocomplete="off" size="30" placeholder="email da referente su SOL" required></label><button type="submit">Apri in sola visualizzazione</button></form>
         <h3>Ultime modifiche</h3><div class="scroll"><table id="registro"></table></div>
       </section>
@@ -97,7 +98,21 @@
   let io = null;
   async function caricaUtenti() {
     if (!io) io = (await chiama("/api/menu")).utente;
-    const { utenti, registro, coordinatori, link_aree: aree } = await chiama("/api/utenti");
+    const { utenti, registro, coordinatori, link_aree: aree, profili, richieste_profili: richieste } = await chiama("/api/utenti");
+    const opzioniCoord = (scelto) => `<option value="">— nessuno —</option>` + coordinatori.map(c => `<option value="${esc(c.email)}"${c.email === scelto ? " selected" : ""}>${esc(c.email)}</option>`).join("");
+    $("profili-coordinati").innerHTML = `<h3>Profili dei coordinatori</h3><p class="muted small">Ogni profilo di Selezioni Online ha al più un coordinatore. I coordinatori li scelgono dalla loro pagina; qui decidi tu, anche sulle richieste.</p>` +
+      (richieste.length ? `<div class="avviso" style="margin-bottom:8px">${richieste.map(r => `<div style="margin:4px 0">${esc(r.richiedente)} chiede «${esc(r.profilo)}»${r.titolare ? `, oggi di ${esc(r.titolare)}` : ""} (${ora(r.quando)})
+        <button type="button" class="piccolo" data-richiesta="${r.id}" data-accolta="1">Assegna a ${esc(r.richiedente)}</button> <button type="button" class="piccolo" data-richiesta="${r.id}" data-accolta="">Respingi</button></div>`).join("")}</div>` : "") +
+      `<div class="scroll"><table style="min-width:600px"><thead><tr><th>Profilo</th><th>Coordinatore</th></tr></thead><tbody>${profili.map(p => `<tr><td>${esc(p.profilo)}</td>
+        <td><select data-profilo="${esc(p.profilo)}" aria-label="Coordinatore di ${esc(p.profilo)}">${opzioniCoord(p.titolare)}</select></td></tr>`).join("") || `<tr><td colspan="2" class="muted">Nessun profilo: servono i dati di Selezioni Online.</td></tr>`}</tbody></table></div>`;
+    document.querySelectorAll("[data-profilo]").forEach(s => s.onchange = async () => {
+      try { errore("errore-utenti"); await chiama("/api/profili-coordinati/assegna", json("POST", { profilo: s.dataset.profilo, email: s.value })); toast("Profilo aggiornato"); await caricaUtenti(); }
+      catch (err) { errore("errore-utenti", err.message); await caricaUtenti(); }
+    });
+    document.querySelectorAll("[data-richiesta]").forEach(b => b.onclick = async () => {
+      try { errore("errore-utenti"); await chiama(`/api/profili-coordinati/richieste/${b.dataset.richiesta}`, json("POST", { accolta: !!b.dataset.accolta })); toast("Richiesta gestita"); await caricaUtenti(); }
+      catch (err) { errore("errore-utenti", err.message); }
+    });
     $("tabella-coordinatori").innerHTML = `<thead><tr><th>Email</th><th>Profili scelti</th><th>Abilitato il</th><th></th></tr></thead><tbody>` + (coordinatori.map(c => `<tr><td>${esc(c.email)}</td><td class="small">${esc(c.profili.join(", ")) || `<span class="muted2">nessuno ancora</span>`}</td><td>${ora(c.aggiunto_il)}</td>
       <td style="white-space:nowrap"><button type="button" class="piccolo" data-copia="${esc(aree.referenti)}">Copia link</button> <button type="button" class="piccolo" data-vedi-area="${esc(c.email)}" title="Apre in un'altra scheda la sua area, in sola visualizzazione">Vedi la sua area</button> <button type="button" class="piccolo" data-invia-coord="${esc(c.email)}">Invia email</button> <button type="button" class="piccolo" data-togli-coord="${esc(c.email)}">Rimuovi</button></td></tr>`).join("") || `<tr><td colspan="4" class="muted">Nessun coordinatore.</td></tr>`) + `</tbody>`;
     const rigaLink = (titolo, nota, url, extra = "") => `<div style="padding:8px 0;border-top:1px solid var(--border-soft)"><b>${titolo}</b> ${extra}<div class="muted small">${nota}</div>
@@ -109,11 +124,11 @@
     const mioNome = (io || "").split("@")[0].toLowerCase();
     $("tabella-utenti").innerHTML = `<thead><tr><th>Nome utente</th><th>Email</th><th>Ruolo</th><th>Aggiunto il</th><th>Ultimo accesso</th><th></th></tr></thead><tbody>` + utenti.map(u => `<tr>
       <td>${esc(u.username)}${u.username === mioNome ? ` <span class="muted2">(tu)</span>` : ""}</td><td>${esc(u.email || `${u.username}@cnr.it`)}</td>
-      <td>${u.iniziale ? "Amministratore (dalla configurazione)" : `<select data-ruolo="${esc(u.username)}" aria-label="Ruolo"><option value="lettura"${u.ruolo === "lettura" ? " selected" : ""}>Lettura</option><option value="amministratore"${u.ruolo === "amministratore" ? " selected" : ""}>Amministratore</option></select>`}</td>
+      <td>${u.iniziale ? "Amministratore (dalla configurazione)" : `<select data-ruolo="${esc(u.username)}" aria-label="Ruolo"><option value="lettura"${u.ruolo === "lettura" ? " selected" : ""}>Lettura (solo i bandi di cui è RdP)</option><option value="dirigente"${u.ruolo === "dirigente" ? " selected" : ""}>Dirigente ufficio (tutti i bandi)</option><option value="amministratore"${u.ruolo === "amministratore" ? " selected" : ""}>Amministratore</option></select>`}</td>
       <td>${ora(u.aggiunto_il)}${u.aggiunto_da ? `<div class="muted2 small">${esc(u.aggiunto_da)}</div>` : ""}</td><td>${ora(u.ultimo_accesso) || `<span class="muted2">mai</span>`}</td>
-      <td style="white-space:nowrap">${u.ruolo === "lettura" && !u.iniziale && u.username !== mioNome ? `<button type="button" class="piccolo" data-vedi="${esc(u.username)}" title="Vedi il sito con le sue regole, in sola visualizzazione">Vedi come</button> ` : ""}<button type="button" class="piccolo" data-copia="${esc(u.link)}">Copia link</button> <button type="button" class="piccolo" data-invia="${esc(u.username)}" data-email="${esc(u.email || `${u.username}@cnr.it`)}">Invia email</button>
+      <td style="white-space:nowrap">${["lettura", "dirigente"].includes(u.ruolo) && !u.iniziale && u.username !== mioNome ? `<button type="button" class="piccolo" data-vedi="${esc(u.username)}" title="Vedi il sito con le sue regole, in sola visualizzazione">Vedi come</button> ` : ""}<button type="button" class="piccolo" data-copia="${esc(u.link)}">Copia link</button> <button type="button" class="piccolo" data-invia="${esc(u.username)}" data-email="${esc(u.email || `${u.username}@cnr.it`)}">Invia email</button>
         ${u.iniziale || u.username === mioNome ? "" : `<button type="button" class="piccolo" data-togli="${esc(u.username)}">Rimuovi</button>`}</td></tr>`).join("") + `</tbody>`;
-    $("registro").innerHTML = `<thead><tr><th>Quando</th><th>Chi</th><th>Modifica</th></tr></thead><tbody>` + (registro.map(r => `<tr><td>${ora(r.quando)}</td><td>${esc(r.autore)}</td><td>${r.azione === "togli" ? `Tolto ${esc(r.username)}` : r.azione === "link_accesso" ? `Link di accesso a ${esc(r.username)}` : r.azione === "invito_accesso" ? `Email con il link di accesso a ${esc(r.username)}` : r.azione === "anteprima" ? `Anteprima del sito come ${esc(r.username)}` : r.azione === "anteprima_area" ? `Anteprima dell'area referenti come ${esc(r.username)}` : `${esc(r.username)}: ${esc(r.ruolo)}`}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">Nessuna modifica</td></tr>`) + `</tbody>`;
+    $("registro").innerHTML = `<thead><tr><th>Quando</th><th>Chi</th><th>Modifica</th></tr></thead><tbody>` + (registro.map(r => `<tr><td>${ora(r.quando)}</td><td>${esc(r.autore)}</td><td>${r.azione === "togli" ? `Tolto ${esc(r.username)}` : r.azione === "link_accesso" ? `Link di accesso a ${esc(r.username)}` : r.azione === "invito_accesso" ? `Email con il link di accesso a ${esc(r.username)}` : r.azione === "anteprima" ? `Anteprima del sito come ${esc(r.username)}` : r.azione === "anteprima_area" ? `Anteprima dell'area referenti come ${esc(r.username)}` : r.azione === "profilo" ? `Profili dei coordinatori: ${esc(r.username)}` : `${esc(r.username)}: ${esc(r.ruolo)}`}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">Nessuna modifica</td></tr>`) + `</tbody>`;
     document.querySelectorAll("[data-ruolo]").forEach(s => s.onchange = () => imposta(s.dataset.ruolo, s.value));
     document.querySelectorAll("[data-copia]").forEach(b => b.onclick = () => copia(b.dataset.copia, "Link copiato"));
     document.querySelectorAll("[data-invia-coord]").forEach(b => b.onclick = async () => {

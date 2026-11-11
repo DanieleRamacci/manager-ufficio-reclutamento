@@ -10,32 +10,19 @@
     .area { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
     .accesso { max-width: 460px; }
     .accesso input { width: 100%; box-sizing: border-box; margin: 8px 0 12px; }
-    .atto { border-top: 1px solid var(--border-soft); padding: 12px 0; }
-    .atto:first-of-type { border-top: 0; }
-    .fonti { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
-    .rilievo { padding: 6px 0; }
-    .profili { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 12px; }
-    .rilievo textarea { width: 100%; box-sizing: border-box; min-height: 70px; margin: 6px 0; }
   </style>
 </head>
 <body>
 <main class="area">
-  <div class="tra"><h1>Area referenti</h1><button type="button" id="esci" hidden>Esci</button></div>
-  <div class="avviso" id="anteprima" role="status" hidden></div>
-  <p class="muted small" id="chi"></p>
+  <h1>Area referenti</h1>
   <div id="contenuto"><p class="muted">Caricamento…</p></div>
   <div class="errore" id="errore" role="alert" hidden></div>
 </main>
 <script>
   const $ = (id) => document.getElementById(id);
   const esc = (t) => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const ora = (iso) => iso ? new Date(iso).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" }) : "nessun dato";
-  const dataIt = (iso) => iso ? iso.slice(0, 10).split("-").reverse().join("/") : "";
-  const ATTI = { graduatoria: "Graduatoria pubblica (oscurata)", scorrimento: "Provvedimento di assunzione idoneo / scorrimento" };
-  const FONTI = { sol: "Selezioni Online", urp: "URP", segreteria: "File segreteria" };
-  const STATI = { presente: ["p-ok", "presente"], mancante: ["p-ko", "mancante"] };
   async function api(url, corpo) {
-    const r = await fetch(url, corpo ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) } : {});
+    const r = await fetch(url, corpo ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) } : { cache: "no-store" });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { const e = new Error(d.error || `Errore ${r.status}`); e.status = r.status; throw e; }
     return d;
@@ -43,16 +30,15 @@
   const errore = (testo) => { $("errore").hidden = !testo; $("errore").textContent = testo || ""; };
 
   function moduloAccesso(messaggio) {
-    $("esci").hidden = true; $("chi").textContent = "";
     $("contenuto").innerHTML = `<section class="accesso">
-      <p>Qui puoi vedere le difformità dei bandi di cui risulti referente e segnalare eventuali falsi positivi.</p>
+      <p>Qui i responsabili del procedimento (RdP) e i coordinatori vedono lo stato dei loro bandi e le difformità, e possono segnalare eventuali falsi positivi.</p>
       ${messaggio ? `<div class="ok" role="status">${esc(messaggio)}</div>` : ""}
       <form id="modulo"><label>Il tuo indirizzo email da referente su Selezioni Online
         <input type="email" id="email" required autocomplete="email"></label>
         <button class="primario" type="submit">Mandami il link di accesso</button></form></section>`;
     $("modulo").onsubmit = async (e) => {
       e.preventDefault(); errore();
-      try { await api("/api/area-referenti/link", { email: $("email").value }); moduloAccesso("Se l'indirizzo risulta tra i referenti, riceverai a breve un'email con il link di accesso. Il link vale 15 minuti."); }
+      try { await api("/api/area-referenti/link", { email: $("email").value }); moduloAccesso("Se l'indirizzo risulta tra i referenti o i coordinatori, riceverai a breve un'email con il link di accesso. Il link vale 15 minuti."); }
       catch (err) { errore(err.message); }
     };
   }
@@ -60,78 +46,19 @@
     $("contenuto").innerHTML = `<section class="accesso"><p>Premi il pulsante per entrare nella tua area.</p><button class="primario" type="button" id="entra">Entra</button></section>`;
     $("entra").onclick = async () => {
       errore();
-      try { await api("/api/area-referenti/entra", { codice }); history.replaceState(null, "", location.pathname); carica(); }
+      try { await api("/api/area-referenti/entra", { codice }); history.replaceState(null, "", location.pathname); await vaiAvanti(); }
       catch (err) { history.replaceState(null, "", location.pathname); moduloAccesso(); errore(err.message); }
     };
   }
-
-  let voci = [], anteprima = false;
-  function rigaRilievo(v, i) {
-    const s = v.rilievo.segnalazione;
-    const stato = s ? `<span class="pillola ${s.stato === "gestita" ? "p-ok" : "p-warn"}">${s.stato === "gestita" ? "segnalazione gestita" : `segnalata il ${esc(dataIt(s.quando))}`}</span>` : "";
-    return `<li class="rilievo"><div>${esc(v.rilievo.testo)}</div><div class="riga" style="align-items:center;margin-top:4px">${stato}
-      ${v.bando.rdp ? `<button type="button" class="piccolo" data-segnala="${i}">${s ? "Modifica la segnalazione" : "Segnala falso positivo"}</button>` : ""}</div><div id="form-${i}"></div></li>`;
+  // già dentro: il coordinatore senza profili parte dalla scelta dei profili, gli altri dai bandi
+  async function vaiAvanti() {
+    try {
+      const chi = await api("/api/area-referenti/chi");
+      location.replace(chi.coordinatore && !chi.profili.length ? "/referenti/profili" : "/referenti/stato");
+    } catch (err) { if (err.status === 401) moduloAccesso(); else errore(err.message); }
   }
-  function disegna(d) {
-    voci = [];
-    anteprima = !!d.anteprima;
-    $("esci").textContent = anteprima ? "Chiudi l'anteprima" : "Esci";
-    $("anteprima").hidden = !anteprima; $("anteprima").textContent = `Anteprima dell'amministratore: stai vedendo l'area come ${d.email}. Segnalazioni e salvataggio dei profili sono disattivati.`;
-    $("esci").hidden = false; $("chi").textContent = `Accesso come ${d.email}. ${d.coordinatore ? "Vedi le difformità dei bandi dei profili che hai scelto. Il link ai punteggi compare solo dove sei referente." : "Vedi solo i bandi di cui risulti referente."}`;
-    const filtro = d.coordinatore ? `<section><h2>I profili che segui</h2><div class="profili">${d.profili_disponibili.map(p => `<label class="spunta"><input type="checkbox" data-profilo="${esc(p)}"${d.profili.includes(p) ? " checked" : ""}> ${esc(p)}</label>`).join("") || `<span class="muted">Nessun profilo disponibile.</span>`}</div>
-      <div class="riga" style="align-items:center;margin-top:8px"><button class="primario piccolo" type="button" id="salva-profili">Salva i profili</button><span class="muted small">Li ritrovi a ogni accesso.</span></div></section>` : "";
-    if (d.in_aggiornamento) { $("contenuto").innerHTML = `${filtro}<div class="avviso">I dati sono in aggiornamento: le difformità saranno visibili appena la raccolta sarà conclusa.</div>`; collegaProfili(); return; }
-    const blocchi = d.monitoraggi.filter(m => m.bandi.length);
-    $("contenuto").innerHTML = filtro + (blocchi.map(m => `<section><h2>Monitoraggio di ${esc(m.titolo)}</h2>
-      <p class="muted small">Dati aggiornati a: ${m.aggiornamenti.map(f => `${esc(f.nome)} ${esc(ora(f.aggiornata_il))}`).join(" · ")}. Una correzione fatta ora compare dopo il prossimo aggiornamento.</p>${m.bandi.map(b => {
-      const fonti = Object.entries(FONTI).map(([k, nome]) => { const p = STATI[b.fonti[k]] || ["p-na", String(b.fonti[k] || "n.d.").replace(/_/g, " ")]; return `<span class="pillola ${p[0]}">${nome}: ${esc(p[1])}</span>`; }).join("");
-      const link = /^https?:\/\//.test(b.link_sol || "") ? ` · <a href="${esc(b.link_sol)}" target="_blank" rel="noopener noreferrer">Apri su Selezioni Online ↗</a>` : "";
-      const rilievi = b.rilievi.map(r => { voci.push({ mese: m.mese, bando: b, rilievo: r }); return rigaRilievo(voci[voci.length - 1], voci.length - 1); }).join("");
-      const verifica = `<div class="muted small">${b.verifica_punteggi ? `Punteggi verificati il ${esc(ora(b.verifica_punteggi))}` : "Punteggi non ancora verificati"}</div>`;
-      const punteggi = /^https?:\/\//.test(b.link_punteggi || "") ? `<div class="small" style="margin-top:6px"><a href="${esc(b.link_punteggi)}" target="_blank" rel="noopener noreferrer">Apri i punteggi su Selezioni Online ↗</a> <span class="muted">con le tue credenziali</span></div>` : "";
-      return `<div class="atto"><b>${esc(b.chiave)}</b>${b.titolo_bando ? ` <span class="muted small">${esc(b.titolo_bando)}</span>` : ""}${d.coordinatore && !b.rdp ? ` <span class="pillola p-na">sola consultazione</span>` : ""}${d.coordinatore && b.profilo ? `<div class="muted small">${esc(b.profilo)}</div>` : ""}
-        <div class="small">${esc(ATTI[b.atto] || b.atto)}${b.data ? ` del ${esc(dataIt(b.data))}` : ""}${b.protocollo ? ` · prot. ${esc(b.protocollo)}` : ""}${link}</div>
-        <div class="fonti">${fonti}</div>${verifica}${rilievi ? `<ul class="rilievi">${rilievi}</ul>` : `<div class="small" style="color:var(--ok)">Nessuna difformità</div>`}${punteggi}</div>`;
-    }).join("")}</section>`).join("") || `<section><p class="muted">${d.coordinatore && !d.profili.length ? "Scegli i profili che segui e premi Salva per vedere i bandi." : "Non risultano atti da controllare per i tuoi bandi nei monitoraggi in corso."}</p></section>`);
-    collegaProfili();
-    document.querySelectorAll("[data-segnala]").forEach(b => b.onclick = () => apriSegnala(Number(b.dataset.segnala)));
-    if (anteprima) document.querySelectorAll("[data-segnala], #salva-profili, [data-profilo]").forEach(x => { x.disabled = true; x.title = "Disattivato nell'anteprima"; });
-  }
-  function collegaProfili() {
-    const b = $("salva-profili");
-    if (!b) return;
-    b.onclick = async () => {
-      errore();
-      try { await api("/api/area-referenti/profili", { profili: [...document.querySelectorAll("[data-profilo]:checked")].map(c => c.dataset.profilo) }); await carica(); }
-      catch (err) { errore(err.message); }
-    };
-  }
-  function apriSegnala(i) {
-    const v = voci[i], area = $(`form-${i}`);
-    area.innerHTML = `<label class="small">Perché è un falso positivo?<textarea id="nota-${i}" maxlength="1000">${esc(v.rilievo.segnalazione?.nota)}</textarea></label>
-      <p class="muted small" style="margin:0 0 6px">Non inserire dati dei candidati.</p>
-      <div class="riga"><button class="primario piccolo" type="button" id="invia-${i}">Invia segnalazione</button><button class="piccolo" type="button" id="annulla-${i}">Annulla</button></div>`;
-    $(`annulla-${i}`).onclick = () => { area.innerHTML = ""; };
-    $(`invia-${i}`).onclick = async () => {
-      errore();
-      try {
-        await api("/api/area-referenti/segnala", { mese: v.mese, chiave: v.bando.chiave, atto: v.bando.atto, protocollo: v.bando.protocollo, data: v.bando.data, rilievo: v.rilievo.testo, nota: $(`nota-${i}`).value });
-        await carica();
-      } catch (err) { errore(err.message); }
-    };
-  }
-  async function carica() {
-    errore();
-    try { disegna(await api("/api/area-referenti/bandi")); }
-    catch (err) { if (err.status === 401) moduloAccesso(); else errore(err.message); }
-  }
-  $("esci").onclick = async () => {
-    await api("/api/area-referenti/esci", {});
-    if (anteprima) { $("anteprima").hidden = true; anteprima = false; $("contenuto").innerHTML = `<p>Anteprima chiusa. Puoi chiudere questa scheda.</p>`; $("esci").hidden = true; $("chi").textContent = ""; return; }
-    moduloAccesso();
-  };
   const codice = new URLSearchParams(location.search).get("codice");
-  if (codice) conferma(codice); else carica();
+  if (codice) conferma(codice); else vaiAvanti();
 </script>
 </body>
 </html>

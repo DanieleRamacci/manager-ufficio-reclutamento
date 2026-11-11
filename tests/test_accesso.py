@@ -247,7 +247,7 @@ def test_link_non_ripetuto_subito_e_indirizzo_in_tabella(db, tmp_path, monkeypat
     assert len(inviate) == 1 and inviate[0][0] == ["anna@cnr.it"]
 
 
-def test_amministratore_col_link_resta_in_lettura(db, tmp_path, monkeypatch):
+def test_amministratore_col_link_vede_come_dirigente(db, tmp_path, monkeypatch):
     inviate = _link_email(monkeypatch)
     app = _app(tmp_path, monkeypatch)
     c = app.test_client()
@@ -258,7 +258,7 @@ def test_amministratore_col_link_resta_in_lettura(db, tmp_path, monkeypatch):
         assert s["solo_lettura"] is True and s["user"] == "mario.rossi"
     with app.test_request_context():
         session["user"], session["solo_lettura"] = "mario.rossi", True
-        assert utenti.ruolo_corrente() == "lettura"
+        assert utenti.ruolo_corrente() == "dirigente"
         session["solo_lettura"] = False
         assert utenti.ruolo_corrente() == "amministratore"
 
@@ -335,7 +335,7 @@ def test_tutte_le_pagine_portano_all_accesso_conservando_la_pagina(db, tmp_path,
     app.register_blueprint(web.crea_blueprint(protezione=protezione, solo_admin=solo_admin))
     app.register_blueprint(web.crea_blueprint_pagine_esistenti(protezione=protezione, solo_admin=solo_admin))
     app.register_blueprint(crea_blueprint_mensile(protezione=protezione, solo_admin=solo_admin))
-    pubbliche = ("/login", "/logout", "/static", "/monitoraggio/app.css", "/api/")
+    pubbliche = ("/login", "/logout", "/static", "/monitoraggio/app.css", "/monitoraggio/app.js", "/api/")
     pagine = [r.rule for r in app.url_map.iter_rules() if "GET" in r.methods and not r.arguments and not r.rule.startswith(pubbliche)]
     assert len(pagine) >= 8 and "/monitoraggio/impostazioni" in pagine and "/monitoraggio/comunicazioni" in pagine
     c = app.test_client()

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Profili che coordino</title>
+  <link rel="stylesheet" href="/monitoraggio/app.css">
+  <script src="/monitoraggio/app.js"></script>
+</head>
+<body>
+<main id="contenuto"><p class="muted">Caricamento…</p></main>
+<script>
+  const { $, esc, ora, chiama, json, toast, testataArea } = App;
+  let dati = null;
+
+  async function azione(url, corpo, messaggio) {
+    try { await chiama(url, json("POST", corpo)); toast(messaggio); await carica(); }
+    catch (err) { toast(err.message); }
+  }
+  function disegna() {
+    const miei = dati.profili.filter(p => p.mio);
+    const pulsante = (p) => p.mio ? `<button type="button" class="piccolo" data-lascia="${esc(p.profilo)}">Lascia</button>`
+      : !p.titolare ? `<button type="button" class="piccolo primario" data-prendi="${esc(p.profilo)}">Lo coordino io</button>`
+      : p.chiesto ? `<span class="pillola p-warn">richiesta inviata</span>`
+      : `<button type="button" class="piccolo" data-richiedi="${esc(p.profilo)}" title="Il profilo è di un altro coordinatore: la richiesta avvisa entrambi">È mio: lo chiedo</button>`;
+    $("contenuto").innerHTML = `<section><h1>Profili che coordino</h1>
+        <p class="muted small" style="margin:4px 0 0">I profili sono quelli di Selezioni Online. Ogni profilo ha un solo coordinatore: se un profilo che coordini risulta di un'altra persona, chiedilo.
+        La richiesta avvisa entrambi; chi lo ha può cederlo, altrimenti decide l'Ufficio reclutamento.</p>
+        ${miei.length ? `<p style="margin:10px 0 0"><a class="pulsante" href="/referenti/stato">Vai ai bandi</a></p>` : `<div class="avviso" style="margin-top:10px">Per vedere i bandi scegli almeno un profilo che coordini.</div>`}</section>
+      ${dati.richieste_ricevute.length ? `<section><h2>Richieste per i tuoi profili</h2><ul>${dati.richieste_ricevute.map(r => `<li style="margin-bottom:6px">${esc(r.richiedente)} chiede il profilo «${esc(r.profilo)}» (dal ${esc(ora(r.quando))})
+        <button type="button" class="piccolo" data-cedi="${r.id}">Cedi il profilo</button></li>`).join("")}</ul></section>` : ""}
+      <section><div class="scroll"><table><thead><tr><th>Profilo</th><th>Coordinato da</th><th></th></tr></thead><tbody>
+        ${dati.profili.map(p => `<tr><td>${esc(p.profilo)}</td><td>${p.mio ? "<b>te</b>" : p.titolare ? esc(p.titolare) : `<span class="muted2">nessuno</span>`}</td><td>${pulsante(p)}</td></tr>`).join("")
+          || `<tr><td colspan="3" class="muted">Nessun profilo disponibile.</td></tr>`}</tbody></table></div></section>`;
+    const attivi = !dati.anteprima;
+    document.querySelectorAll("[data-prendi],[data-lascia],[data-richiedi],[data-cedi]").forEach(b => {
+      if (!attivi) { b.disabled = true; b.title = "Disattivato nell'anteprima"; }
+    });
+    if (!attivi) return;
+    document.querySelectorAll("[data-prendi]").forEach(b => b.onclick = () => azione("/api/area-referenti/profili/prendi", { profilo: b.dataset.prendi }, "Profilo aggiunto"));
+    document.querySelectorAll("[data-lascia]").forEach(b => b.onclick = () => confirm(`Non coordini più «${b.dataset.lascia}»?`) && azione("/api/area-referenti/profili/lascia", { profilo: b.dataset.lascia }, "Profilo lasciato"));
+    document.querySelectorAll("[data-richiedi]").forEach(b => b.onclick = () => azione("/api/area-referenti/profili/richiedi", { profilo: b.dataset.richiedi }, "Richiesta inviata: avvisati entrambi"));
+    document.querySelectorAll("[data-cedi]").forEach(b => b.onclick = () => confirm("Cedere il profilo a chi l'ha chiesto?") && azione(`/api/area-referenti/profili/richieste/${b.dataset.cedi}/cedi`, {}, "Profilo ceduto"));
+  }
+  async function carica() {
+    try {
+      dati = await chiama("/api/area-referenti/profili");
+      if (!document.querySelector(".testata-area")) testataArea({ email: dati.email, anteprima: dati.anteprima, coordinatore: true }, "profili");
+      disegna();
+    } catch (err) {
+      if (err.status === 401) { location.href = "/referenti"; return; }
+      if (err.status === 403) { location.href = "/referenti/stato"; return; }
+      $("contenuto").innerHTML = `<div class="errore" role="alert">${esc(err.message)}</div>`;
+    }
+  }
+  carica();
+</script>
+</body>
+</html>

@@ -20,7 +20,8 @@
     .mm-pallino { width: 7px; height: 7px; border-radius: 50%; background: #5fd08e; }
     .mm-pallino.spento { background: #e9a23b; }
     .mm-destra u, .mm-destra a { text-decoration: underline; }
-    .sola-lettura .solo-admin { display: none !important; }`;
+    .sola-lettura .solo-admin { display: none !important; }
+    :root:not(.sola-lettura) .solo-lettura-visibile { display: none !important; }`;
 
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const percorso = location.pathname.replace(/\/$/, "") || "/";
@@ -31,6 +32,11 @@
     { titolo: "File segreteria", url: "/monitoraggio/segreteria" },
     { titolo: "Impostazioni", url: "/monitoraggio/impostazioni", soloAdmin: true },
   ];
+  // chi non è amministratore ha solo le due pagine di consultazione (decisione dell'utente del 2026-11-11)
+  const CONSULTAZIONE = [
+    { titolo: "Stato complessivo", url: "/monitoraggio/consulta/stato" },
+    { titolo: "Monitoraggi", url: "/monitoraggio/consulta/monitoraggi" },
+  ];
   const attivaPrincipale = (v) => v.esatta ? percorso === v.url : percorso.startsWith(v.url);
   const quando = (iso) => iso ? new Date(iso).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(",", "") : "mai";
 
@@ -38,11 +44,13 @@
     const barra = document.createElement("div");
     barra.className = "mm-barra";
     barra.setAttribute("role", "navigation");
+    const amministratore = info.ruolo === "amministratore";
+    const principali = amministratore ? PRINCIPALI : CONSULTAZIONE;
     const url = new Set(PRINCIPALI.map(v => v.url));
-    const altre = info.gruppi.flatMap(g => g.voci).filter(v => v.disponibile && !url.has(v.url) && !v.url.startsWith("/monitoraggio/segreteria"));
+    const altre = amministratore ? info.gruppi.flatMap(g => g.voci).filter(v => v.disponibile && !url.has(v.url) && !v.url.startsWith("/monitoraggio/segreteria")) : [];
     const corrente = altre.some(v => v.url === percorso);
-    barra.innerHTML = `<a class="mm-titolo" href="/monitoraggio">Ufficio reclutamento</a>` +
-      PRINCIPALI.filter(v => !v.soloAdmin || info.ruolo === "amministratore").map(v =>
+    barra.innerHTML = `<a class="mm-titolo" href="${principali[0].url}">Ufficio reclutamento</a>` +
+      principali.filter(v => !v.soloAdmin || amministratore).map(v =>
         `<a class="mm-voce${attivaPrincipale(v) ? " mm-attiva" : ""}" href="${v.url}"${attivaPrincipale(v) ? ' aria-current="page"' : ""}>${v.titolo}${v.numero && info.da_comunicare ? ` <span class="mm-numero" title="Bandi ancora da comunicare nei monitoraggi in corso">${info.da_comunicare}</span>` : ""}</a>`).join("") +
       (altre.length ? `<div class="mm-gruppo${corrente ? " mm-corrente" : ""}"><button type="button" aria-expanded="false">Controlli URP ▾</button>
         <div class="mm-voci">${altre.map(v => `<a href="${esc(v.url)}"${v.url === percorso ? ' class="mm-attiva"' : ""}>${esc(v.titolo)}</a>`).join("")}</div></div>` : "") +

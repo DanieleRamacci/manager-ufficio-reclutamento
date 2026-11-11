@@ -6,7 +6,7 @@ import sqlite3
 from . import config
 from .normalizza import AGGIUNTA_TIPOLOGIE, ANCORA_SCORRIMENTI, codice_sede, nota_sottotipo
 
-SCHEMA_VERSION = 23
+SCHEMA_VERSION = 24
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS referenti_aggiornamento (
 SCHEMA_4 = """
 CREATE TABLE IF NOT EXISTS utente (
     username TEXT PRIMARY KEY,
-    ruolo TEXT NOT NULL CHECK (ruolo IN ('amministratore', 'lettura')),
+    ruolo TEXT NOT NULL CHECK (ruolo IN ('amministratore', 'dirigente', 'lettura')),
     email TEXT,
     aggiunto_da TEXT,
     aggiunto_il TEXT NOT NULL
@@ -278,6 +278,23 @@ CREATE TABLE IF NOT EXISTS coordinatore (
     profili TEXT NOT NULL DEFAULT '[]',
     aggiunto_da TEXT,
     aggiunto_il TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS profilo_coordinato (
+    profilo TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    dal TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS profilo_richiesta (
+    id INTEGER PRIMARY KEY,
+    profilo TEXT NOT NULL,
+    richiedente TEXT NOT NULL,
+    titolare TEXT,
+    quando TEXT NOT NULL,
+    stato TEXT NOT NULL DEFAULT 'aperta',
+    gestita_da TEXT,
+    gestita_il TEXT
 );
 
 CREATE TABLE IF NOT EXISTS segnalazione (
@@ -546,6 +563,22 @@ def inizializza(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_2)
     conn.executescript(SCHEMA_3)
     conn.executescript(SCHEMA_4)
+    sql_utente = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'utente'").fetchone()[0]
+    if "'dirigente'" not in sql_utente:  # versione 24: ruolo dirigente; SQLite non cambia un CHECK, si ricrea la tabella
+        email = "email" if "email" in {r[1] for r in conn.execute("PRAGMA table_info(utente)")} else "NULL"
+        conn.executescript(f"""
+            ALTER TABLE utente RENAME TO utente_vecchia;
+            CREATE TABLE utente (
+                username TEXT PRIMARY KEY,
+                ruolo TEXT NOT NULL CHECK (ruolo IN ('amministratore', 'dirigente', 'lettura')),
+                email TEXT,
+                aggiunto_da TEXT,
+                aggiunto_il TEXT NOT NULL
+            );
+            INSERT INTO utente (username, ruolo, email, aggiunto_da, aggiunto_il)
+                SELECT username, ruolo, {email}, aggiunto_da, aggiunto_il FROM utente_vecchia;
+            DROP TABLE utente_vecchia;
+        """)
     colonne_mese = {r[1] for r in conn.execute("PRAGMA table_info(monitoraggio_mese)")}
     for colonna, tipo in (("stato", "TEXT NOT NULL DEFAULT 'aperto'"), ("chiuso_da", "TEXT"), ("chiuso_il", "TEXT"),  # versione 9
                           ("difformita_aggiornate_il", "TEXT"),  # versione 11
@@ -592,4 +625,9 @@ def inizializza(conn: sqlite3.Connection) -> None:
             for s in conn.execute("SELECT id, codice_originale FROM scheda WHERE fonte = 'sol' AND codice_sotto IS NULL").fetchall():
                 if codice_sede(s["codice_originale"]):
                     conn.execute("UPDATE scheda SET codice_sotto = ? WHERE id = ?", (codice_sede(s["codice_originale"]), s["id"]))
+        if riga["versione"] < 24:  # un profilo, un coordinatore: a chi l'aveva scelto per primo
+            for c in conn.execute("SELECT email, profili FROM coordinatore ORDER BY aggiunto_il, email").fetchall():
+                for profilo in json.loads(c["profili"] or "[]"):
+                    conn.execute("INSERT OR IGNORE INTO profilo_coordinato (profilo, email, dal) VALUES (?, ?, datetime('now'))",
+                                 (profilo, c["email"]))
         conn.execute("UPDATE schema_version SET versione = ?", (SCHEMA_VERSION,))

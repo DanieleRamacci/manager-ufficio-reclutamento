@@ -47,7 +47,7 @@ def _entra(admin, inviati, email):
 
 
 def _segnalazione(mese, riga, **extra):
-    return {"mese": mese, "chiave": riga["chiave"], "atto": riga["atto"], "protocollo": riga["protocollo"], "data": riga["data"],
+    return {"mese": mese, "chiave": riga["chiave"], "atto": riga["atto"], "protocollo": riga["protocollo"] or "", "data": riga["data"] or "",
             "rilievo": riga["rilievi"][0]["testo"], "nota": "Il protocollo è corretto", **extra}
 
 
@@ -190,10 +190,7 @@ def test_atto_senza_rdp_propri_non_si_mostra(db, monkeypatch):
     assert [r["rdp_origine"] for r in portale._righe_di(db, {"mese": "2026-05"}, ANNA)] == ["codice"]
 
 
-def test_il_referente_apre_una_sola_pagina(area):
-    admin, mese, inviati = area
-    c = _entra(admin, inviati, ANNA)
-    ammesse = {"/referenti", "/api/area-referenti/bandi", "/monitoraggio/app.css"}
+def _pagine_aperte(admin, c, mese, ammesse):
     aperte = []
     for regola in admin.application.url_map.iter_rules():
         if "GET" in regola.methods and regola.endpoint != "static":
@@ -202,7 +199,24 @@ def test_il_referente_apre_una_sola_pagina(area):
                 url = re.sub(rf"<[^>]*{nome}>", {"mese": mese, "codice": CODICE_A}.get(nome, "1"), url)
             if url not in ammesse and c.get(url).status_code not in (302, 401, 403):
                 aperte.append(url)
-    assert aperte == []
+    return aperte
+
+
+def _ammesse(mese):
+    return {"/referenti", "/referenti/stato", "/referenti/monitoraggi", f"/referenti/monitoraggi/{mese}", "/referenti/profili",
+            "/api/area-referenti/bandi", "/api/area-referenti/chi", "/api/area-referenti/consulta/stato", "/api/area-referenti/consulta/monitoraggi",
+            f"/api/area-referenti/consulta/monitoraggi/{mese}", "/monitoraggio/app.css", "/monitoraggio/app.js"}
+
+
+def test_il_referente_apre_solo_le_pagine_dell_area(area):
+    admin, mese, inviati = area
+    c = _entra(admin, inviati, ANNA)
+    assert _pagine_aperte(admin, c, mese, _ammesse(mese)) == []
+    stato = c.get("/api/area-referenti/consulta/stato").get_json()
+    assert {r["numero_bando"] for r in stato["righe"]} == {"367.479"} and all(r["come"] == ["rdp"] for r in stato["righe"])
+    righe = c.get(f"/api/area-referenti/consulta/monitoraggi/{mese}").get_json()["righe"]
+    assert [r["codice"] for r in righe] == [CODICE_A] and righe[0]["url_punteggi"] and righe[0]["punteggi"] is None or righe[0]["punteggi"]["scheda_id"] is None
+    assert c.get(f"/api/area-referenti/consulta/candidati/{1}").status_code == 404  # nomi e punteggi mai nell'area
 
 
 # --- coordinatori
@@ -221,46 +235,69 @@ def _coordinatore(admin, db, inviati):
     return _entra(admin, inviati, COORD)
 
 
-def test_coordinatore_vede_i_profili_salvati_in_sola_consultazione(area, db):
+def test_coordinatore_sceglie_i_profili_e_vede_quei_bandi_in_sola_consultazione(area, db):
     admin, mese, inviati = area
     c = _coordinatore(admin, db, inviati)
-    d = c.get("/api/area-referenti/bandi").get_json()
-    assert d["coordinatore"] is True and d["profili"] == [] and d["profili_disponibili"] == [CTER, RIC] and d["monitoraggi"][0]["bandi"] == []
-    assert c.post("/api/area-referenti/profili", json={"profili": [CTER]}).get_json() == {"ok": True}
-    r = c.get("/api/area-referenti/bandi")
-    righe = r.get_json()["monitoraggi"][0]["bandi"]
-    assert [x["chiave"] for x in righe] == [CODICE_A] and righe[0]["rdp"] is False and righe[0]["profilo"] == CTER and righe[0]["rilievi"]
-    assert ANNA not in r.get_data(as_text=True)
+    assert c.get("/api/area-referenti/chi").get_json() == {"email": COORD, "coordinatore": True, "profili": [], "anteprima": False}
+    d = c.get("/api/area-referenti/profili").get_json()
+    assert [(p["profilo"], p["titolare"]) for p in d["profili"]] == [(CTER, None), (RIC, None)]
+    assert c.get(f"/api/area-referenti/consulta/monitoraggi/{mese}").get_json()["righe"] == []
+    assert c.post("/api/area-referenti/profili/prendi", json={"profilo": CTER}).get_json() == {"ok": True}
+    righe = c.get(f"/api/area-referenti/consulta/monitoraggi/{mese}").get_json()["righe"]
+    assert [x["codice"] for x in righe] == [CODICE_A] and righe[0]["come"] == ["coordinatore"] and righe[0]["url_punteggi"] is None and righe[0]["rilievi"]
+    assert not any(x["segnalabile"] for x in righe[0]["rilievi"])
+    assert {r["numero_bando"] for r in c.get("/api/area-referenti/consulta/stato").get_json()["righe"]} == {"367.479"}
     # i profili restano al prossimo accesso
     portale._ultima_email.clear()
-    assert _entra(admin, inviati, COORD).get("/api/area-referenti/bandi").get_json()["profili"] == [CTER]
-    # e si possono cambiare, ma solo tra quelli esistenti
-    assert c.post("/api/area-referenti/profili", json={"profili": ["inventato"]}).status_code == 400
-    assert c.post("/api/area-referenti/profili", json={"profili": "x"}).status_code == 400
+    assert _entra(admin, inviati, COORD).get("/api/area-referenti/chi").get_json()["profili"] == [CTER]
+    # solo tra quelli di Selezioni Online
+    assert c.post("/api/area-referenti/profili/prendi", json={"profilo": "inventato"}).status_code == 400
+    assert c.post("/api/area-referenti/profili/lascia", json={"profilo": CTER}).get_json() == {"ok": True}
+    assert c.get("/api/area-referenti/chi").get_json()["profili"] == []
+
+
+def test_un_profilo_un_coordinatore_e_la_richiesta_avvisa_entrambi(area, db):
+    admin, mese, inviati = area
+    c = _coordinatore(admin, db, inviati)
+    c.post("/api/area-referenti/profili/prendi", json={"profilo": CTER})
+    admin.post("/api/coordinatori", json={"email": "altro@cnr.it"})
+    portale._ultima_email.clear()
+    altro = _entra(admin, inviati, "altro@cnr.it")
+    r = altro.post("/api/area-referenti/profili/prendi", json={"profilo": CTER})
+    assert r.status_code == 409 and r.get_json()["titolare"] == COORD
+    n = len(inviati)
+    assert altro.post("/api/area-referenti/profili/richiedi", json={"profilo": CTER}).get_json() == {"ok": True}
+    assert altro.post("/api/area-referenti/profili/richiedi", json={"profilo": CTER}).get_json() == {"ok": True}  # niente doppioni
+    assert len(inviati) == n + 1 and {*inviati[-1]["To"].split(", ")} == {COORD, "altro@cnr.it"} and CTER in inviati[-1]["Subject"]
+    assert altro.get("/api/area-referenti/profili").get_json()["profili"][0]["chiesto"] is True
+    richiesta = c.get("/api/area-referenti/profili").get_json()["richieste_ricevute"][0]
+    assert altro.post(f"/api/area-referenti/profili/richieste/{richiesta['id']}/cedi").status_code == 404  # cede solo chi lo ha
+    assert c.post(f"/api/area-referenti/profili/richieste/{richiesta['id']}/cedi").get_json() == {"ok": True}
+    assert altro.get("/api/area-referenti/chi").get_json()["profili"] == [CTER] and c.get("/api/area-referenti/chi").get_json()["profili"] == []
+    # l'amministratore decide in ultima istanza
+    c.post("/api/area-referenti/profili/richiedi", json={"profilo": CTER})
+    voce = admin.get("/api/utenti").get_json()
+    assert [p["titolare"] for p in voce["profili"] if p["profilo"] == CTER] == ["altro@cnr.it"] and len(voce["richieste_profili"]) == 1
+    assert admin.post(f"/api/profili-coordinati/richieste/{voce['richieste_profili'][0]['id']}", json={"accolta": True}).get_json() == {"ok": True}
+    assert c.get("/api/area-referenti/chi").get_json()["profili"] == [CTER]
+    assert admin.post("/api/profili-coordinati/assegna", json={"profilo": RIC, "email": "nessuno@cnr.it"}).status_code == 400
+    assert admin.post("/api/profili-coordinati/assegna", json={"profilo": RIC, "email": "altro@cnr.it"}).get_json() == {"ok": True}
+    assert altro.get("/api/area-referenti/chi").get_json()["profili"] == [RIC]
 
 
 def test_coordinatore_non_segnala_sui_bandi_altrui(area, db):
     admin, mese, inviati = area
     c = _coordinatore(admin, db, inviati)
-    c.post("/api/area-referenti/profili", json={"profili": [CTER]})
-    riga = c.get("/api/area-referenti/bandi").get_json()["monitoraggi"][0]["bandi"][0]
+    c.post("/api/area-referenti/profili/prendi", json={"profilo": CTER})
+    riga = c.get(f"/api/area-referenti/consulta/monitoraggi/{mese}").get_json()["righe"][0]
     assert c.post("/api/area-referenti/segnala", json=_segnalazione(mese, riga)).status_code == 404
 
 
-def test_coordinatore_apre_una_sola_pagina_e_non_e_utente_del_sito(area, db):
+def test_coordinatore_apre_solo_l_area_e_non_e_utente_del_sito(area, db):
     admin, mese, inviati = area
     c = _coordinatore(admin, db, inviati)
     assert utenti.ruolo(COORD) is None
-    ammesse = {"/referenti", "/api/area-referenti/bandi", "/monitoraggio/app.css"}
-    aperte = []
-    for regola in admin.application.url_map.iter_rules():
-        if "GET" in regola.methods and regola.endpoint != "static":
-            url = regola.rule
-            for nome in regola.arguments:
-                url = re.sub(rf"<[^>]*{nome}>", {"mese": mese, "codice": CODICE_A}.get(nome, "1"), url)
-            if url not in ammesse and c.get(url).status_code not in (302, 401, 403):
-                aperte.append(url)
-    assert aperte == []
+    assert _pagine_aperte(admin, c, mese, _ammesse(mese) | {"/api/area-referenti/profili"}) == []
     for metodo, url in (("post", f"/api/monitoraggi/{mese}/comunicazioni/{CODICE_A}/invia"), ("post", f"/api/monitoraggi/{mese}/comunicazioni-invia-tutti"),
                         ("post", "/api/coordinatori")):
         assert getattr(c, metodo)(url, json={"modo": "ufficiale"}).status_code in (302, 401, 403), url
@@ -309,7 +346,7 @@ def test_gestione_coordinatori(area, db):
     assert admin.post(f"/api/coordinatori/{COORD}/invia-accesso").get_json() == {"ok": True}
     assert len(inviati) == n + 1 and inviati[-1]["To"] == COORD and "/referenti" in inviati[-1].get_content() and "codice=" not in inviati[-1].get_content()
     assert admin.post("/api/coordinatori/altro@cnr.it/invia-accesso").status_code == 404
-    admin.post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"})
+    admin.post("/api/utenti", json={"username": "lettore.uno", "ruolo": "dirigente"})
     with admin.application.test_client() as lettore:
         with lettore.session_transaction() as s:
             s["user"] = "lettore.uno"
@@ -318,7 +355,7 @@ def test_gestione_coordinatori(area, db):
     posta.salva_email({"portale_referenti": False}, "t")
     assert admin.post(f"/api/coordinatori/{COORD}/invia-accesso").status_code == 409
     posta.salva_email({"portale_referenti": True}, "t")
-    c.post("/api/area-referenti/profili", json={"profili": [CTER]})
+    c.post("/api/area-referenti/profili/prendi", json={"profilo": CTER})
     assert admin.get("/api/utenti").get_json()["coordinatori"][0]["profili"] == [CTER]
     assert admin.delete(f"/api/coordinatori/{COORD}").get_json() == {"ok": True}
     d = c.get("/api/area-referenti/bandi").get_json()  # toglierlo ha effetto subito
@@ -338,7 +375,7 @@ def test_anteprima_area_come_referente_senza_poter_segnalare(area, db):
     admin, mese, inviati = area
     c = _come(admin)
     assert c.post("/api/area-referenti/anteprima", json={"email": "nessuno@cnr.it"}).status_code == 404
-    assert c.post("/api/area-referenti/anteprima", json={"email": ANNA.upper()}).get_json()["url"] == portale.PAGINA
+    assert c.post("/api/area-referenti/anteprima", json={"email": ANNA.upper()}).get_json()["url"] == f"{portale.PAGINA}/stato"
     d = c.get("/api/area-referenti/bandi").get_json()
     assert d["email"] == ANNA and d["anteprima"] is True
     assert {b["chiave"] for m in d["monitoraggi"] for b in m["bandi"]} <= {CODICE_A}
@@ -380,7 +417,8 @@ def test_vista_come_utente_in_lettura(area):
     menu = c.get("/api/menu").get_json()
     assert menu["ruolo"] == "lettura" and menu["vista_come"] == "lettore.uno" and menu["utente"] == "capo.ufficio"
     assert c.get("/api/utenti").status_code == 403  # come lui: niente pagine da amministratore
-    assert c.get(f"/api/monitoraggi/{mese}").status_code == 200
+    assert c.get(f"/api/monitoraggi/{mese}").status_code == 403  # come lui: solo la consultazione
+    assert c.get("/api/consulta/stato").get_json()["visitatore"]["senza_bandi"] is True  # e non essendo RdP non vedrebbe niente
     r = c.post("/api/sol/esci")
     assert r.status_code == 403 and "Anteprima come lettore.uno" in r.get_json()["error"]
     assert c.post("/api/vista-come/esci").status_code == 200

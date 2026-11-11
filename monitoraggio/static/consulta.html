@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Monitoraggio bandi</title>
+  <link rel="stylesheet" href="/monitoraggio/app.css">
+  <script src="/monitoraggio/app.js"></script>
+  <style>
+    .come { display: inline-block; margin: 3px 4px 0 0; padding: 1px 7px; border-radius: 5px; font-size: 11.5px; font-weight: 600; }
+    .come.coordinatore { background: #e7effb; color: #1d4f91; } .come.rdp { background: #eaf6ee; color: #1f6b3a; }
+    tr.cliccabile { cursor: pointer; } tr.cliccabile:hover td { background: var(--surface-2); }
+    .rilievo-form textarea { width: 100%; box-sizing: border-box; min-height: 60px; margin: 4px 0; }
+  </style>
+</head>
+<body>
+<main id="contenuto"><p class="muted">Caricamento…</p></main>
+<script>
+  const { $, esc, ora, dataIt, ATTI, chiama, json, toast, contieneTesto, chipTipologia, cellaFonte, cellaRdp, collegaRdp, pannelloCandidati, testataArea } = App;
+  const AREA = location.pathname.startsWith("/referenti");
+  const API = AREA ? "/api/area-referenti/consulta" : "/api/consulta";
+  const BASE = AREA ? "/referenti" : "/monitoraggio/consulta";
+  const parti = location.pathname.slice(BASE.length).split("/").filter(Boolean);
+  const vista = parti[0] === "monitoraggi" ? (parti[1] ? "mese" : "elenco") : "stato";
+  if (!AREA) { const s = document.createElement("script"); s.src = "/monitoraggio/menu.js"; document.head.appendChild(s); }
+  const filtri = { q: "", atto: "", difformi: false, come: "" };
+  let dati = null;
+
+  const errore = (err) => { $("contenuto").innerHTML = `<div class="errore" role="alert">${esc(err.message || err)}</div>`; };
+  const COMUNICAZIONE = { in_regola: ["p-ok", "nessuna difformità"], da_inviare: ["p-ko", "da inviare"], in_attesa: ["p-na", "in attesa delle fonti"] };
+
+  function presentazione(v) {
+    if (v.senza_bandi) return `<div class="avviso">Questa persona non risulta RdP di nessun bando: non può accedere e non vede nessun bando.</div>`;
+    const testo = v.tutto ? "Vedi tutti i bandi, in sola visualizzazione."
+      : v.coordinatore ? `Vedi i bandi di cui risulti RdP e quelli dei profili che coordini${v.profili.length ? ` (${v.profili.map(esc).join(", ")})` : ""}.`
+      : "Vedi i bandi di cui risulti responsabile del procedimento (RdP).";
+    return `<p class="muted small" style="margin:4px 0 0">${testo}</p>`;
+  }
+  const chipCome = (r) => (r.come || []).map(c => `<span class="come ${c}">${c === "coordinatore" ? "come coordinatore" : "come RdP"}</span>`).join("");
+  function cellaBando(r) {
+    return `<td style="min-width:170px"><b>${esc(r.codice || r.numero_bando)}</b><div class="muted2 small" style="max-width:260px">${esc(r.titolo_bando || "")}</div>${chipCome(r)}
+      ${r.sede_da_abbinare ? `<span class="pillola p-warn" title="Non è chiaro a quale sotto-bando si riferisce l'atto">sede da abbinare</span>` : ""}</td>`;
+  }
+  function cellaPunteggi(r) {
+    const p = r.punteggi;
+    const conteggio = p && (p.domande != null || p.con_punteggi != null) ? `<div class="small">${p.con_punteggi ?? "–"} con punteggi su ${p.domande ?? "–"} domande</div>` : "";
+    const verificati = p?.verificato_il ? `<div class="muted small">verificati il ${esc(ora(p.verificato_il))}</div>` : (["graduatoria", "scorrimento"].includes(r.atto) ? `<div class="muted small">non ancora verificati</div>` : "");
+    const link = r.url_punteggi ? `<a class="small" href="${esc(r.url_punteggi)}" target="_blank" rel="noopener noreferrer">Punteggi su Selezioni Online ↗</a>` : "";
+    const candidati = p?.scheda_id ? `<div><button type="button" class="piccolo candidati" data-scheda="${p.scheda_id}">Nomi e punteggi ▾</button></div>` : "";
+    return `<td>${conteggio}${verificati}${link}${candidati}</td>`;
+  }
+  function filtrate(righe) {
+    return righe.filter(r => (!filtri.atto || r.atto === filtri.atto) && (!filtri.difformi || r.difforme) && (!filtri.come || (r.come || []).includes(filtri.come))
+      && contieneTesto(filtri.q, `${r.numero_bando} ${r.codice} ${r.titolo_bando} ${r.protocollo} ${ATTI[r.atto] || r.atto} ${(r.note || []).join(" ")} ${(r.rilievi || []).map(x => x.testo).join(" ")} ${(r.rdp || []).map(p => `${p.nome} ${p.cognome} ${p.email}`).join(" ")}`));
+  }
+  function barraFiltri(v) {
+    return `<div class="riga" style="align-items:center;margin-bottom:10px">
+      <input type="search" id="f-q" placeholder="Codice, titolo, protocollo, RdP o testo" size="34" value="${esc(filtri.q)}" aria-label="Cerca">
+      <select id="f-atto" aria-label="Atto"><option value="">Tutti gli atti</option>${Object.entries(ATTI).map(([k, n]) => `<option value="${k}"${filtri.atto === k ? " selected" : ""}>${esc(n)}</option>`).join("")}</select>
+      ${v.tutto ? "" : `<select id="f-come" aria-label="Perché lo vedi"><option value="">RdP e coordinatore</option><option value="rdp"${filtri.come === "rdp" ? " selected" : ""}>Solo come RdP</option>${v.coordinatore ? `<option value="coordinatore"${filtri.come === "coordinatore" ? " selected" : ""}>Solo come coordinatore</option>` : ""}</select>`}
+      <label class="spunta"><input type="checkbox" id="f-difformi"${filtri.difformi ? " checked" : ""}> solo con difformità</label></div>`;
+  }
+  function collegaFiltri(disegnaTabella) {
+    $("f-q").oninput = (e) => { filtri.q = e.target.value; disegnaTabella(); };
+    $("f-atto").onchange = (e) => { filtri.atto = e.target.value; disegnaTabella(); };
+    $("f-difformi").onchange = (e) => { filtri.difformi = e.target.checked; disegnaTabella(); };
+    if ($("f-come")) $("f-come").onchange = (e) => { filtri.come = e.target.value; disegnaTabella(); };
+  }
+  function collegaCandidati(radice, colonne) {
+    radice.querySelectorAll("button.candidati").forEach(b => b.onclick = async (e) => {
+      e.stopPropagation();
+      const tr = b.closest("tr");
+      if (tr.nextElementSibling?.classList.contains("riga-candidati")) { tr.nextElementSibling.remove(); return; }
+      const riga = document.createElement("tr");
+      riga.className = "riga-candidati";
+      riga.innerHTML = `<td colspan="${colonne}" class="pannello-candidati">Caricamento…</td>`;
+      tr.after(riga);
+      const cella = riga.firstElementChild;
+      const mostra = async (metodo) => {
+        try { cella.innerHTML = pannelloCandidati(await chiama(`${API}/candidati/${b.dataset.scheda}`, metodo === "POST" ? { method: "POST" } : undefined)); }
+        catch (err) {
+          cella.innerHTML = `<span class="etichetta">${esc(err.message)}</span>${err.corpo?.caricabile ? ` <button type="button" class="piccolo">Leggi ora da Selezioni Online</button>` : ""}`;
+          const leggi = cella.querySelector("button");
+          if (leggi) leggi.onclick = () => { cella.textContent = "Lettura da Selezioni Online…"; mostra("POST"); };
+        }
+      };
+      mostra("GET");
+    });
+  }
+
+  // --- stato complessivo
+  function disegnaStato() {
+    const v = dati.visitatore;
+    $("contenuto").innerHTML = `<section><h1>Stato complessivo</h1>${presentazione(v)}
+      <p class="muted small" style="margin:2px 0 0">Atti pubblicati dal ${esc(dataIt(dati.dal))}${dati.in_attesa.length ? ` · aggiornamento in corso: ${dati.in_attesa.map(esc).join(", ")}` : ""}.</p></section>
+      <section>${barraFiltri(v)}<div id="tabella"></div></section>`;
+    const tabella = () => {
+      const righe = filtrate(dati.righe);
+      $("tabella").innerHTML = `<div class="muted small" style="margin-bottom:6px">${righe.length} atti su ${dati.righe.length}</div><div class="scroll"><table style="min-width:1150px"><thead><tr>
+        <th>Data</th><th>Bando</th><th>Tipologia</th><th>Atto</th><th>Prot.</th><th>SOL</th><th>URP</th><th>Segreteria</th><th>Note</th><th>RdP</th><th>Punteggi</th></tr></thead><tbody>
+        ${righe.map(r => `<tr><td>${esc(dataIt(r.data))}</td>${cellaBando(r)}<td>${chipTipologia(r.tipologia)}</td><td>${esc(ATTI[r.atto] || r.atto)}</td><td class="mono small">${esc(r.protocollo || "")}</td>
+          ${cellaFonte(r, "sol")}${cellaFonte(r, "urp")}${cellaFonte(r, "segreteria")}
+          <td>${r.note.length ? `<ul class="rilievi">${r.note.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}</td>${cellaRdp(r)}${cellaPunteggi(r)}</tr>`).join("")
+          || `<tr><td colspan="11" class="muted">Nessun atto.</td></tr>`}</tbody></table></div>`;
+      collegaRdp($("tabella")); collegaCandidati($("tabella"), 11);
+    };
+    collegaFiltri(tabella); tabella();
+  }
+
+  // --- elenco dei monitoraggi
+  function disegnaElenco() {
+    const v = dati.visitatore, aperti = dati.monitoraggi.filter(m => m.stato === "aperto");
+    if (!v.tutto && aperti.length === 1) { location.replace(`${BASE}/monitoraggi/${aperti[0].mese}`); return; }
+    $("contenuto").innerHTML = `<section><h1>Monitoraggi</h1>${presentazione(v)}</section>
+      ${aperti.length ? "" : `<section><div class="avviso">Nessun monitoraggio in corso.</div></section>`}
+      ${dati.monitoraggi.length ? `<section><div class="scroll"><table><thead><tr><th>Mese dei dati</th><th>Stato</th><th>Chiuso il</th></tr></thead><tbody>
+        ${dati.monitoraggi.map(m => `<tr class="cliccabile" data-mese="${esc(m.mese)}"><td><a href="${BASE}/monitoraggi/${esc(m.mese)}"><b>${esc(m.titolo)}</b></a></td>
+          <td><span class="pillola ${m.stato === "aperto" ? "p-blu" : "p-na"}">${m.stato === "aperto" ? "in corso" : "chiuso"}</span></td><td>${esc(ora(m.chiuso_il))}</td></tr>`).join("")}</tbody></table></div></section>` : ""}`;
+    document.querySelectorAll("tr[data-mese]").forEach(tr => tr.onclick = () => { location.href = `${BASE}/monitoraggi/${tr.dataset.mese}`; });
+  }
+
+  // --- un monitoraggio
+  function cellaRilievi(r, i) {
+    const badge = r.badge && r.badge !== "da_correggere" ? `<div style="margin-bottom:4px"><span class="badge ${r.badge}">${{ corretta: "Corretta", parziale: "Parzialmente corretta", da_controllare: "Da controllare" }[r.badge] || r.badge}</span></div>` : "";
+    if (!r.rilievi.length) return `<td>${badge}</td>`;
+    return `<td style="min-width:240px">${badge}<ul class="rilievi">${r.rilievi.map((x, j) => {
+      const s = x.segnalazione;
+      const stato = s ? `<span class="pillola ${s.stato === "gestita" ? "p-ok" : "p-warn"}">${s.stato === "gestita" ? "segnalazione gestita" : `segnalata il ${esc(dataIt(s.quando))}`}</span> ` : "";
+      const segnala = x.segnalabile ? `<button type="button" class="piccolo" data-segnala="${i}:${j}">${s ? "Modifica la segnalazione" : "Segnala falso positivo"}</button>` : "";
+      return `<li class="${x.risolto ? "risolto" : ""}">${esc(x.testo)}${stato || segnala ? `<div style="margin-top:3px">${stato}${segnala}</div><div id="form-${i}-${j}"></div>` : ""}</li>`;
+    }).join("")}</ul></td>`;
+  }
+  function cellaComunicazione(c) {
+    const [classe, testo] = COMUNICAZIONE[c.stato] || ["p-blu", `${String(c.stato || "").replace(/_/g, " ")}`];
+    return `<td><span class="pillola ${classe}">${esc(testo)}</span>${c.quando ? `<div class="muted small">il ${esc(ora(c.quando))}</div>` : ""}</td>`;
+  }
+  function disegnaMese() {
+    const v = dati.visitatore;
+    const chiuso = dati.stato === "chiuso";
+    $("contenuto").innerHTML = `<section><div class="tra"><div><h1>Monitoraggio di ${esc(dati.titolo)} <span class="pillola ${chiuso ? "p-na" : "p-blu"}">${chiuso ? "chiuso" : "in corso"}</span></h1>${presentazione(v)}</div>
+        <a href="${BASE}/monitoraggi">Tutti i monitoraggi</a></div>
+      ${chiuso ? `<p class="muted small">Dati salvati alla chiusura del monitoraggio.</p>` : `<p class="muted small" style="margin:4px 0 0">Dati aggiornati a: ${dati.aggiornamenti.map(f => `${esc(f.nome)} ${esc(ora(f.aggiornata_il) || "nessun dato")}`).join(" · ")}. Una correzione fatta ora compare dopo il prossimo aggiornamento.</p>`}
+      ${dati.in_attesa.length ? `<div class="avviso" style="margin-top:8px">Aggiornamento in corso (${dati.in_attesa.map(esc).join(", ")}): le difformità saranno visibili quando sarà concluso.</div>` : ""}</section>
+      <section>${barraFiltri(v)}<div id="tabella"></div></section>`;
+    const tabella = () => {
+      const righe = filtrate(dati.righe);
+      $("tabella").innerHTML = `<div class="muted small" style="margin-bottom:6px">${righe.length} atti su ${dati.righe.length} · ${dati.righe.filter(r => r.difforme).length} con difformità</div><div class="scroll"><table style="min-width:1250px"><thead><tr>
+        <th>Data</th><th>Bando</th><th>Tipologia</th><th>N. gest.</th><th>Atto</th><th>Prot.</th><th>SOL</th><th>URP</th><th>Segreteria</th><th>Difformità</th><th>RdP</th><th>Comunicazione</th><th>Punteggi</th></tr></thead><tbody>
+        ${righe.map(r => { const i = dati.righe.indexOf(r); return `<tr><td>${esc(dataIt(r.data))}</td>${cellaBando(r)}<td>${chipTipologia(r.tipologia)}</td><td class="mono small">${esc(r.n_gestione || "")}</td>
+          <td>${esc(ATTI[r.atto] || r.atto)}</td><td class="mono small">${esc(r.protocollo || "")}</td>${cellaFonte(r, "sol")}${cellaFonte(r, "urp")}${cellaFonte(r, "segreteria")}
+          ${cellaRilievi(r, i)}${cellaRdp(r)}${cellaComunicazione(r.comunicazione || {})}${cellaPunteggi(r)}</tr>`; }).join("")
+          || `<tr><td colspan="13" class="muted">${v.tutto ? "Nessun atto in questo monitoraggio." : "Nessun atto dei tuoi bandi in questo monitoraggio."}</td></tr>`}</tbody></table></div>`;
+      collegaRdp($("tabella")); collegaCandidati($("tabella"), 13);
+      document.querySelectorAll("[data-segnala]").forEach(b => {
+        if (v.anteprima) { b.disabled = true; b.title = "Disattivato nell'anteprima"; return; }
+        b.onclick = () => apriSegnala(...b.dataset.segnala.split(":").map(Number));
+      });
+    };
+    collegaFiltri(tabella); tabella();
+  }
+  function apriSegnala(i, j) {
+    const r = dati.righe[i], x = r.rilievi[j], area = $(`form-${i}-${j}`);
+    area.className = "rilievo-form";
+    area.innerHTML = `<label class="small">Perché è un falso positivo?<textarea id="nota-${i}-${j}" maxlength="1000">${esc(x.segnalazione?.nota)}</textarea></label>
+      <div class="muted small">Non inserire dati dei candidati.</div>
+      <div class="riga" style="margin-top:4px"><button class="primario piccolo" type="button" id="invia-${i}-${j}">Invia segnalazione</button><button class="piccolo" type="button" id="annulla-${i}-${j}">Annulla</button></div>`;
+    $(`annulla-${i}-${j}`).onclick = () => { area.innerHTML = ""; };
+    $(`invia-${i}-${j}`).onclick = async () => {
+      try {
+        await chiama("/api/area-referenti/segnala", json("POST", { mese: dati.mese, chiave: r.chiave, atto: r.atto, protocollo: r.protocollo || "", data: r.data || "", rilievo: x.testo, nota: $(`nota-${i}-${j}`).value }));
+        toast("Segnalazione inviata"); await carica();
+      } catch (err) { toast(err.message); }
+    };
+  }
+
+  async function carica() {
+    try {
+      dati = await chiama(vista === "stato" ? `${API}/stato` : vista === "elenco" ? `${API}/monitoraggi` : `${API}/monitoraggi/${encodeURIComponent(parti[1])}`);
+      if (AREA && !document.querySelector(".testata-area")) testataArea(dati.visitatore, vista === "stato" ? "stato" : "monitoraggi");
+      ({ stato: disegnaStato, elenco: disegnaElenco, mese: disegnaMese })[vista]();
+    } catch (err) {
+      if (AREA && err.status === 401) { location.href = "/referenti"; return; }
+      errore(err);
+    }
+  }
+  carica();
+</script>
+</body>
+</html>

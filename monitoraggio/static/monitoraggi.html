@@ -319,12 +319,13 @@
           <div class="small" id="area-a"></div>
           <div class="small" id="area-cc"></div>
           ${sollecitabile ? `<div class="schede" style="align-self:flex-start"><button type="button" id="t-sollecito" aria-selected="true">Sollecito</button><button type="button" id="t-prima" aria-selected="false">Prima comunicazione</button></div>` : ""}
-          <div class="schede" style="align-self:flex-start"><button type="button" id="v-ant" aria-selected="true">Anteprima</button><button type="button" id="v-mod" aria-selected="false">Modifica testo</button></div>
+          <div class="schede" style="align-self:flex-start"><button type="button" id="v-ant" aria-selected="true">Anteprima</button><button type="button" id="v-mod" class="solo-admin" aria-selected="false">Modifica testo</button></div>
           <div id="area-testo"></div>
           ${d.storico.length ? `<details><summary class="small">Storico (${d.storico.length})</summary>${d.storico.map(s => `<div class="small">${ora(s.data)} · ${/^(R: |Promemoria)/.test(s.oggetto || "") ? "sollecito · " : ""}${esc(s.canale)} · ${esc(s.stato)} · <span class="mono">${esc(s.id)}</span></div>`).join("")}</details>` : ""}
         </div>
-        <footer><div class="riga" style="align-items:center"><button type="button" id="copia-msg">Copia messaggio</button><a class="pulsante" id="apri-client" href="#">Apri nel mio client email</a>
-          ${chiuso ? "" : `<label class="spunta solo-admin"><input type="checkbox" id="spunta"${inviata ? " checked" : ""}> Email inviata</label>`}</div>
+        <footer><div class="riga" style="align-items:center"><button type="button" id="copia-msg">Copia messaggio</button><a class="pulsante solo-admin" id="apri-client" href="#">Apri nel mio client email</a>
+          ${chiuso ? "" : `<label class="spunta solo-admin"><input type="checkbox" id="spunta"${inviata ? " checked" : ""}> Email inviata</label>`}
+          <button type="button" class="solo-lettura-visibile" id="chiudi-msg-lettura">Chiudi</button></div>
           <div class="riga solo-admin" style="align-items:center">${chiuso ? "" : `${p.prova_attiva ? `<button type="button" class="prova" id="invia-prova">Invia prova</button>` : ""}
             ${p.ufficiali_attive ? `<button class="primario" type="button" id="invia-uff">Invia dalla casella dell'ufficio</button>` : `<a class="small" href="/monitoraggio/impostazioni#email">Email ufficiali disattivate · impostazioni</a>`}`}
             <button type="button" id="chiudi-msg">Chiudi</button></div></footer>`);
@@ -400,6 +401,7 @@
       o.querySelector("#v-ant").onclick = () => { lavoro.modifica = false; testo(); };
       o.querySelector("#v-mod").onclick = () => { lavoro.modifica = true; testo(); };
       o.querySelector("#chiudi-msg").onclick = chiudiFinestra;
+      o.querySelector("#chiudi-msg-lettura").onclick = chiudiFinestra;
       const traccia = (canale) => chiuso ? Promise.resolve() : chiama(`/api/monitoraggi/${m.mese}/comunicazioni/${encodeURIComponent(codice)}/traccia`, corpoJson("POST", { canale, oggetto: lavoro.oggetto, corpo: lavoro.corpo })).catch(() => {});
       o.querySelector("#copia-msg").onclick = async () => { if (await pronto() && await copia(`A: ${d.destinatari.join("; ")}${d.cc.length ? `\nCc: ${d.cc.join("; ")}` : ""}\nOggetto: ${lavoro.oggetto}\n\n${lavoro.corpo}`, "Messaggio copiato")) { await traccia("Copia manuale"); await dettaglio(); } };
       o.querySelector("#apri-client").onclick = async (e) => { e.preventDefault(); if (!await pronto()) return; location.href = `mailto:${d.destinatari.join(",")}?${d.cc.length ? `cc=${encodeURIComponent(d.cc.join(","))}&` : ""}subject=${encodeURIComponent(lavoro.oggetto)}&body=${encodeURIComponent(lavoro.corpo)}`; await traccia("Client email"); await dettaglio(); };

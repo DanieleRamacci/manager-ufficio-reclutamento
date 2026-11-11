@@ -316,25 +316,14 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
     @bp.get("/api/punteggi/candidati/<int:scheda_id>")
     @protezione
     def api_punteggi_candidati(scheda_id: int):
-        dati = punteggi.candidati(scheda_id)
-        if not dati:
-            return jsonify({"error": "Elenco non disponibile: rifai la verifica dei punteggi con Selezioni Online collegato"}), 404
         conn = _conn()
         try:
-            s = conn.execute("SELECT * FROM scheda WHERE id = ?", (scheda_id,)).fetchone()
-            # atti di scorrimento delle fonti, per confrontare protocollo e data dei candidati S
-            noti = [{"data": g["data"], "protocolli": sorted(g["protocolli"])}
-                    for g in punteggi.scorrimenti_noti(conn, s)] if s else []
-            pubblica = punteggi.riferimento(conn, s, "0000-00-00", "9999-99-99") if s else {}
+            dati = punteggi.pannello_candidati(conn, scheda_id)
         finally:
             conn.close()
-        extra = json.loads(s["dati_extra"]) if s and s["dati_extra"] else {}
-        # etichette delle prove del bando (punteggio_1..7), per intestare le colonne dei punteggi
-        prove = [{"n": p.get("n") or i + 1, "nome": p.get("nome"), "min": p.get("min"), "max": p.get("max")}
-                 for i, p in enumerate(extra.get("punteggi") or [])]
-        risposta = jsonify({"scheda_id": scheda_id, "prove": prove, "scorrimenti_noti": noti,
-                            "graduatoria_pubblica": {"protocollo": pubblica.get("protocollo"), "data": pubblica.get("data")},
-                            "url_punteggi": url_punteggi(s["id_esterno"]) if s else None, **dati})
+        if not dati:
+            return jsonify({"error": "Elenco non disponibile: rifai la verifica dei punteggi con Selezioni Online collegato"}), 404
+        risposta = jsonify(dati)
         risposta.headers["Cache-Control"] = "no-store"  # dati personali: niente cache del browser
         return risposta
 

@@ -351,6 +351,25 @@ def candidati(scheda_id: int) -> dict | None:
     return _candidati.get(scheda_id)
 
 
+def pannello_candidati(conn, scheda_id: int) -> dict | None:
+    """Elenco dei candidati letto da SOL (solo in memoria), con le prove e la graduatoria pubblica per confrontarli."""
+    from .fonti.sol import url_punteggi
+    dati = candidati(scheda_id)
+    if not dati:
+        return None
+    s = conn.execute("SELECT * FROM scheda WHERE id = ?", (scheda_id,)).fetchone()
+    # atti di scorrimento delle fonti, per confrontare protocollo e data dei candidati S
+    noti = [{"data": g["data"], "protocolli": sorted(g["protocolli"])} for g in scorrimenti_noti(conn, s)] if s else []
+    pubblica = riferimento(conn, s, "0000-00-00", "9999-99-99") if s else {}
+    extra = json.loads(s["dati_extra"]) if s and s["dati_extra"] else {}
+    # etichette delle prove del bando (punteggio_1..7), per intestare le colonne dei punteggi
+    prove = [{"n": p.get("n") or i + 1, "nome": p.get("nome"), "min": p.get("min"), "max": p.get("max")}
+             for i, p in enumerate(extra.get("punteggi") or [])]
+    return {"scheda_id": scheda_id, "prove": prove, "scorrimenti_noti": noti,
+            "graduatoria_pubblica": {"protocollo": pubblica.get("protocollo"), "data": pubblica.get("data")},
+            "url_punteggi": url_punteggi(s["id_esterno"]) if s else None, **dati}
+
+
 def dimentica_candidati() -> None:
     _candidati.clear()
 

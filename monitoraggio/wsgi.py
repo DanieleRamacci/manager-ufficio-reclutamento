@@ -7,7 +7,7 @@ from flask import Flask, redirect, session
 from flask_session import Session
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from . import accesso, attivita, collegamento, config, db, portale, scheduler, sol_sessione, utenti
+from . import accesso, attivita, collegamento, config, consulta, db, portale, scheduler, sol_sessione, utenti
 from .mensile_web import crea_blueprint_mensile
 from .web import PAGINE_LOCALI, crea_blueprint, crea_blueprint_pagine_esistenti
 
@@ -77,10 +77,13 @@ def crea_app() -> Flask:
                                                   utente_corrente=opzioni["utente_corrente"],
                                                   intestazioni_sol=_intestazioni_sol(sso, opzioni)))
 
+    app.register_blueprint(consulta.crea_blueprint_consulta(protezione=protezione, intestazioni_sol=_intestazioni_sol(sso, opzioni)))
+    app.register_blueprint(consulta.bp_area)
+
     @app.get("/")
     @protezione
     def root():
-        return redirect("/monitoraggio")
+        return redirect("/monitoraggio" if utenti.ruolo_corrente() == utenti.AMMINISTRATORE else utenti.PAGINA_CONSULTAZIONE)
 
     conn = db.connetti()
     try:

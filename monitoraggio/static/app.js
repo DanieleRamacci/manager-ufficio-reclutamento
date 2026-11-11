@@ -137,5 +137,31 @@ window.App = (() => {
       </tbody></table></div>`;
   }
 
-  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, json, toast, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati, contieneTesto };
+  // Testata dell'area referenti (RdP e coordinatori): le stesse due pagine del sito, più i profili per i coordinatori.
+  function testataArea(v, attiva) {
+    const voci = [["stato", "Stato complessivo", "/referenti/stato"], ["monitoraggi", "Monitoraggi", "/referenti/monitoraggi"],
+      ...(v.coordinatore ? [["profili", "Profili che coordino", "/referenti/profili"]] : [])];
+    const barra = document.createElement("div");
+    barra.className = "mm-barra testata-area";
+    barra.setAttribute("role", "navigation");
+    barra.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;background:#1f3a5f;color:#fff;padding:8px 16px;font-size:14px";
+    barra.innerHTML = `<b style="margin-right:8px">Monitoraggio bandi</b>` + voci.map(([k, nome, url]) =>
+      `<a href="${url}" style="color:#fff;text-decoration:none;padding:6px 10px;border-radius:6px;${k === attiva ? "background:rgba(255,255,255,.18)" : ""}"${k === attiva ? ' aria-current="page"' : ""}>${nome}</a>`).join("") +
+      `<span style="margin-left:auto;display:flex;gap:10px;align-items:center;font-size:13px">${esc(v.email)} <button type="button" class="piccolo" id="esci-area">${v.anteprima ? "Chiudi l'anteprima" : "Esci"}</button></span>`;
+    document.body.prepend(barra);
+    if (v.anteprima) {
+      const avviso = document.createElement("div");
+      avviso.setAttribute("role", "status");
+      avviso.style.cssText = "background:#7a4b00;color:#fff;padding:8px 16px;font-weight:600";
+      avviso.textContent = `Anteprima dell'amministratore: stai vedendo l'area come ${v.email}. Le azioni sono disattivate.`;
+      barra.after(avviso);
+    }
+    $("esci-area").onclick = async () => {
+      await fetch("/api/area-referenti/esci", { method: "POST" });
+      if (v.anteprima) { document.body.innerHTML = `<main><p>Anteprima chiusa. Puoi chiudere questa scheda.</p></main>`; return; }
+      location.href = "/referenti";
+    };
+  }
+
+  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, json, toast, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati, contieneTesto, pannelloCandidati, testataArea };
 })();

@@ -5,8 +5,9 @@ mai verso uno deciso da chi lo chiede. La sessione è separata da quella degli u
 non entra in nessun'altra pagina. I dati escono da un elenco esplicito di campi: niente altri RdP e niente dati dei candidati.
 Chi è RdP trova il link ai punteggi su Selezioni Online, dove entra con le proprie credenziali.
 
-I coordinatori usano la stessa pagina: scelgono i profili che seguono e vedono le difformità di quei bandi in sola consultazione,
-con il link ai punteggi solo per i bandi di cui sono anche RdP. Stanno in una tabella propria, non tra gli utenti del sito.
+I coordinatori usano la stessa area: scelgono i profili che coordinano (uno per profilo, monitoraggio/profili.py) e vedono
+anche i bandi di quei profili in sola consultazione, con il link ai punteggi solo dove sono RdP. Stanno in una tabella propria,
+non tra gli utenti del sito. Le pagine di consultazione sono quelle di monitoraggio/consulta.py.
 """
 import json
 import logging
@@ -18,7 +19,7 @@ from pathlib import Path
 
 from flask import Blueprint, abort, jsonify, request, send_from_directory, session
 
-from . import atti, comunicazioni, config, db, difformita, mensile, posta, utenti
+from . import atti, comunicazioni, config, db, difformita, mensile, posta, profili, utenti
 
 log = logging.getLogger(__name__)
 
@@ -113,9 +114,10 @@ def _senza_cache(risposta):
 
 
 def _profili_coordinatore(conn, email: str) -> list[str] | None:
-    """I profili scelti dal coordinatore; None se non è un coordinatore. Letto a ogni richiesta: toglierlo ha effetto subito."""
-    riga = conn.execute("SELECT profili FROM coordinatore WHERE email = ?", (email,)).fetchone()
-    return json.loads(riga["profili"]) if riga else None
+    """I profili che coordina; None se non è un coordinatore. Letto a ogni richiesta: toglierlo ha effetto subito."""
+    if not conn.execute("SELECT 1 FROM coordinatore WHERE email = ?", (email,)).fetchone():
+        return None
+    return profili.di(conn, email)
 
 
 def _puo_entrare(conn, email: str) -> bool:
@@ -279,24 +281,121 @@ def bandi():
         conn.close()
 
 
-@bp.post("/api/area-referenti/profili")
+def _coordinatore_corrente(conn) -> str | None:
+    email = _referente()
+    return email if email and _profili_coordinatore(conn, email) is not None else None
+
+
+@bp.get("/api/area-referenti/chi")
+@_solo_se_attiva
+@_serve_referente
+def chi():
+    conn = _conn()
+    try:
+        email = _referente()
+        scelti = _profili_coordinatore(conn, email)
+        return _senza_cache(jsonify({"email": email, "coordinatore": scelti is not None, "profili": scelti or [], "anteprima": bool(_anteprima())}))
+    finally:
+        conn.close()
+
+
+@bp.get("/api/area-referenti/profili")
+@_solo_se_attiva
+@_serve_referente
+def elenco_profili():
+    """Tutti i profili di Selezioni Online, con chi li coordina oggi e le richieste in corso."""
+    conn = _conn()
+    try:
+        email = _referente()
+        if _profili_coordinatore(conn, email) is None:
+            return jsonify({"error": "Riservato ai coordinatori"}), 403
+        titolari = profili.titolari(conn)
+        aperte = profili.richieste(conn)
+        return _senza_cache(jsonify({
+            "email": email, "anteprima": bool(_anteprima()),
+            "profili": [{"profilo": p, "titolare": titolari.get(p), "mio": titolari.get(p) == email,
+                         "chiesto": any(r["profilo"] == p and r["richiedente"] == email for r in aperte)} for p in profili.disponibili(conn)],
+            "richieste_ricevute": [r for r in aperte if titolari.get(r["profilo"]) == email and r["richiedente"] != email],
+            "richieste_fatte": [r for r in aperte if r["richiedente"] == email]}))
+    finally:
+        conn.close()
+
+
+def _profilo_scelto(conn) -> str | None:
+    profilo = str((request.get_json(silent=True) or {}).get("profilo") or "")
+    return profilo if profilo in profili.disponibili(conn) else None
+
+
+@bp.post("/api/area-referenti/profili/prendi")
 @_solo_se_attiva
 @_serve_referente
 @_non_in_anteprima
-def salva_profili():
-    """I profili restano salvati per il coordinatore: li ritrova a ogni accesso."""
-    email = _referente()
-    scelti = (request.get_json(silent=True) or {}).get("profili")
+def prendi_profilo():
     conn = _conn()
     try:
-        if _profili_coordinatore(conn, email) is None:
-            return jsonify({"error": "Riservato ai coordinatori"}), 403
-        if not isinstance(scelti, list) or not set(map(str, scelti)) <= set(_profili_schede(conn)[2]):
-            return jsonify({"error": "Profili non validi: ricarica la pagina"}), 400
-        conn.execute("UPDATE coordinatore SET profili = ? WHERE email = ?", (json.dumps(sorted(set(map(str, scelti)))), email))
+        email, profilo = _coordinatore_corrente(conn), _profilo_scelto(conn)
+        if not email or not profilo:
+            return jsonify({"error": "Profilo non valido o non sei coordinatore: ricarica la pagina"}), 400
+        titolare = profili.prendi(conn, email, profilo)
+        if titolare:
+            return jsonify({"error": f"Il profilo è già coordinato da {titolare}: se è tuo puoi chiederlo", "titolare": titolare}), 409
         return jsonify({"ok": True})
     finally:
         conn.close()
+
+
+@bp.post("/api/area-referenti/profili/lascia")
+@_solo_se_attiva
+@_serve_referente
+@_non_in_anteprima
+def lascia_profilo():
+    conn = _conn()
+    try:
+        email, profilo = _coordinatore_corrente(conn), _profilo_scelto(conn)
+        if not email or not profilo or not profili.lascia(conn, email, profilo):
+            return jsonify({"error": "Non coordini questo profilo"}), 400
+        return jsonify({"ok": True})
+    finally:
+        conn.close()
+
+
+@bp.post("/api/area-referenti/profili/richiedi")
+@_solo_se_attiva
+@_serve_referente
+@_non_in_anteprima
+def richiedi_profilo():
+    """Il profilo è di un altro: la richiesta avvisa entrambi; chi lo ha può cederlo, altrimenti decide l'ufficio."""
+    conn = _conn()
+    try:
+        email, profilo = _coordinatore_corrente(conn), _profilo_scelto(conn)
+        if not email or not profilo:
+            return jsonify({"error": "Profilo non valido o non sei coordinatore: ricarica la pagina"}), 400
+        titolare = profili.titolari(conn).get(profilo)
+        if not titolare or titolare == email:
+            return jsonify({"error": "Il profilo è libero: puoi sceglierlo direttamente"}), 409
+        richiesta = profili.richiedi(conn, email, profilo)
+    finally:
+        conn.close()
+    if richiesta["nuova"]:
+        _in_background(profili.avvisa_richiesta, richiesta)
+    return jsonify({"ok": True})
+
+
+@bp.post("/api/area-referenti/profili/richieste/<int:richiesta_id>/cedi")
+@_solo_se_attiva
+@_serve_referente
+@_non_in_anteprima
+def cedi_profilo(richiesta_id: int):
+    conn = _conn()
+    try:
+        email = _coordinatore_corrente(conn)
+        richiesta = profili.cedi(conn, richiesta_id, email) if email else None
+    finally:
+        conn.close()
+    if not richiesta:
+        return jsonify({"error": "Richiesta non trovata o profilo non tuo"}), 404
+    _in_background(profili.avvisa_cessione, richiesta)
+    return jsonify({"ok": True})
 
 
 @bp.post("/api/area-referenti/segnala")
@@ -334,7 +433,8 @@ def segnala():
 
 # --- per gli amministratori
 def elenco_coordinatori(conn) -> list[dict]:
-    return [{**dict(r), "profili": json.loads(r["profili"])} for r in conn.execute("SELECT * FROM coordinatore ORDER BY email")]
+    return [{**{k: r[k] for k in ("email", "aggiunto_da", "aggiunto_il")}, "profili": profili.di(conn, r["email"])}
+            for r in conn.execute("SELECT * FROM coordinatore ORDER BY email")]
 
 
 def _traccia(conn, email: str, azione: str, autore: str | None, ruolo: str | None = None) -> None:
@@ -357,6 +457,7 @@ def togli_coordinatore(conn, email: str, autore: str | None) -> bool:
     email = email.strip().lower()
     tolti = conn.execute("DELETE FROM coordinatore WHERE email = ?", (email,)).rowcount
     if tolti:
+        profili.togli_coordinatore(conn, email)
         _traccia(conn, email, "togli", autore)
     return bool(tolti)
 
@@ -385,3 +486,14 @@ def imposta_gestita(conn, mese: str, id_segnalazione: int, gestita: bool, autore
     ora = _adesso().strftime("%Y-%m-%dT%H:%M:%SZ") if gestita else None
     return conn.execute("UPDATE segnalazione SET stato = ?, gestita_da = ?, gestita_il = ? WHERE id = ? AND mese = ?",
                         ("gestita" if gestita else "aperta", autore if gestita else None, ora, id_segnalazione, mese)).rowcount > 0
+
+
+# --- usate dalle pagine di consultazione (monitoraggio/consulta.py)
+referente_corrente = _referente
+profili_coordinatore = _profili_coordinatore
+solo_se_attiva = _solo_se_attiva
+serve_referente = _serve_referente
+
+
+def in_anteprima() -> bool:
+    return bool(_anteprima())

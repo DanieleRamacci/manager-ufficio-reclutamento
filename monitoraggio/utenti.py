@@ -8,11 +8,16 @@ from datetime import datetime, timezone
 from functools import wraps
 from urllib.parse import quote
 
-from flask import jsonify, request, session
+from flask import jsonify, redirect, request, session
 
 from . import config, db, posta
 
-AMMINISTRATORE, LETTURA = "amministratore", "lettura"
+AMMINISTRATORE, DIRIGENTE, LETTURA = "amministratore", "dirigente", "lettura"
+RUOLI = (AMMINISTRATORE, DIRIGENTE, LETTURA)
+PAGINA_CONSULTAZIONE = "/monitoraggio/consulta/stato"
+# chi non è amministratore vede solo la consultazione (decisione dell'utente del 2026-11-11)
+PERCORSI_CONSULTAZIONE = ("/monitoraggio/consulta/", "/api/consulta/", "/api/menu", "/monitoraggio/menu.js", "/monitoraggio/app.css",
+                          "/monitoraggio/app.js", "/api/sol/", "/api/vista-come/esci")
 
 
 class UtenteProtetto(Exception):
@@ -137,7 +142,7 @@ def registro(conn, limite: int = 50) -> list[dict]:
 def imposta(conn, nome: str, nuovo_ruolo: str, autore: str | None, email: str | None = None) -> str:
     nome = normalizza(nome)
     email = (email or "").strip().lower() or None
-    if not nome or nuovo_ruolo not in (AMMINISTRATORE, LETTURA):
+    if not nome or nuovo_ruolo not in RUOLI:
         raise ValueError("Nome utente o ruolo non valido")
     if email and "@" not in email:
         raise ValueError("Email non valida")
@@ -179,12 +184,47 @@ def vista_come() -> str | None:
 
 
 def ruolo_corrente() -> str | None:
-    """Chi entra col link via email resta in lettura qualunque sia il suo ruolo."""
+    """Chi entra col link via email non opera: un amministratore vede come un dirigente, gli altri restano come sono."""
     anteprima = vista_come()
     if anteprima:
         return ruolo(anteprima)
     attuale = ruolo(corrente())
-    return LETTURA if attuale and session.get("solo_lettura") else attuale
+    return DIRIGENTE if attuale == AMMINISTRATORE and session.get("solo_lettura") else attuale
+
+
+def email_correnti() -> set[str]:
+    """Gli indirizzi con cui riconoscere la persona tra gli RdP: quello in tabella e quello di Selezioni Online."""
+    anteprima = vista_come()
+    if anteprima:
+        return {email_di(anteprima).lower()}
+    nome = corrente()
+    trovate = {email_di(nome).lower()} if nome else set()
+    if "@" in str(session.get("user_email") or ""):
+        trovate.add(session["user_email"].strip().lower())
+    return trovate
+
+
+def referente_attivo(emails: set[str]) -> bool:
+    """Risulta RdP di almeno un bando nell'ultimo aggiornamento dei referenti."""
+    if not emails:
+        return False
+    conn = _conn()
+    try:
+        segnaposti = ", ".join("?" * len(emails))
+        return conn.execute(f"SELECT 1 FROM referente WHERE attivo = 1 AND lower(trim(email)) IN ({segnaposti}) LIMIT 1",
+                            tuple(emails)).fetchone() is not None
+    finally:
+        conn.close()
+
+
+def _consentito(percorso: str) -> bool:
+    return percorso == "/" or any(percorso.startswith(p) or percorso == p.rstrip("/") for p in PERCORSI_CONSULTAZIONE)
+
+
+def _rifiuta(messaggio: str):
+    if request.method == "GET" and not request.path.startswith("/api/"):
+        return f'<!doctype html><html lang="it"><meta charset="utf-8"><title>Accesso non consentito</title><p>{messaggio}</p></html>', 403
+    return jsonify({"error": messaggio}), 403
 
 
 def protezioni(base, uscita=None):
@@ -200,6 +240,16 @@ def protezioni(base, uscita=None):
             anteprima = vista_come()
             if anteprima and request.method not in ("GET", "HEAD") and request.path != ESCI_ANTEPRIMA:
                 return jsonify({"error": f"Anteprima come {anteprima}: le azioni non vengono eseguite. Torna amministratore per farle."}), 403
+            attuale = ruolo_corrente()
+            if attuale == LETTURA and not anteprima and not referente_attivo(email_correnti()):
+                if uscita:
+                    uscita()
+                session.clear()
+                return _rifiuta("Non risulti responsabile del procedimento (RdP) di nessun bando: l'accesso non è consentito.")
+            if attuale != AMMINISTRATORE and not _consentito(request.path):
+                if request.method == "GET" and not request.path.startswith("/api/"):
+                    return redirect(PAGINA_CONSULTAZIONE)
+                return jsonify({"error": "Operazione riservata agli amministratori"}), 403
             return fn(*args, **kwargs)
         return base(_controllo)
 

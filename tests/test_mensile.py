@@ -8,7 +8,7 @@ import pytest
 from flask import Flask, session
 from flask_session import Session
 
-from monitoraggio import excel_mese, mensile, portale, posta, punteggi, utenti
+from monitoraggio import consulta, excel_mese, mensile, portale, posta, punteggi, utenti
 from monitoraggio.comunicazioni import NOTA_GRADUATORIA as comunicazioni_nota
 from monitoraggio import web as web_modulo
 from monitoraggio.mensile_web import crea_blueprint_mensile
@@ -39,6 +39,8 @@ def ambiente(db, tmp_path, monkeypatch):
     app.register_blueprint(crea_blueprint_pagine_esistenti(protezione=protezione, solo_admin=solo_admin))
     app.register_blueprint(crea_blueprint_mensile(protezione=protezione, solo_admin=solo_admin, utente_corrente=utenti.corrente))
     app.register_blueprint(portale.bp)
+    app.register_blueprint(consulta.crea_blueprint_consulta(protezione=protezione, intestazioni_sol=lambda: None))
+    app.register_blueprint(consulta.bp_area)
 
     def client(nome="capo.ufficio"):
         c = app.test_client()
@@ -81,34 +83,39 @@ def _rdp(db, email="rdp@cnr.it", numero="367.479"):
 
 # --- ruoli
 
-def test_lettura_vede_ma_non_modifica(ambiente, db):
+def test_lettura_vede_solo_la_consultazione_dei_suoi_bandi(ambiente, db):
     admin = ambiente()
     assert admin.post("/api/utenti", json={"username": "Anna.Bianchi@cnr.it", "ruolo": "lettura"}).status_code == 200
     c = ambiente("anna.bianchi")
-    assert c.get("/monitoraggio").status_code == 200 and c.get("/api/monitoraggi").status_code == 200
+    r = c.get("/api/consulta/stato")  # non è RdP di nessun bando: non entra
+    assert r.status_code == 403 and "RdP" in r.get_json()["error"]
+    _rdp(db, "anna.bianchi@cnr.it")
+    c = ambiente("anna.bianchi")
+    assert c.get("/monitoraggio").headers["Location"] == utenti.PAGINA_CONSULTAZIONE
+    assert c.get("/monitoraggio/consulta/stato").status_code == 200 and c.get("/api/consulta/stato").status_code == 200
     assert c.get("/api/menu").get_json()["ruolo"] == "lettura"
+    assert c.get("/api/monitoraggi").status_code == 403 and c.get("/api/atti").status_code == 403
     for metodo, url in [("post", "/api/raccolta/avvia"), ("post", "/api/run"), ("post", "/api/punteggi/verifica"),
                         ("post", "/api/referenti/aggiorna"), ("post", "/api/segreteria/carica"), ("post", "/api/monitoraggi"),
-                        ("post", "/api/utenti"), ("get", "/api/utenti"), ("get", "/monitoraggio/utenti")]:
+                        ("post", "/api/utenti"), ("get", "/api/utenti"), ("get", "/api/punteggi/candidati/1")]:
         assert getattr(c, metodo)(url).status_code == 403, url
 
 
 def test_voce_utenti_solo_per_amministratori(ambiente):
-    ambiente().post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"})
+    ambiente().post("/api/utenti", json={"username": "dirigente.uno", "ruolo": "dirigente"})
     voci = lambda c: {v["titolo"] for g in c.get("/api/menu").get_json()["gruppi"] for v in g["voci"]}  # noqa: E731
     assert "Impostazioni" in voci(ambiente())
-    voci_lettura = voci(ambiente("lettore.uno"))
-    assert "Impostazioni" not in voci_lettura and "Monitoraggi mensili" in voci_lettura
+    assert "Impostazioni" not in voci(ambiente("dirigente.uno"))
     assert ambiente().get("/monitoraggio/utenti").headers["Location"] == "/monitoraggio/impostazioni#utenti"
 
 
 def test_togliere_ha_effetto_alla_richiesta_successiva(ambiente, db):
     admin = ambiente()
-    admin.post("/api/utenti", json={"username": "anna.bianchi", "ruolo": "lettura"})
+    admin.post("/api/utenti", json={"username": "anna.bianchi", "ruolo": "dirigente"})
     c = ambiente("anna.bianchi")
-    assert c.get("/api/monitoraggi").status_code == 200
+    assert c.get("/api/consulta/monitoraggi").status_code == 200
     assert admin.delete("/api/utenti/anna.bianchi").status_code == 200
-    assert c.get("/api/monitoraggi").status_code == 403
+    assert c.get("/api/consulta/monitoraggi").status_code == 403
     azioni = [r["azione"] for r in utenti.registro(db)]
     assert azioni == ["togli", "imposta"]
     assert utenti.registro(db)[0]["autore"] == "capo.ufficio"
@@ -309,18 +316,19 @@ def test_sollecito_controlli_lato_server(ambiente, db, monkeypatch):
     assert inviati == []
 
 
-def test_lettura_non_invia_e_non_spunta(ambiente, db, monkeypatch):
+def test_dirigente_non_invia_e_non_spunta(ambiente, db, monkeypatch):
     inviati = []
     _configura_posta(monkeypatch, inviati)
     _rdp(db)
     admin = ambiente()
     mese = admin.post("/api/monitoraggi", json={"numero_mese": 5}).get_json()["mese"]
-    admin.post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"})
-    c = ambiente("lettore.uno")
+    admin.post("/api/utenti", json={"username": "dirigente.uno", "ruolo": "dirigente"})
+    c = ambiente("dirigente.uno")
     assert c.post(f"/api/monitoraggi/{mese}/solleciti/invia", json=_sollecito()).status_code == 403
     assert c.put(f"/api/monitoraggi/{mese}/solleciti/367.479", json={"inviata": True}).status_code == 403
     assert c.get(f"/api/monitoraggi/{mese}/excel/scorrimenti").status_code == 403
-    assert c.get(f"/api/monitoraggi/{mese}/solleciti").status_code == 200 and inviati == []
+    assert c.get(f"/api/monitoraggi/{mese}/solleciti").status_code == 403
+    assert c.get(f"/api/consulta/monitoraggi/{mese}").status_code == 200 and inviati == []
 
 
 def test_errore_di_invio_non_segna_inviata(ambiente, db, monkeypatch):
@@ -460,13 +468,14 @@ def test_chiuso_non_si_modifica_finche_non_si_riapre(ambiente, db, monkeypatch):
     assert [e["azione"] for e in admin.get(f"/api/monitoraggi/{mese}").get_json()["fotografia"]["eventi"]] == ["chiuso", "riaperto", "chiuso", "creato"]
 
 
-def test_lettura_vede_il_chiuso_ma_non_chiude(ambiente, db):
+def test_dirigente_vede_il_chiuso_ma_non_chiude(ambiente, db):
     admin, mese = _mese_con_dati(ambiente, db)
-    admin.post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"})
-    c = ambiente("lettore.uno")
+    admin.post("/api/utenti", json={"username": "dirigente.uno", "ruolo": "dirigente"})
+    c = ambiente("dirigente.uno")
     assert c.post(f"/api/monitoraggi/{mese}/chiudi").status_code == 403
     admin.post(f"/api/monitoraggi/{mese}/chiudi")
-    assert c.get(f"/api/monitoraggi/{mese}").get_json()["fotografia"]["totale"] == 1
+    d = c.get(f"/api/consulta/monitoraggi/{mese}").get_json()
+    assert d["stato"] == "chiuso" and len(d["righe"]) == 1
     assert c.post(f"/api/monitoraggi/{mese}/riapri").status_code == 403
 
 
@@ -666,9 +675,9 @@ def test_link_di_accesso_arriva_alla_persona_anche_in_prova(ambiente, monkeypatc
 
 def test_impostazioni_solo_per_amministratori_e_voce_di_menu(ambiente):
     admin = ambiente()
-    admin.post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"})
-    c = ambiente("lettore.uno")
-    assert c.get("/monitoraggio/impostazioni").status_code == 403
+    admin.post("/api/utenti", json={"username": "dirigente.uno", "ruolo": "dirigente"})
+    c = ambiente("dirigente.uno")
+    assert c.get("/monitoraggio/impostazioni").headers["Location"] == utenti.PAGINA_CONSULTAZIONE
     assert c.put("/api/impostazioni/posta", json={"attiva": False}).status_code == 403
     voci = lambda x: {v["titolo"] for g in x.get("/api/menu").get_json()["gruppi"] for v in g["voci"]}  # noqa: E731
     assert "Impostazioni" in voci(admin) and "Impostazioni" not in voci(c)
@@ -705,8 +714,8 @@ def test_storico_degli_aggiornamenti(ambiente, db):
 
 
 def test_impostazioni_aggiornamenti_solo_amministratori(ambiente):
-    ambiente().post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"})
-    c = ambiente("lettore.uno")
+    ambiente().post("/api/utenti", json={"username": "dirigente.uno", "ruolo": "dirigente"})
+    c = ambiente("dirigente.uno")
     assert c.get("/api/impostazioni/aggiornamenti").status_code == 403
     assert c.put("/api/impostazioni/aggiornamenti", json={"orario": "01:00"}).status_code == 403
 
@@ -960,11 +969,13 @@ def test_verifica_riporta_gli_errori_e_con_sol_collegato_rilegge_i_punteggi(ambi
     assert riletti == [(1, {"Cookie": "ticket=T"})]
 
 
-def test_lettura_vede_il_registro_ma_non_verifica(ambiente, db):
+def test_dirigente_vede_le_difformita_ma_non_verifica(ambiente, db):
     admin, mese = _mese_con_dati(ambiente, db)
-    admin.post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"})
-    c = ambiente("lettore.uno")
-    assert c.get(f"/api/monitoraggi/{mese}/difformita").status_code == 200
+    admin.post("/api/utenti", json={"username": "dirigente.uno", "ruolo": "dirigente"})
+    c = ambiente("dirigente.uno")
+    righe = c.get(f"/api/consulta/monitoraggi/{mese}").get_json()["righe"]
+    assert any(r["rilievi"] for r in righe)
+    assert c.get(f"/api/monitoraggi/{mese}/difformita").status_code == 403
     assert c.post(f"/api/monitoraggi/{mese}/difformita/verifica", json={}).status_code == 403
 
 
@@ -1131,12 +1142,14 @@ def test_invia_tutti_solo_con_ufficiali_e_salta_le_inviate(ambiente, db, monkeyp
     assert admin.post(tutti).get_json()["inviate"] == 0 and len(inviati) == 1
 
 
-def test_lettura_non_tocca_comunicazioni_e_impostazioni(ambiente, db):
+def test_dirigente_non_vede_i_messaggi_e_non_tocca_le_impostazioni(ambiente, db):
     admin, mese, url = _mese_con_rdp(ambiente, db)
-    admin.post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"})
-    c = ambiente("lettore.uno")
-    assert c.get(url + "/messaggio").status_code == 200 and c.get("/api/comunicazioni").status_code == 200
-    for metodo, u, dati in [("post", url + "/invia", {"modo": "prova"}), ("post", url + "/traccia", {"canale": "Copia manuale"}),
+    admin.post("/api/utenti", json={"username": "dirigente.uno", "ruolo": "dirigente"})
+    c = ambiente("dirigente.uno")
+    riga = next(r for r in c.get(f"/api/consulta/monitoraggi/{mese}").get_json()["righe"] if r["rilievi"])
+    assert riga["comunicazione"]["stato"] == "da_inviare" and "corpo" not in riga["comunicazione"]
+    for metodo, u, dati in [("get", url + "/messaggio", None), ("get", "/api/comunicazioni", None),
+                            ("post", url + "/invia", {"modo": "prova"}), ("post", url + "/traccia", {"canale": "Copia manuale"}),
                             ("post", f"/api/monitoraggi/{mese}/comunicazioni-invia-tutti", {}), ("post", f"/api/monitoraggi/{mese}/verifica-fonti", {}),
                             ("get", "/api/monitoraggi/anteprima?mese=2026-01", None), ("get", "/api/impostazioni/attivita", None),
                             ("put", "/api/impostazioni/attivita/sol", {"attiva": False}), ("post", "/api/impostazioni/attivita/sol/esegui", {}),
@@ -1369,12 +1382,11 @@ def test_carica_i_candidati_di_tutti_gli_atti_del_mese(ambiente, db, monkeypatch
     assert not db.execute("SELECT 1 FROM sqlite_master WHERE sql LIKE '%cognome%' AND name LIKE 'candidat%'").fetchone()
 
 
-def test_pagina_riservata_aperta_da_chi_e_in_sola_lettura(ambiente, db):
-    utenti.imposta(db, "anna.bianchi", "lettura", "capo.ufficio")
-    lettore = ambiente("anna.bianchi")
-    r = lettore.get("/monitoraggio/impostazioni")
-    assert r.status_code == 403 and "riservata agli amministratori" in r.get_data(as_text=True) and 'href="/monitoraggio"' in r.get_data(as_text=True)
-    assert lettore.get("/api/impostazioni/attivita").get_json()["error"] == "Operazione riservata agli amministratori"
+def test_pagina_riservata_aperta_da_chi_non_e_amministratore(ambiente, db):
+    utenti.imposta(db, "anna.bianchi", "dirigente", "capo.ufficio")
+    dirigente = ambiente("anna.bianchi")
+    assert dirigente.get("/monitoraggio/impostazioni").headers["Location"] == utenti.PAGINA_CONSULTAZIONE
+    assert dirigente.get("/api/impostazioni/attivita").get_json()["error"] == "Operazione riservata agli amministratori"
 
 
 def test_cc_ufficio_multiplo_e_testo_di_riscontro(ambiente, db, monkeypatch):
