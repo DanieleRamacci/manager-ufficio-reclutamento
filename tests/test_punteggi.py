@@ -211,7 +211,8 @@ def test_senza_v_e_i_si_segnala_e_senza_verifica_si_dice_da_verificare(db, monke
     riga = lambda: next(r for r in atti_mod.elenco_atti(db, "2026-10-01", "2026-10-31") if r["atto"] == "graduatoria")  # noqa: E731
     assert riga()["punteggi_da_verificare"] is True and not any("esito" in n for n in riga()["note"])
     monkeypatch.setattr(sol_auth, "punteggi_bando", lambda c, i, h: {"domande": 2, "con_punteggi": 2, "candidati": [
-        {"cognome": "A", "esito": None, "numero_protocollo_graduatoria": "9001"}, {"cognome": "B", "esito": " ", "numero_protocollo_graduatoria": "9001"}]})
+        {"cognome": "A", "esito": None, "graduatoria": 1, "numero_protocollo_graduatoria": "9001"},
+        {"cognome": "B", "esito": " ", "graduatoria": 2, "numero_protocollo_graduatoria": "9001"}]})
     punteggi.verifica_schede(db, db.execute("SELECT * FROM scheda WHERE id_esterno = 'o1'").fetchall(), "2026-10-01", "2026-10-31", {"Cookie": "x"}, client=object())
     r = riga()
     assert r["punteggi_da_verificare"] is False and r["difforme"] is True and "esito (V/I/S) mancante su SOL (2 candidati)" in r["note"]
@@ -242,3 +243,16 @@ def test_protocollo_mancante_solo_per_vincitori_idonei_e_scorrimenti():
                  {"esito": "R", "numero_protocollo_graduatoria": ""}, {"esito": "I", "numero_protocollo_graduatoria": None}]
     c = punteggi.conteggi_candidati(candidati, "1", "2026-10-21")
     assert c["senza_protocollo"] == 1 and c["senza_esito"] == 0
+
+
+def test_esito_mancante_solo_per_candidati_con_posizione_in_graduatoria():
+    candidati = [
+        {"esito": "V", "graduatoria": 1},
+        {"esito": "I", "graduatoria": 2},
+        {"esito": None, "graduatoria": None},  # non idoneo: SOL lascia vuoto l'esito
+        {"esito": " ", "graduatoria": 4},    # in graduatoria, ma senza esito
+    ]
+    c = punteggi.conteggi_candidati(candidati)
+    assert c["senza_esito"] == 1
+    assert "esito (V/I/S) mancante su SOL (1 candidati)" in punteggi.difformita(
+        {"esito": "completi", "senza_esito": c["senza_esito"]})

@@ -84,6 +84,7 @@ tr.sotto-sede .sede { padding-left: 14px; border-left: 2px solid var(--border); 
 .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .badge.corretta { background: var(--ok-bg); color: var(--ok); } .badge.da_correggere { background: var(--ko-bg); color: var(--ko); }
 .badge.parziale, .badge.da_controllare { background: var(--warn-bg); color: var(--warn); }
+.badge.sollecito-inviato, .chip.sollecito-inviato { background: var(--warn-bg); color: var(--warn); }
 .conteggi { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
 td details summary { font-size: 12px; color: var(--muted); cursor: pointer; }
 details summary { cursor: pointer; font-weight: 600; }

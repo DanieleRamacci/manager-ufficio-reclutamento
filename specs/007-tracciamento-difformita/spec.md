@@ -23,6 +23,7 @@ Nel monitoraggio ogni difformità resta in elenco con i rilievi originali e un b
 3. **Given** una difformità corretta, **When** ricompare, **Then** torna da correggere e lo storico lo registra.
 4. **Given** un atto che non si trova più in nessuna fonte, **When** si aggiorna, **Then** la difformità risulta da controllare, non corretta.
 5. **Given** l'ultima raccolta di una fonte non riuscita, **When** si aggiorna, **Then** nessuna difformità viene segnata come corretta.
+6. **Given** un sollecito registrato come inviato, **When** l'utente consulta la difformità, **Then** vede l'indicazione "Mandato sollecito" in arancione con data e ora.
 
 ### User Story 2 - Verificare subito (Priority: P1)
 
@@ -42,6 +43,7 @@ L'amministratore non aspetta la notte: preme Verifica su una difformità o Verif
 - **FR-004**: Gli amministratori MUST poter riverificare una difformità o tutte quelle aperte, con avanzamento visibile.
 - **FR-005**: Ogni passaggio di stato MUST restare nello storico con data e origine.
 - **FR-006**: I rilievi MUST essere quelli mostrati dalla pagina delle difformità e usati nelle email.
+- **FR-007**: Una difformità con sollecito inviato o segnato a mano MUST mostrare "Mandato sollecito" in arancione e la data di invio.
 
 ## Assumptions
 

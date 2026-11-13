@@ -58,7 +58,10 @@ def conteggi_candidati(candidati: list[dict], protocollo_rif: str | None = None,
     rif = protocollo(protocollo_rif)
     for x in candidati:
         esito_x = (x.get("esito") or "").strip().upper()
-        if not esito_x:
+        # SOL lascia vuoto l'esito dei candidati che non entrano in graduatoria. Il campo
+        # "graduatoria" (posizione) distingue quei casi da un esito omesso per un candidato
+        # effettivamente inserito nella graduatoria.
+        if not esito_x and str(x.get("graduatoria") or "").strip():
             c["senza_esito"] += 1
         elif ESITI_CANDIDATO.get(esito_x):
             c[ESITI_CANDIDATO[esito_x]] += 1

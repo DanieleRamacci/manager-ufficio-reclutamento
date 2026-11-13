@@ -487,15 +487,17 @@ function controlliInvio(a) {
   if (!monitoraggio) return "";
   const chiuso = datiInvii.stato === "chiuso";
   const stato = datiInvii.solleciti[window.Solleciti.chiave(a)];
+  const inviato = stato && stato.stato !== "da_confermare";
   const etichettaStato = stato
-    ? `${stato.stato === "inviata" ? "Inviata" : "Inviata a mano"} il ${oraIt(stato.quando)}${stato.autore ? ` da ${esc(stato.autore)}` : ""}`
+    ? `${inviato ? "Mandato sollecito" : "Da confermare"} il ${oraIt(stato.quando)}${stato.autore ? ` da ${esc(stato.autore)}` : ""}`
     : "Non ancora inviata";
+  const classeStato = inviato ? "sollecito-inviato" : "warn";
   const conRdp = righeDelCodice(a).some(x => (x.rdp || []).some(r => r.email));
-  if (chiuso) return `<span class="chip ${stato ? "ok" : "warn"}">${etichettaStato}</span>`;
+  if (chiuso) return `<span class="chip ${stato ? classeStato : "warn"}">${etichettaStato}</span>`;
   return `<button type="button" class="btn-invia-sollecito solo-admin"${datiInvii.posta.configurata && conRdp ? "" : " disabled"}
       title="${datiInvii.posta.configurata ? (conRdp ? "" : "Nessuna email RdP") : "Invio email non configurato"}">Anteprima e invio</button>
     <label class="solo-admin"><input type="checkbox" class="spunta-sollecito"${stato ? " checked" : ""}> inviata</label>
-    <span class="chip ${stato ? "ok" : "warn"}">${etichettaStato}</span>`;
+    <span class="chip ${stato ? classeStato : "warn"}"${stato?.stato === "inviata_a_mano" ? ` title="Registrato come inviato a mano"` : ""}>${etichettaStato}</span>`;
 }
 
 function apriInvio(riga, gruppo) {
@@ -841,7 +843,7 @@ async function apriCandidati(schedaId, tr, opzioni = {}) {
       <td>${esc(c.email || "")}</td><td>${esc(c.email_pec || "")}</td>
       ${prove.map(p => { const v = (c.prove || {})[String(p.n)] || {}; return `<td class="n">${v.non_ammesso ? `<span class="chip warn">non ammesso</span>` : esc(v.punteggio ?? "")}</td>`; }).join("")}
       <td class="n"><b>${esc(c.totale_punteggio ?? "")}</b></td>
-      <td>${esito ? `<b>${esc(esito)}</b> <span class="muted">${esc(ESITO_LETTERA[esito] && ESITO_LETTERA[esito] !== esito ? ESITO_LETTERA[esito] : "")}</span>` : `<span class="chip err">mancante</span>`}</td>
+      <td>${esito ? `<b>${esc(esito)}</b> <span class="muted">${esc(ESITO_LETTERA[esito] && ESITO_LETTERA[esito] !== esito ? ESITO_LETTERA[esito] : "")}</span>` : c.graduatoria !== null && c.graduatoria !== undefined && String(c.graduatoria).trim() ? `<span class="chip err">mancante</span>` : `<span class="muted">–</span>`}</td>
       <td>${esc(c.note || "")}</td>${cellaProt}${cellaData}
       ${cellaPa}${cellaDa}</tr>`;
   }).join("");

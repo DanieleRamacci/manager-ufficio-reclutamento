@@ -7,3 +7,4 @@
 - [X] T005 Verifica di una difformità o di tutte, in background
 - [X] T006 Elenco con badge e pulsanti in monitoraggio/static/monitoraggi.html
 - [ ] T007 Verifica nell'app con una correzione reale su Selezioni Online
+- [X] T008 Mostrare "Mandato sollecito" in arancione nel registro difformità e nella tabella mensile
