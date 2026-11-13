@@ -215,7 +215,7 @@ def test_senza_v_e_i_si_segnala_e_senza_verifica_si_dice_da_verificare(db, monke
         {"cognome": "B", "esito": " ", "graduatoria": 2, "numero_protocollo_graduatoria": "9001"}]})
     punteggi.verifica_schede(db, db.execute("SELECT * FROM scheda WHERE id_esterno = 'o1'").fetchall(), "2026-10-01", "2026-10-31", {"Cookie": "x"}, client=object())
     r = riga()
-    assert r["punteggi_da_verificare"] is False and r["difforme"] is True and "nessun esito V/I/S compilato su SOL (2 candidati in graduatoria)" in r["note"]
+    assert r["punteggi_da_verificare"] is False and r["difforme"] is True and "nessun esito V/I/S compilato su SOL" in r["note"]
     assert r["punteggi"]["candidati"] is True
 
 

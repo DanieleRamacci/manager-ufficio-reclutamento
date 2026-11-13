@@ -64,8 +64,9 @@ nel database: passano solo nel file generato.
   - graduatoria nota da URP o dal file ma senza punteggi su SOL ("mancano i punteggi su SOL"), o con
     punteggi solo per una parte delle domande;
   - candidati con punteggi ma protocollo della graduatoria non valorizzato, oppure diverso o con data
-    diversa da quello delle fonti; segnalare l'esito solo se nessun candidato ha un esito V/I/S
-    compilato su SOL. Gli esiti vuoti, anche per candidati con posizione, non sono una difformità
+    diversa da quello delle fonti; se ci sono candidati con punteggio, segnalare l'esito solo quando
+    nessun candidato ha un esito V/I/S compilato su SOL. Gli esiti vuoti, anche per candidati con
+    posizione, non sono una difformità
     quando almeno un esito V/I/S è presente: non si conosce il totale atteso di vincitori, idonei e
     candidati da scorrere;
   - graduatoria non allegata su SOL;

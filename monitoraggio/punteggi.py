@@ -189,9 +189,10 @@ def difformita(v: dict | None) -> list[str]:
         d.append(f"punteggi su SOL solo per {v['con_punteggi']} domande su {v['domande']}")
     if v.get("senza_protocollo"):
         d.append(f"protocollo della graduatoria pubblica con i soli vincitori non valorizzato sui candidati su SOL ({v['senza_protocollo']} candidati)")
-    # Senza il totale atteso di V/I/S, segnaliamo solo l'assenza completa degli esiti.
-    if v.get("senza_esito") and not any(v.get(k) for k in ("vincitori", "idonei", "scorrimento")):
-        d.append(f"nessun esito V/I/S compilato su SOL ({v['senza_esito']} candidati in graduatoria)")
+    # Senza il totale atteso di V/I/S, segnaliamo solo se ci sono candidati con punteggio
+    # ma nessun esito V/I/S è compilato; non serve che le righe abbiano una posizione.
+    if v.get("con_punteggi") and not any(v.get(k) for k in ("vincitori", "idonei", "scorrimento")):
+        d.append("nessun esito V/I/S compilato su SOL")
     if v.get("protocollo_diverso"):
         d.append(f"numero di protocollo della graduatoria pubblica con i soli vincitori diverso tra allegato e candidati su SOL ({v['protocollo_diverso']} candidati)")
     if v.get("data_diversa"):
