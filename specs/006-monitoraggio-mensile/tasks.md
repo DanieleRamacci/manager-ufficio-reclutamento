@@ -17,4 +17,5 @@
 - [X] T016 Impostazioni con utenti, orari, storico degli aggiornamenti e avviso via email
 - [X] T017 Invio e tracciamento solleciti dallo Stato complessivo, collegati al monitoraggio del mese dei dati
 - [X] T018 Schede mensili e filtri di sola lettura per mese, tipologia e tipo di atto in Stato complessivo e Monitoraggio
+- [X] T019 Storico inline delle comunicazioni e dei solleciti successivi nella colonna Comunicazione
 - [ ] T011 Verifica manuale nell'app in esecuzione e invio reale dal server di produzione

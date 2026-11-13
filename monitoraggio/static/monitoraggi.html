@@ -236,14 +236,25 @@
     }
     function cellaComunicazione(r) {
       const c = r.comunicazione, chiuso = stato.m.stato === "chiuso";
-      if (c.stato === "in_attesa") return `<td><span class="pillola p-na">in attesa delle fonti</span></td>`;
-      if (c.stato === "in_regola") return `<td><span class="pillola p-na">in regola</span></td>`;
+      const storico = [...(c.storico || [])].sort((a, b) => String(a.data || "").localeCompare(String(b.data || "")));
+      let numeroInvio = 0;
+      const righeStorico = storico.map(s => {
+        const inviata = s.stato === "inviata";
+        const tipo = inviata ? (++numeroInvio === 1 ? "Prima comunicazione" : `Sollecito ${numeroInvio - 1}`)
+          : s.stato === "prova" ? "Invio di prova" : s.stato === "annullata" ? "Annullata" : "Da confermare";
+        const statoInvio = inviata ? (s.canale === "Segnata a mano" ? "segnata come inviata" : "inviata") : s.stato;
+        return `<div class="small" style="padding:4px 0;border-top:1px solid var(--border-soft)"><b>${tipo}</b> · ${ora(s.data)} · ${esc(statoInvio)}${s.utente ? ` · ${esc(s.utente)}` : ""}${s.oggetto ? `<div class="muted" title="${esc(s.oggetto)}" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.oggetto)}</div>` : ""}</div>`;
+      }).join("");
+      const conteggioInvii = storico.filter(s => s.stato === "inviata").length;
+      const storicoHtml = storico.length ? `<details style="margin-top:5px"><summary class="small">Storico: ${conteggioInvii} ${conteggioInvii === 1 ? "invio" : "invii"}${storico.some(s => s.stato === "prova") ? ` · ${storico.filter(s => s.stato === "prova").length} prove` : ""}</summary>${righeStorico}</details>` : "";
+      if (c.stato === "in_attesa") return `<td><span class="pillola p-na">in attesa delle fonti</span>${storicoHtml}</td>`;
+      if (c.stato === "in_regola") return `<td><span class="pillola p-na">in regola</span>${storicoHtml}</td>`;
       const P = { da_inviare: ["p-ko", "da inviare"], da_confermare: ["p-warn", "copiata · da confermare"], inviata: ["p-ok", `inviata ${dataIt(c.quando).slice(0, 5)}`], inviata_a_mano: ["p-ok", `inviata ${dataIt(c.quando).slice(0, 5)}`] }[c.stato];
       const inviata = ["inviata", "inviata_a_mano"].includes(c.stato);
       return `<td style="min-width:150px"><span class="pillola ${P[0]}">${P[1]}</span>
         <div style="display:flex;gap:8px;align-items:center;margin-top:5px"><button type="button" class="piccolo apri-messaggio" data-c="${esc(r.chiave)}">Messaggio</button>
         ${chiuso ? "" : `<label class="spunta solo-admin" style="font-size:12px"><input type="checkbox" class="spunta-inviata" data-c="${esc(r.chiave)}"${inviata ? " checked" : ""}> inviata</label>`}</div>
-        ${c.id ? `<div class="mono muted2" style="font-size:10.5px;margin-top:3px">${esc(c.id)}</div>` : ""}</td>`;
+        ${c.id ? `<div class="mono muted2" style="font-size:10.5px;margin-top:3px">${esc(c.id)}</div>` : ""}${storicoHtml}</td>`;
     }
     // Elenco dei candidati: è solo in memoria, quindi dopo un riavvio del server va riletto da Selezioni Online.
     async function statoCandidati(avvia) {

@@ -134,7 +134,7 @@ Ogni riga di atto ha un bordo sinistro di 3px: rosso `#d6453a` se ha difformità
 - **Banda di avviso** (sfondo `#fff8e8`): "N bandi con difformità ancora da comunicare" + pulsante "Invia tutti dalla casella dell'ufficio…" (apre conferma con l'elenco bandi → destinatari → n. difformità).
 - **Tabella atti**: Data · Bando (n. + profilo/sede, titolo sotto) · Tipologia · N. gest. (mono) · Atto (+ persone, candidati) · Prot. · SOL · URP · Segreteria · **Difformità rilevate** (righe "**SOL** testo", "**URP** testo"… in rosso/ambra, oppure "Nessuna difformità" verde) · RdP (compatto) · **Comunicazione**.
   - Righe con difformità prima, poi per data decrescente.
-  - Cella Comunicazione: pillola stato ("da inviare" rossa, "copiata · da confermare" ambra, "inviata gg/mm" verde, "in regola" grigia) + pulsante contorno "Messaggio" + ☐ "inviata" + ID comunicazione piccolo in mono grigio.
+  - Cella Comunicazione: pillola stato ("da inviare" rossa, "copiata · da confermare" ambra, "inviata gg/mm" verde, "in regola" grigia) + pulsante contorno "Messaggio" + ☐ "inviata" + ID comunicazione piccolo in mono grigio + storico espandibile con numero, tipo, data, stato e oggetto di ogni comunicazione inviata.
   - Le stesse schede per atto, mese e tipologia sono disponibili nelle viste consultive e nell'area referenti; lì non compaiono comandi per inviare o modificare comunicazioni.
 - Scheda **Comunicazioni**: stessa tabella del registro (3.4) filtrata sul monitoraggio.
 

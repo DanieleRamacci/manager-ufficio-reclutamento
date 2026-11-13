@@ -28,6 +28,10 @@ def righe_mese(conn, monitoraggio: dict, tipologie: list[str] | None = None) -> 
     dal, al = mensile.periodo_dati(monitoraggio)
     scelte = tipologie or mensile.tipologie_di(monitoraggio)
     inviate = mensile.solleciti(conn, monitoraggio["mese"])
+    storico_comunicazioni = {}
+    for c in mensile.registro_comunicazioni(conn, monitoraggio["mese"]):
+        storico_comunicazioni.setdefault(c["chiave"], []).append(
+            {k: c.get(k) for k in ("id", "data", "oggetto", "stato", "canale", "utente")})
     in_attesa = bool(atti.fonti_in_attesa(conn))
     righe = []
     for r in difformita.righe_correnti(conn, dal, al, tutti=True):
@@ -36,11 +40,14 @@ def righe_mese(conn, monitoraggio: dict, tipologie: list[str] | None = None) -> 
             continue
         testi = difformita.rilievi(r) if r["atto"] in difformita.ATTI_SEGUITI and r.get("difforme") else []
         c = inviate.get(chiave(r)) or inviate.get(r.get("numero_bando") or "")
+        storico = storico_comunicazioni.get(chiave(r)) or storico_comunicazioni.get(r.get("numero_bando") or "") or []
+        comunicazione = ({"stato": "in_attesa"} if in_attesa else {"stato": "in_regola"} if not testi else
+                         {k: c.get(k) for k in ("stato", "quando", "id", "canale")} if c else {"stato": "da_inviare"})
+        comunicazione["storico"] = storico
         righe.append({**r, "chiave": chiave(r), "n_gestione": mensile.numero_gestione(conn, chiave(r)) if chiave(r) else None,
                       "gruppo_tipologia": gruppo, "rilievi": testi, "con_difformita": bool(testi),
                       "sblocco_graduatoria": da_sbloccare({**r, "rilievi": testi}),
-                      "comunicazione": {"stato": "in_attesa"} if in_attesa else {"stato": "in_regola"} if not testi else (
-                          {k: c.get(k) for k in ("stato", "quando", "id", "canale")} if c else {"stato": "da_inviare"})})
+                      "comunicazione": comunicazione})
     righe.sort(key=lambda r: (not r["con_difformita"], tuple(-ord(x) for x in (r.get("data") or ""))))
     scorrimenti_compilato.per_riga(conn, monitoraggio["mese"], righe)
     return righe

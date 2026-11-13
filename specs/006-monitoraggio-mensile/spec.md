@@ -93,6 +93,7 @@ Nella pagina del monitoraggio l'amministratore vede le difformità del periodo p
 3. **Given** un'email inviata da fuori, **When** l'amministratore la spunta, **Then** il bando risulta "inviata a mano" con data e autore; la spunta si può togliere.
 4. **Given** un bando senza email degli RdP, **When** si apre l'anteprima, **Then** l'invio è bloccato e resta possibile la spunta manuale.
 5. **Given** un sollecito già inviato, **When** l'amministratore preme di nuovo Invia, **Then** la pagina chiede conferma prima di inviarlo ancora.
+6. **Given** più comunicazioni per lo stesso bando, **When** si guarda la colonna Comunicazione nel monitoraggio, **Then** sono visibili il numero e lo storico dei singoli invii, inclusi i solleciti successivi.
 
 ---
 
@@ -159,6 +160,7 @@ Finito il lavoro del mese, l'amministratore chiude il monitoraggio. Atti, diffor
 - **FR-027**: Il sistema MUST poter avvisare via email l'amministratore alla fine di un aggiornamento (solo i completi, tutti, oppure mai), segnalando anche quelli non riusciti; l'avviso arriva sempre all'indirizzo scelto, anche con le email di prova attive, e contiene solo conteggi.
 - **FR-028**: Gli amministratori MUST poter inviare e tracciare un sollecito dalle graduatorie e dagli scorrimenti del mese nello Stato complessivo. Se il monitoraggio del mese dei dati non esiste, il primo invio MUST crearne uno; lo stato e lo storico MUST risultare poi nella pagina del monitoraggio e consentire un invio successivo.
 - **FR-029**: Le viste in sola lettura dello Stato complessivo e del dettaglio monitoraggio, incluse le pagine referenti, MUST offrire le schede per tipo di atto, mese e tipologia; MUST NOT mostrare i comandi di invio.
+- **FR-030**: La colonna Comunicazione MUST mostrare lo storico degli invii per bando, distinguendo la prima comunicazione dai solleciti successivi e indicando data, stato e oggetto. La registrazione MUST essere indipendente dall'aggiornamento delle fonti.
 
 ### Key Entities
 
