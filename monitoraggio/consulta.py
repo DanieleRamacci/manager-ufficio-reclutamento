@@ -143,6 +143,8 @@ def monitoraggio(conn, v: Visitatore, mese: str) -> dict | None:
         return None
     pb = _profili_bandi(conn)
     base = {"visitatore": v.descrizione(), "mese": m["mese"], "titolo": comunicazioni.titolo_mese(m["mese_dati"]), "stato": m["stato"],
+            "monitoraggi": [{"mese": x["mese"], "titolo": comunicazioni.titolo_mese(x["mese_dati"]), "stato": x["stato"]}
+                            for x in mensile.elenco(conn)],
             "in_attesa": _in_attesa(conn), "righe": [],
             "aggiornamenti": [{k: f[k] for k in ("nome", "aggiornata_il")} for f in comunicazioni.allineamento(conn, m["mese_dati"])]}
     if v.senza_bandi:

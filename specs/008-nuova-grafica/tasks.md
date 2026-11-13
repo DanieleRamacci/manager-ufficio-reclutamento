@@ -17,3 +17,4 @@
 
 - [X] T013 Difformità sospese finché le raccolte di SOL e URP non sono concluse: niente segnalazioni, invii, chiusure o verifiche
 - [X] T014 Referenti salvati bando per bando con avanzamento; raccolte e referenti interrotti sbloccati all'avvio del server
+- [X] T015 Solleciti nello Stato complessivo e schede/filtri mensili nelle viste in sola lettura

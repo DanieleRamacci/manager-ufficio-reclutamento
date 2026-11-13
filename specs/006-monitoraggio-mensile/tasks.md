@@ -15,4 +15,6 @@
 - [X] T014 [US6] Versioni del monitoraggio chiuso, con migrazione delle fotografie esistenti
 - [X] T015 [US4] Pagina Impostazioni con la spunta delle email di prova in monitoraggio/static/impostazioni.html
 - [X] T016 Impostazioni con utenti, orari, storico degli aggiornamenti e avviso via email
+- [X] T017 Invio e tracciamento solleciti dallo Stato complessivo, collegati al monitoraggio del mese dei dati
+- [X] T018 Schede mensili e filtri di sola lettura per mese, tipologia e tipo di atto in Stato complessivo e Monitoraggio
 - [ ] T011 Verifica manuale nell'app in esecuzione e invio reale dal server di produzione

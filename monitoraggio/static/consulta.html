@@ -24,7 +24,7 @@
   const parti = location.pathname.slice(BASE.length).split("/").filter(Boolean);
   const vista = parti[0] === "monitoraggi" ? (parti[1] ? "mese" : "elenco") : "stato";
   if (!AREA) { const s = document.createElement("script"); s.src = "/monitoraggio/menu.js"; document.head.appendChild(s); }
-  const filtri = { q: "", atto: "", difformi: false, come: "" };
+  const filtri = { q: "", atto: "", difformi: false, come: "", tipologia: "", schedaStato: "stato", schedaMese: "difformita" };
   let dati = null;
 
   const errore = (err) => { $("contenuto").innerHTML = `<div class="errore" role="alert">${esc(err.message || err)}</div>`; };
@@ -63,13 +63,15 @@
   }
   const chipSubentro = (r) => !r.subentro_atteso ? "" : `<div><span class="pillola ${r.file_scorrimenti ? (r.file_scorrimenti.subentro_indicato ? "p-ok" : "p-ko") : "p-blu"}">${r.file_scorrimenti ? (r.file_scorrimenti.subentro_indicato ? "subentro indicato nel file" : "subentro non indicato nel file") : "subentro da indicare nel file scorrimenti"}</span></div>`;
   function filtrate(righe) {
-    return righe.filter(r => (!filtri.atto || r.atto === filtri.atto) && (!filtri.difformi || r.difforme) && (!filtri.come || (r.come || []).includes(filtri.come))
+    return righe.filter(r => (!filtri.atto || r.atto === filtri.atto) && (!filtri.tipologia || r.tipologia === filtri.tipologia)
+      && (!filtri.difformi || r.difforme) && (!filtri.come || (r.come || []).includes(filtri.come))
       && contieneTesto(filtri.q, `${r.numero_bando} ${r.codice} ${r.titolo_bando} ${r.protocollo} ${ATTI[r.atto] || r.atto} ${(r.note || []).join(" ")} ${(r.rilievi || []).map(x => x.testo).join(" ")} ${(r.rdp || []).map(p => `${p.nome} ${p.cognome} ${p.email}`).join(" ")}`));
   }
   function barraFiltri(v) {
     return `<div class="riga" style="align-items:center;margin-bottom:10px">
       <input type="search" id="f-q" placeholder="Codice, titolo, protocollo, RdP o testo" size="34" value="${esc(filtri.q)}" aria-label="Cerca">
       <select id="f-atto" aria-label="Atto"><option value="">Tutti gli atti</option>${Object.entries(ATTI).map(([k, n]) => `<option value="${k}"${filtri.atto === k ? " selected" : ""}>${esc(n)}</option>`).join("")}</select>
+      <select id="f-tipologia" aria-label="Tipologia"><option value="">Tutte le tipologie</option><option value="tempo_indeterminato"${filtri.tipologia === "tempo_indeterminato" ? " selected" : ""}>Tempo indeterminato</option><option value="reclutamento_speciale"${filtri.tipologia === "reclutamento_speciale" ? " selected" : ""}>Reclutamento speciale</option><option value="categorie_protette"${filtri.tipologia === "categorie_protette" ? " selected" : ""}>Categorie protette</option><option value="mobilita"${filtri.tipologia === "mobilita" ? " selected" : ""}>Mobilità</option><option value="comando"${filtri.tipologia === "comando" ? " selected" : ""}>Comando</option></select>
       ${v.tutto && v.punteggi ? "" : v.tutto ? `<select id="f-come" aria-label="Quali bandi"><option value="">Tutti i bandi</option><option value="rdp"${filtri.come === "rdp" ? " selected" : ""}>Solo quelli di cui sono RdP</option></select>`
         : `<select id="f-come" aria-label="Perché lo vedi"><option value="">RdP e coordinatore</option><option value="rdp"${filtri.come === "rdp" ? " selected" : ""}>Solo come RdP</option>${v.coordinatore ? `<option value="coordinatore"${filtri.come === "coordinatore" ? " selected" : ""}>Solo come coordinatore</option>` : ""}</select>`}
       <label class="spunta"><input type="checkbox" id="f-difformi"${filtri.difformi ? " checked" : ""}> solo con difformità</label></div>`;
@@ -77,6 +79,7 @@
   function collegaFiltri(disegnaTabella) {
     $("f-q").oninput = (e) => { filtri.q = e.target.value; disegnaTabella(); };
     $("f-atto").onchange = (e) => { filtri.atto = e.target.value; disegnaTabella(); };
+    $("f-tipologia").onchange = (e) => { filtri.tipologia = e.target.value; disegnaTabella(); };
     $("f-difformi").onchange = (e) => { filtri.difformi = e.target.checked; disegnaTabella(); };
     if ($("f-come")) $("f-come").onchange = (e) => { filtri.come = e.target.value; disegnaTabella(); };
   }
@@ -103,14 +106,30 @@
   }
 
   // --- stato complessivo
+  const meseCorrente = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
+  const conteggioTipo = (righe, atto, mese) => righe.filter(r => r.atto === atto && (r.data || "").startsWith(mese) && (!filtri.tipologia || r.tipologia === filtri.tipologia)).length;
+  function schedeStato() {
+    const mese = filtri.meseStato || meseCorrente();
+    const graduatorie = conteggioTipo(dati.righe, "graduatoria", mese), scorrimenti = conteggioTipo(dati.righe, "scorrimento", mese);
+    return `<nav class="schede" role="tablist" aria-label="Viste dello stato complessivo">
+      <button type="button" role="tab" data-stato="stato" aria-selected="${filtri.schedaStato === "stato"}">Stato complessivo</button>
+      <button type="button" role="tab" data-stato="graduatoria" aria-selected="${filtri.schedaStato === "graduatoria"}">Graduatorie pubbliche del mese (${graduatorie})</button>
+      <button type="button" role="tab" data-stato="scorrimento" aria-selected="${filtri.schedaStato === "scorrimento"}">Scorrimenti del mese (${scorrimenti})</button>
+      <label class="muted">Mese <input type="month" id="mese-stato" value="${esc(mese)}"></label>
+      <label class="muted">Tipologia <select id="tipologia-stato"><option value="">Tutte</option><option value="tempo_indeterminato"${filtri.tipologia === "tempo_indeterminato" ? " selected" : ""}>Tempo indeterminato</option><option value="reclutamento_speciale"${filtri.tipologia === "reclutamento_speciale" ? " selected" : ""}>Reclutamento speciale</option><option value="categorie_protette"${filtri.tipologia === "categorie_protette" ? " selected" : ""}>Categorie protette</option><option value="mobilita"${filtri.tipologia === "mobilita" ? " selected" : ""}>Mobilità</option><option value="comando"${filtri.tipologia === "comando" ? " selected" : ""}>Comando</option></select></label></nav>`;
+  }
   function disegnaStato() {
     const v = dati.visitatore;
     $("contenuto").innerHTML = `<section><h1>Stato complessivo</h1>${presentazione(v)}
       <p class="muted small" style="margin:2px 0 0">Atti pubblicati dal ${esc(dataIt(dati.dal))}${dati.in_attesa.length ? ` · aggiornamento in corso: ${dati.in_attesa.map(esc).join(", ")}` : ""}.</p></section>
+      <section>${schedeStato()}</section>
       <section>${barraFiltri(v)}<div id="tabella"></div></section>`;
     const tabella = () => {
-      const righe = filtrate(dati.righe);
-      $("tabella").innerHTML = `<div class="muted small" style="margin-bottom:6px">${righe.length} atti su ${dati.righe.length}</div><div class="scroll"><table style="min-width:1150px"><thead><tr>
+      const mese = $("mese-stato")?.value || meseCorrente();
+      let base = dati.righe;
+      if (filtri.schedaStato !== "stato") base = base.filter(r => r.atto === filtri.schedaStato && (r.data || "").startsWith(mese));
+      const righe = filtrate(base);
+      $("tabella").innerHTML = `<div class="muted small" style="margin-bottom:6px">${righe.length} atti su ${base.length}</div><div class="scroll"><table style="min-width:1150px"><thead><tr>
         <th>Data</th><th>Bando</th><th>Tipologia</th><th>Atto</th><th>Prot.</th><th>SOL</th><th>URP</th><th>Segreteria</th><th>Note</th><th>RdP</th><th>Punteggi</th></tr></thead><tbody>
         ${righe.map(r => `<tr><td>${esc(dataIt(r.data))}</td>${cellaBando(r)}<td>${chipTipologia(r.tipologia)}</td><td>${esc(ATTI[r.atto] || r.atto)}${chipSubentro(r)}</td><td class="mono small">${esc(r.protocollo || "")}</td>
           ${cellaFonte(r, "sol")}${cellaFonte(r, "urp")}${cellaFonte(r, "segreteria")}
@@ -118,6 +137,9 @@
           || `<tr><td colspan="11" class="muted">Nessun atto.</td></tr>`}</tbody></table></div>`;
       collegaRdp($("tabella")); collegaCandidati($("tabella"), 11);
     };
+    document.querySelectorAll("[data-stato]").forEach(b => b.onclick = () => { filtri.schedaStato = b.dataset.stato; disegnaStato(); });
+    $("mese-stato").onchange = e => { filtri.meseStato = e.target.value; disegnaStato(); };
+    $("tipologia-stato").onchange = e => { filtri.tipologia = e.target.value; disegnaStato(); };
     collegaFiltri(tabella); tabella();
   }
 
@@ -152,14 +174,25 @@
   function disegnaMese() {
     const v = dati.visitatore;
     const chiuso = dati.stato === "chiuso";
+    const R = dati.righe, conta = f => R.filter(f).length, contaD = f => R.filter(r => f(r) && r.difforme).length;
+    const schede = [["difformita", "Tutte le difformità", conta(r => r.difforme), 0], ["bando", "Bandi pubblicati", conta(r => r.atto === "bando"), 0],
+      ["graduatoria", "Graduatorie pubbliche", conta(r => r.atto === "graduatoria"), contaD(r => r.atto === "graduatoria")],
+      ["scorrimento", "Scorrimenti", conta(r => r.atto === "scorrimento"), contaD(r => r.atto === "scorrimento")],
+      ["subentro", "Subentri", conta(r => r.sottotipo === "subentro"), contaD(r => r.sottotipo === "subentro")]];
+    const elencoMesi = dati.monitoraggi || [];
     $("contenuto").innerHTML = `<section><div class="tra"><div><h1>Monitoraggio di ${esc(dati.titolo)} <span class="pillola ${chiuso ? "p-na" : "p-blu"}">${chiuso ? "chiuso" : "in corso"}</span></h1>${presentazione(v)}</div>
-        <a href="${BASE}/monitoraggi">Tutti i monitoraggi</a></div>
+        <div class="riga"><label class="muted">Mese <select id="mese-monitoraggio">${elencoMesi.map(m => `<option value="${esc(m.mese)}"${m.mese === dati.mese ? " selected" : ""}>${esc(m.titolo)}</option>`).join("")}</select></label><a href="${BASE}/monitoraggi">Tutti i monitoraggi</a></div></div>
       ${chiuso ? `<p class="muted small">Dati salvati alla chiusura del monitoraggio.</p>` : `<p class="muted small" style="margin:4px 0 0">Dati aggiornati a: ${dati.aggiornamenti.map(f => `${esc(f.nome)} ${esc(ora(f.aggiornata_il) || "nessun dato")}`).join(" · ")}. Una correzione fatta ora compare dopo il prossimo aggiornamento.</p>`}
-      ${dati.in_attesa.length ? `<div class="avviso" style="margin-top:8px">Aggiornamento in corso (${dati.in_attesa.map(esc).join(", ")}): le difformità saranno visibili quando sarà concluso.</div>` : ""}</section>
+      ${dati.in_attesa.length ? `<div class="avviso" style="margin-top:8px">Aggiornamento in corso (${dati.in_attesa.map(esc).join(", ")}): le difformità saranno visibili quando sarà concluso.</div>` : ""}
+      <div class="schede" role="tablist" aria-label="Tipi di atto">${schede.map(([k, t, n, d]) => `<button type="button" role="tab" data-mese-scheda="${k}" aria-selected="${filtri.schedaMese === k}">${t} (${n})${d ? ` <span class="numero-ko">${d}</span>` : ""}</button>`).join("")}</div></section>
       <section>${barraFiltri(v)}<div id="tabella"></div></section>`;
     const tabella = () => {
-      const righe = filtrate(dati.righe);
-      $("tabella").innerHTML = `<div class="muted small" style="margin-bottom:6px">${righe.length} atti su ${dati.righe.length} · ${dati.righe.filter(r => r.difforme).length} con difformità</div><div class="scroll"><table style="min-width:1250px"><thead><tr>
+      let base = dati.righe;
+      if (filtri.schedaMese === "difformita") base = base.filter(r => r.difforme);
+      else if (filtri.schedaMese === "subentro") base = base.filter(r => r.sottotipo === "subentro");
+      else base = base.filter(r => r.atto === filtri.schedaMese);
+      const righe = filtrate(base);
+      $("tabella").innerHTML = `<div class="muted small" style="margin-bottom:6px">${righe.length} atti su ${base.length} · ${base.filter(r => r.difforme).length} con difformità</div><div class="scroll"><table style="min-width:1250px"><thead><tr>
         <th>Data</th><th>Bando</th><th>Tipologia</th><th>N. gest.</th><th>Atto</th><th>Prot.</th><th>SOL</th><th>URP</th><th>Segreteria</th><th>Difformità</th><th>RdP</th><th>Comunicazione</th><th>Punteggi</th></tr></thead><tbody>
         ${righe.map(r => { const i = dati.righe.indexOf(r); return `<tr><td>${esc(dataIt(r.data))}</td>${cellaBando(r)}<td>${chipTipologia(r.tipologia)}</td><td class="mono small">${esc(r.n_gestione || "")}</td>
           <td>${esc(ATTI[r.atto] || r.atto)}${chipSubentro(r)}</td><td class="mono small">${esc(r.protocollo || "")}</td>${cellaFonte(r, "sol")}${cellaFonte(r, "urp")}${cellaFonte(r, "segreteria")}
@@ -171,6 +204,8 @@
         b.onclick = () => apriSegnala(...b.dataset.segnala.split(":").map(Number));
       });
     };
+    if ($("mese-monitoraggio")) $("mese-monitoraggio").onchange = e => { location.href = `${BASE}/monitoraggi/${encodeURIComponent(e.target.value)}`; };
+    document.querySelectorAll("[data-mese-scheda]").forEach(b => b.onclick = () => { filtri.schedaMese = b.dataset.meseScheda; disegnaMese(); });
     collegaFiltri(tabella); tabella();
   }
   // nel monitoraggio la sotto-riga ha le colonne: … Difformità | RdP | Comunicazione | Punteggi

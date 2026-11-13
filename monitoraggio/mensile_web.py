@@ -870,7 +870,103 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             if not m:
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
             return jsonify({"etichetta": mensile.etichetta(m["mese_dati"]), "etichetta_dati": mensile.etichetta(m["mese_dati"]),
-                            "stato": m["stato"], "mese_dati": m["mese_dati"], "solleciti": mensile.solleciti(conn, mese), "posta": posta.stato()})
+                            "mese_dati": m["mese_dati"], "stato": m["stato"], "solleciti": mensile.solleciti(conn, mese), "posta": posta.stato()})
+        finally:
+            conn.close()
+
+    @bp.get("/api/monitoraggi/solleciti-periodo")
+    @protezione
+    @solo_admin
+    def api_solleciti_periodo():
+        """Stato invii del mese dei dati, anche prima di aprire il monitoraggio mensile."""
+        mese_dati = request.args.get("mese_dati")
+        if not mensile.mese_valido(mese_dati):
+            return jsonify({"error": "Mese dei dati non valido"}), 400
+        conn = _conn()
+        try:
+            r = conn.execute("SELECT mese FROM monitoraggio_mese WHERE mese_dati = ? ORDER BY mese DESC LIMIT 1", (mese_dati,)).fetchone()
+            m = mensile.leggi(conn, r["mese"]) if r else None
+            mese_monitoraggio = m["mese"] if m else None
+            return jsonify({"monitoraggio": mese_monitoraggio, "mese_dati": mese_dati,
+                            "etichetta_dati": mensile.etichetta(mese_dati), "stato": m["stato"] if m else None,
+                            "solleciti": mensile.solleciti(conn, mese_monitoraggio) if m else {}, "posta": posta.stato()})
+        finally:
+            conn.close()
+
+    @bp.post("/api/monitoraggi/solleciti-periodo/invia")
+    @protezione
+    @solo_admin
+    def api_sollecito_periodo_invia():
+        corpo = request.get_json(silent=True) or {}
+        mese_dati = str(corpo.get("mese_dati") or "")
+        numero = str(corpo.get("numero_bando") or "").strip()
+        oggetto, testo = str(corpo.get("oggetto") or "").strip(), str(corpo.get("corpo") or "")
+        destinatari = mensile.dividi_indirizzi(corpo.get("destinatari") or [])
+        if not mensile.mese_valido(mese_dati):
+            return jsonify({"error": "Mese dei dati non valido"}), 400
+        if not numero or not oggetto or not testo.strip():
+            return jsonify({"error": "Bando, oggetto e testo sono obbligatori"}), 400
+        if not destinatari:
+            return jsonify({"error": "Nessuna email RdP disponibile per questo bando"}), 400
+        if mensile.contiene_dati_candidati(testo) or mensile.contiene_dati_candidati(oggetto):
+            return jsonify({"error": "Il testo sembra contenere un codice fiscale: invio bloccato"}), 400
+        conn = _conn()
+        try:
+            estranei = sorted(set(destinatari) - mensile.email_rdp(conn, numero))
+            if estranei:
+                return jsonify({"error": "Non sono RdP di questo bando: " + ", ".join(estranei)}), 400
+            bloccata = _fonti_non_pronte(conn)
+            if bloccata:
+                return bloccata
+            esistente = conn.execute("SELECT mese FROM monitoraggio_mese WHERE mese_dati = ? ORDER BY mese DESC LIMIT 1", (mese_dati,)).fetchone()
+            if esistente:
+                mese_monitoraggio = esistente["mese"]
+            else:
+                mese_monitoraggio = mensile.mese_successivo(mese_dati)
+                if _trova(conn, mese_monitoraggio):
+                    return jsonify({"error": "Esiste già un monitoraggio per il mese successivo, associato a un altro periodo di dati"}), 409
+                mensile.crea(conn, mese_monitoraggio, mese_dati, utente_corrente())
+                difformita.sincronizza(conn, mese_monitoraggio, "primo sollecito dallo Stato complessivo", utente_corrente())
+            mensile.verifica_aperto(conn, mese_monitoraggio)
+            if numero in mensile.solleciti(conn, mese_monitoraggio) and not corpo.get("conferma"):
+                return jsonify({"error": "Sollecito già segnato come inviato", "gia_inviato": True}), 409
+            risposta, codice_http = _invia(conn, "sollecito", mese_monitoraggio, numero, destinatari, oggetto, testo)
+            return risposta, codice_http
+        except mensile.MeseChiuso as e:
+            return jsonify({"error": str(e)}), 409
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        finally:
+            conn.close()
+
+    @bp.put("/api/monitoraggi/solleciti-periodo/spunta")
+    @protezione
+    @solo_admin
+    def api_sollecito_periodo_spunta():
+        corpo = request.get_json(silent=True) or {}
+        mese_dati = str(corpo.get("mese_dati") or "")
+        numero = str(corpo.get("numero_bando") or "").strip()
+        if not mensile.mese_valido(mese_dati) or not numero:
+            return jsonify({"error": "Mese e bando sono obbligatori"}), 400
+        conn = _conn()
+        try:
+            esistente = conn.execute("SELECT mese FROM monitoraggio_mese WHERE mese_dati = ? ORDER BY mese DESC LIMIT 1", (mese_dati,)).fetchone()
+            if esistente:
+                mese_monitoraggio = esistente["mese"]
+            else:
+                mese_monitoraggio = mensile.mese_successivo(mese_dati)
+                if _trova(conn, mese_monitoraggio):
+                    return jsonify({"error": "Esiste già un monitoraggio per il mese successivo, associato a un altro periodo di dati"}), 409
+                mensile.crea(conn, mese_monitoraggio, mese_dati, utente_corrente())
+                difformita.sincronizza(conn, mese_monitoraggio, "primo sollecito dallo Stato complessivo", utente_corrente())
+            mensile.verifica_aperto(conn, mese_monitoraggio)
+            if bool(corpo.get("inviata")):
+                mensile.segna(conn, mese_monitoraggio, numero, "inviata_a_mano", utente_corrente())
+            else:
+                mensile.togli_segno(conn, mese_monitoraggio, numero)
+            return jsonify({"ok": True, "monitoraggio": mese_monitoraggio, "solleciti": mensile.solleciti(conn, mese_monitoraggio)})
+        except mensile.MeseChiuso as e:
+            return jsonify({"error": str(e)}), 409
         finally:
             conn.close()
 

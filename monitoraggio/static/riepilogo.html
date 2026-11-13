@@ -373,7 +373,7 @@ function disegnaAtti() {
     && (!rdp || (a.rdp || []).some(r => (r.email || nomeRdp(r)) === rdp))
     && contieneTesto(q, `${a.numero_bando} ${a.codice} ${a.protocollo} ${a.titolo} ${a.titolo_bando || ""} ${(a.note || []).join(" ")} ${(a.rdp || []).map(r => `${r.nome} ${r.cognome} ${r.email}`).join(" ")}`));
   $("conteggio-atti").textContent = `(${righe.length} di ${atti.length} · ${fontiInAttesa.length ? "difformità sospese" : `${atti.filter(a => a.difforme).length} con difformità`})`;
-  renderTabellaAtti("atti", righe, false);
+  renderTabellaAtti("atti", righe, true);
 }
 
 function renderTabellaAtti(id, righe, conSollecito) {
@@ -386,6 +386,9 @@ function renderTabellaAtti(id, righe, conSollecito) {
       <td>${s.punteggi ? chipPunteggi(s.punteggi) : ""}${s.punteggi?.scheda_id || s.scheda_id ? `<button type="button" class="btn-candidati btn-candidati-sede" data-scheda="${s.punteggi?.scheda_id || s.scheda_id}">${s.punteggi?.candidati ? `👥 ${s.punteggi.con_punteggi ?? ""} candidati ▾` : "👥 Apri dettaglio punteggi ▾"}</button>` : ""}${linkPunteggi(s.url_punteggi)}</td>
       <td></td><td colspan="3" class="small">${a.fonti.urp?.url ? `<a class="punteggi-sol" href="${esc(a.fonti.urp.url)}" target="_blank" rel="noopener">URP del bando ↗</a>` : ""}</td>
       ${App.cellaRdp(s)}<td class="difformita">${(s.note || []).map(n => `<span class="chip ${/^protocollo/.test(n) ? "protdiv" : "err"}">${esc(n)}</span>`).join("") || `<span class="muted">nessuna difformità</span>`}</td></tr>`).join("") : "";
+  const sollecitabile = (a) => conSollecito && a.difforme && ["graduatoria", "scorrimento"].includes(a.atto)
+    && (a.data || "").startsWith($("mese-solleciti").value)
+    && attiMese.some(x => window.Solleciti.chiave(x) === window.Solleciti.chiave(a) && x.data === a.data);
   const righeHtml = righe.slice(0, 1000).map((a, i) => `<tr class="cliccabile ${a.difforme ? "difforme" : fontiInAttesa.length ? "" : "in-regola"}" data-id="${a.bando_id}" data-riga="${i}"><td>${dataIt(a.data)}</td><td><b>${esc(a.numero_bando || "")}</b></td>
       <td>${esc(a.codice || "")}${a.coordinatore ? `<div class="muted" title="Coordina il profilo ${esc(a.coordinatore.profilo)}">Coordinatore: ${esc(a.coordinatore.email)}</div>` : ""}</td><td>${TIPOLOGIE[a.tipologia] || esc(a.tipologia)}</td>
       <td><b>${ATTI[a.atto] || a.atto}</b>${a.sottotipo && a.sottotipo !== "non_specificato"
@@ -401,7 +404,7 @@ function renderTabellaAtti(id, righe, conSollecito) {
         ${linkPunteggi(a.url_punteggi)}</td>
       <td>${esc(a.protocollo || "")}</td>${cella(a.fonti.sol, "sol", a)}${cella(a.fonti.urp, "urp", a)}${cella(a.fonti.segreteria, "segreteria", a)}
       ${App.cellaRdp(a)}
-      <td class="difformita">${a.note.map(n => `<span class="chip ${/^protocollo/.test(n) ? "protdiv" : "err"}">${esc(n)}</span>`).join("")}${conSollecito ? `<div class="azioni-sollecito">${righeDelCodice(a).some(x => (x.rdp || []).some(r => r.email)) ? `<button type="button" class="btn-copia-email">Copia destinatari RdP</button>` : `<span class="chip warn">email RdP non disponibile</span>`}<button type="button" class="btn-copia-sollecito">Copia messaggio completo</button>${controlliInvio(a)}</div><span class="muted stato-copia" aria-live="polite"></span>` : ""}</td></tr>${sottoRighe(a)}`).join("");
+      <td class="difformita">${a.note.map(n => `<span class="chip ${/^protocollo/.test(n) ? "protdiv" : "err"}">${esc(n)}</span>`).join("")}${sollecitabile(a) ? `<div class="azioni-sollecito">${righeDelCodice(a).some(x => (x.rdp || []).some(r => r.email)) ? `<button type="button" class="btn-copia-email">Copia destinatari RdP</button>` : `<span class="chip warn">email RdP non disponibile</span>`}<button type="button" class="btn-copia-sollecito">Copia messaggio completo</button>${controlliInvio(a)}</div><span class="muted stato-copia" aria-live="polite"></span>` : ""}</td></tr>${sottoRighe(a)}`).join("");
   $(id).innerHTML = `<thead><tr><th>Data</th><th>N. bando</th><th>Codice</th><th>Tipologia</th><th>Atto</th><th>Protocollo</th>
       <th>Selezioni Online</th><th>URP</th><th>File segreteria</th><th>RdP</th><th>Note</th></tr></thead><tbody>` +
     (righeHtml || `<tr><td colspan="11" class="muted">${conSollecito ? "Nessuna difformità rilevata per questo mese." : "Nessun atto nel periodo selezionato."}</td></tr>`) + "</tbody>" +
@@ -484,7 +487,6 @@ let datiInvii = { solleciti: {}, posta: {} };
 let invioAperto = null;
 
 function controlliInvio(a) {
-  if (!monitoraggio) return "";
   const chiuso = datiInvii.stato === "chiuso";
   const stato = datiInvii.solleciti[window.Solleciti.chiave(a)];
   const inviato = stato && stato.stato !== "da_confermare";
@@ -501,7 +503,7 @@ function controlliInvio(a) {
 }
 
 function apriInvio(riga, gruppo) {
-  const m = window.Solleciti.crea(riga, gruppo, monitoraggio);
+  const m = window.Solleciti.crea(riga, gruppo, $("mese-solleciti").value);
   const destinatari = window.Solleciti.destinatari(gruppo);
   const corpo = m.corpo + (m.link ? `\n\n${m.link}` : "");
   invioAperto = { numero_bando: window.Solleciti.chiave(riga), destinatari, oggetto: m.oggetto, corpo };
@@ -516,8 +518,9 @@ function apriInvio(riga, gruppo) {
 }
 
 async function inviaSollecito(conferma = false) {
-  const url = `/api/monitoraggi/${monitoraggio}/solleciti/invia`;
-  const opzioni = (extra) => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...invioAperto, ...extra }) });
+  const url = monitoraggio ? `/api/monitoraggi/${monitoraggio}/solleciti/invia` : "/api/monitoraggi/solleciti-periodo/invia";
+  const opzioni = (extra) => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...invioAperto,
+    ...(!monitoraggio ? { mese_dati: $("mese-solleciti").value } : {}), ...extra }) });
   const r = await fetch(url, opzioni({ conferma }));
   const corpo = await r.json().catch(() => ({}));
   if (r.status === 409 && corpo.gia_inviato) {
@@ -528,23 +531,31 @@ async function inviaSollecito(conferma = false) {
   $("esito-invio").textContent = corpo.prova ? "Inviata in prova." : "Inviata.";
   await caricaInvii();
   disegnaSolleciti();
+  if (!monitoraggio) disegnaAtti();
 }
 
 async function spuntaSollecito(riga, inviata) {
-  const r = await fetch(`/api/monitoraggi/${monitoraggio}/solleciti/${encodeURIComponent(window.Solleciti.chiave(riga))}`, {
-    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ inviata }) });
+  const url = monitoraggio
+    ? `/api/monitoraggi/${monitoraggio}/solleciti/${encodeURIComponent(window.Solleciti.chiave(riga))}`
+    : "/api/monitoraggi/solleciti-periodo/spunta";
+  const dati = { inviata, ...(!monitoraggio ? { mese_dati: $("mese-solleciti").value, numero_bando: window.Solleciti.chiave(riga) } : {}) };
+  const r = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(dati) });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Errore ${r.status}`);
   await caricaInvii();
   disegnaSolleciti();
+  if (!monitoraggio) disegnaAtti();
 }
 
 async function caricaInvii() {
-  if (!monitoraggio) return;
-  const { corpo } = await json(`/api/monitoraggi/${monitoraggio}/solleciti`);
+  const meseDati = $("mese-solleciti").value;
+  if (!monitoraggio && !meseDati) return;
+  const { corpo } = await json(monitoraggio
+    ? `/api/monitoraggi/${monitoraggio}/solleciti`
+    : `/api/monitoraggi/solleciti-periodo?mese_dati=${encodeURIComponent(meseDati)}`);
+  if (monitoraggio && !parametri.has("mese") && corpo.mese_dati) $("mese-solleciti").value = corpo.mese_dati;
   datiInvii = corpo;
   $("barra-monitoraggio").hidden = false;
-  $("barra-monitoraggio").innerHTML = `Monitoraggio di <b>${esc(corpo.etichetta)}</b> ·
-    <a href="/monitoraggio/mensili/${esc(monitoraggio)}">torna al monitoraggio</a>${corpo.stato === "chiuso" ? ` · <span class="chip warn">Monitoraggio chiuso: qui vedi i dati aggiornati, quelli della chiusura sono nella sua pagina</span>` : ""}${corpo.posta.prova ? ` · <span class="chip warn">Modalità di prova: ${esc(corpo.posta.prova)}</span>` : ""}`;
+  $("barra-monitoraggio").innerHTML = `${monitoraggio ? "Monitoraggio di" : "Stato complessivo ·"} <b>${esc(corpo.etichetta || corpo.etichetta_dati || "")}</b>${monitoraggio ? ` · <a href="/monitoraggio/mensili/${esc(monitoraggio)}">torna al monitoraggio</a>` : ""}${corpo.stato === "chiuso" ? ` · <span class="chip warn">Monitoraggio chiuso: qui vedi i dati aggiornati, quelli della chiusura sono nella sua pagina</span>` : ""}${corpo.posta.prova ? ` · <span class="chip warn">Modalità di prova: ${esc(corpo.posta.prova)}</span>` : ""}`;
 }
 
 function avvisoFreschezza() {
@@ -659,7 +670,8 @@ async function caricaSolleciti(aggiornaPunteggi = true) {
   fontiInAttesa = corpo.fonti_in_attesa || [];
   righeAttiMese = corpo.atti.filter(a => ["graduatoria", "scorrimento"].includes(a.atto));
   if (aggiornaPunteggi) await caricaPunteggi();
-  else disegnaSolleciti();
+  else { disegnaSolleciti(); if (!monitoraggio) disegnaAtti(); }
+  if (!monitoraggio) disegnaAtti();
 }
 
 const sottotipoDoc = (d) => d.sottotipo ? `<div class="muted" title="ricavato dal titolo: indicativo">${SOTTOTIPI[d.sottotipo]}${d.sottotipo_ordinale ? " (" + d.sottotipo_ordinale + "°)" : ""}</div>` : "";
@@ -941,12 +953,10 @@ $("mese-solleciti").value = parametri.get("mese") || meseDi(0);
 $("tipologia-solleciti").value = parametri.get("tipologia") || "";
 $("tipologia-solleciti").addEventListener("change", disegnaSolleciti);
 if (parametri.get("mese")) impostaMese(parametri.get("mese"));
-if (monitoraggio) {
-  selezionaSchedaAtti("graduatorie-mese");
-  $("conferma-invio").onclick = () => inviaSollecito().catch(e => { $("esito-invio").textContent = e.message; });
-  $("chiudi-sollecito").addEventListener("click", () => { $("azioni-invio").hidden = true; });
-}
-$("mese-solleciti").addEventListener("change", () => caricaSolleciti().catch(e => {
+$("conferma-invio").onclick = () => inviaSollecito().catch(e => { $("esito-invio").textContent = e.message; });
+$("chiudi-sollecito").addEventListener("click", () => { $("azioni-invio").hidden = true; });
+if (monitoraggio) selezionaSchedaAtti("graduatorie-mese");
+$("mese-solleciti").addEventListener("change", () => Promise.all([caricaSolleciti(), caricaInvii()]).catch(e => {
   $("freschezza-graduatorie").textContent = `Impossibile caricare le difformità: ${e.message}`;
   $("freschezza-scorrimenti").textContent = `Impossibile caricare le difformità: ${e.message}`;
 }));

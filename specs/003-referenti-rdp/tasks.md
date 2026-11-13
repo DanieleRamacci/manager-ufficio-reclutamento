@@ -33,3 +33,4 @@ description: "Task list per i referenti RdP"
 ## Phase 5: Polish
 
 - [X] T012 Documentare in quickstart.md la configurazione `.env` locale (senza segreti) e la richiesta ai Sistemi Informativi (redirect da registrare sul client `selezioni`) in specs/003-referenti-rdp/quickstart.md
+- [X] T013 Schede per atto e filtri mese/tipologia nella consultazione dell'area referenti

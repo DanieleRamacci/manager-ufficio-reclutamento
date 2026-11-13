@@ -66,6 +66,7 @@ dei bandi di quella persona.
 1. **Given** referenti aggiornati, **When** si sceglie un RdP nel filtro, **Then** compaiono
    solo gli atti dei bandi in cui è RdP.
 2. **Given** un bando con più RdP, **When** si filtra per uno di loro, **Then** il bando compare.
+3. **Given** l'area referenti, **When** si consulta lo Stato complessivo o un monitoraggio, **Then** sono disponibili i filtri per mese, tipologia e le schede per tipo di atto.
 
 ---
 

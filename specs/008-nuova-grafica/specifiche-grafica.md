@@ -108,7 +108,7 @@ Ogni riga di atto ha un bordo sinistro di 3px: rosso `#d6453a` se ha difformità
    - Legenda a destra: verde presente, rosso mancante, ambra protocollo diverso, grigio non applicabile.
    - Filtri: Mese + "Tutto il periodo", Dal/Al, tipo di atto, fonte con difformità, ☐ solo con difformità, ☐ protocollo diverso, RdP, ricerca "Bando, codice, protocollo", link "Azzera filtri".
    - Colonne: Data · N. bando · Codice (+ titolo sotto) · Tipologia · Atto (+ chip "scorrimento", "N persone nel file segreteria", etichette rosse SOL, candidati) · Protocollo · SOL · URP · Segreteria · RdP · Note/difformità.
-   - Note/difformità: pillole testo "Fonte: problema" (sfondo `#f1f3f8`, testo rosso; ambra per protocollo diverso).
+  - Note/difformità: pillole testo "Fonte: problema" (sfondo `#f1f3f8`, testo rosso; ambra per protocollo diverso). Sulle graduatorie e sugli scorrimenti difformi del mese, mostrare anche i comandi di sollecito e il loro stato, come nelle schede mensili.
 
 ### 3.2 Monitoraggi – elenco
 - Intestazione "Monitoraggi mensili" + spiegazione + pulsante primario **"+ Nuovo monitoraggio"**.
@@ -135,6 +135,7 @@ Ogni riga di atto ha un bordo sinistro di 3px: rosso `#d6453a` se ha difformità
 - **Tabella atti**: Data · Bando (n. + profilo/sede, titolo sotto) · Tipologia · N. gest. (mono) · Atto (+ persone, candidati) · Prot. · SOL · URP · Segreteria · **Difformità rilevate** (righe "**SOL** testo", "**URP** testo"… in rosso/ambra, oppure "Nessuna difformità" verde) · RdP (compatto) · **Comunicazione**.
   - Righe con difformità prima, poi per data decrescente.
   - Cella Comunicazione: pillola stato ("da inviare" rossa, "copiata · da confermare" ambra, "inviata gg/mm" verde, "in regola" grigia) + pulsante contorno "Messaggio" + ☐ "inviata" + ID comunicazione piccolo in mono grigio.
+  - Le stesse schede per atto, mese e tipologia sono disponibili nelle viste consultive e nell'area referenti; lì non compaiono comandi per inviare o modificare comunicazioni.
 - Scheda **Comunicazioni**: stessa tabella del registro (3.4) filtrata sul monitoraggio.
 
 ### 3.4 Messaggio ai referenti (finestra)
