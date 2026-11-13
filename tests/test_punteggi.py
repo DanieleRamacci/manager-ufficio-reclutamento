@@ -139,7 +139,7 @@ def test_difformita_graduatoria(db, client_finto):
     assert righe["367.611 RIC"]["url_punteggi"].endswith("/carica-punteggi?callId=m")
     d = righe["367.612 RIC"]["difformita"]
     assert "protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL (1 candidati)" in d
-    assert "esito (V/I/S) mancante su SOL (1 candidati)" in d
+    assert not any("esito V/I/S" in rilievo for rilievo in d)
     assert "numero di protocollo della graduatoria pubblica (oscurata) diverso tra allegato e candidati su SOL (1 candidati)" in d
     assert any(x.startswith("data del protocollo della graduatoria pubblica (oscurata) diversa tra allegato e candidati su SOL (1 candidati: ") and "nell'allegato)" in x for x in d)
 
@@ -215,7 +215,7 @@ def test_senza_v_e_i_si_segnala_e_senza_verifica_si_dice_da_verificare(db, monke
         {"cognome": "B", "esito": " ", "graduatoria": 2, "numero_protocollo_graduatoria": "9001"}]})
     punteggi.verifica_schede(db, db.execute("SELECT * FROM scheda WHERE id_esterno = 'o1'").fetchall(), "2026-10-01", "2026-10-31", {"Cookie": "x"}, client=object())
     r = riga()
-    assert r["punteggi_da_verificare"] is False and r["difforme"] is True and "esito (V/I/S) mancante su SOL (2 candidati)" in r["note"]
+    assert r["punteggi_da_verificare"] is False and r["difforme"] is True and "nessun esito V/I/S compilato su SOL (2 candidati in graduatoria)" in r["note"]
     assert r["punteggi"]["candidati"] is True
 
 
@@ -245,7 +245,7 @@ def test_protocollo_mancante_solo_per_vincitori_idonei_e_scorrimenti():
     assert c["senza_protocollo"] == 1 and c["senza_esito"] == 0
 
 
-def test_esito_mancante_solo_per_candidati_con_posizione_in_graduatoria():
+def test_esiti_parzialmente_compilati_non_sono_una_difformita():
     candidati = [
         {"esito": "V", "graduatoria": 1},
         {"esito": "I", "graduatoria": 2},
@@ -254,5 +254,5 @@ def test_esito_mancante_solo_per_candidati_con_posizione_in_graduatoria():
     ]
     c = punteggi.conteggi_candidati(candidati)
     assert c["senza_esito"] == 1
-    assert "esito (V/I/S) mancante su SOL (1 candidati)" in punteggi.difformita(
-        {"esito": "completi", "senza_esito": c["senza_esito"]})
+    assert not any("esito V/I/S" in rilievo for rilievo in punteggi.difformita(
+        {"esito": "completi", "senza_esito": c["senza_esito"], "vincitori": 1, "idonei": 1, "scorrimento": 0}))

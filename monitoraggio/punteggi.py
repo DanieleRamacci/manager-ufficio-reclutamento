@@ -58,9 +58,8 @@ def conteggi_candidati(candidati: list[dict], protocollo_rif: str | None = None,
     rif = protocollo(protocollo_rif)
     for x in candidati:
         esito_x = (x.get("esito") or "").strip().upper()
-        # SOL lascia vuoto l'esito dei candidati che non entrano in graduatoria. Il campo
-        # "graduatoria" (posizione) distingue quei casi da un esito omesso per un candidato
-        # effettivamente inserito nella graduatoria.
+        # Conserviamo il conteggio delle posizioni senza esito, ma da solo non prova una difformità:
+        # il totale atteso di V/I/S non è noto e una compilazione parziale può essere corretta.
         if not esito_x and str(x.get("graduatoria") or "").strip():
             c["senza_esito"] += 1
         elif ESITI_CANDIDATO.get(esito_x):
@@ -190,8 +189,9 @@ def difformita(v: dict | None) -> list[str]:
         d.append(f"punteggi su SOL solo per {v['con_punteggi']} domande su {v['domande']}")
     if v.get("senza_protocollo"):
         d.append(f"protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL ({v['senza_protocollo']} candidati)")
-    if v.get("senza_esito"):
-        d.append(f"esito (V/I/S) mancante su SOL ({v['senza_esito']} candidati)")
+    # Senza il totale atteso di V/I/S, segnaliamo solo l'assenza completa degli esiti.
+    if v.get("senza_esito") and not any(v.get(k) for k in ("vincitori", "idonei", "scorrimento")):
+        d.append(f"nessun esito V/I/S compilato su SOL ({v['senza_esito']} candidati in graduatoria)")
     if v.get("protocollo_diverso"):
         d.append(f"numero di protocollo della graduatoria pubblica (oscurata) diverso tra allegato e candidati su SOL ({v['protocollo_diverso']} candidati)")
     if v.get("data_diversa"):

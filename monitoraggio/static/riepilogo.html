@@ -766,7 +766,7 @@ function riepilogoPunteggi(p) {
   if (p.idonei !== null && p.idonei !== undefined) parti.push(`I ${p.idonei}`);
   if (p.scorrimento !== null && p.scorrimento !== undefined) parti.push(`S ${p.scorrimento}`);
   if (p.senza_protocollo) parti.push(`${p.senza_protocollo} senza prot.`);
-  if (p.senza_esito) parti.push(`${p.senza_esito} senza esito`);
+  if (p.senza_esito && ![p.vincitori, p.idonei, p.scorrimento].some(Boolean)) parti.push("nessun esito V/I/S");
   return parti.length ? `<div class="muted">${parti.map(esc).join(" · ")}</div>` : "";
 }
 const meseDi = (scarto) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + scarto); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
