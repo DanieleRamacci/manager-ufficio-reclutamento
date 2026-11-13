@@ -596,7 +596,7 @@ function righeGraduatoriaUnificate() {
     const conSede = righe.find(a => (a.sedi || []).some(s => s.scheda_id === p.scheda_id));
     if (conSede) {
       const s = conSede.sedi.find(x => x.scheda_id === p.scheda_id);
-      s.note = [...new Set([...(s.note || []), ...note.filter(n => n !== "graduatoria pubblica (oscurata) non allegata su SOL")])];
+      s.note = [...new Set([...(s.note || []), ...note.filter(n => n !== "graduatoria pubblica con i soli vincitori non allegata su SOL")])];
       s.punteggi = punteggiPerRiga(p);
       if (s.note.length) conSede.difforme = true;
       return;
@@ -616,7 +616,7 @@ function righeGraduatoriaUnificate() {
       destinazione.rdp = p.rdp?.length ? p.rdp : destinazione.rdp;
       destinazione.codice = p.codice || destinazione.codice;
       destinazione.note = [...new Set([...(destinazione.note || []), ...note.filter(n =>
-        !(n === "graduatoria pubblica (oscurata) non allegata su SOL" && (destinazione.fonti?.sol?.stato === "mancante" || (destinazione.note || []).some(x => x.includes("senza documento pubblico")))))])];
+        !(n === "graduatoria pubblica con i soli vincitori non allegata su SOL" && (destinazione.fonti?.sol?.stato === "mancante" || (destinazione.note || []).some(x => x.includes("senza documento pubblico")))))])];
       if (note.length) destinazione.difforme = true;
       destinazione.scoreRecord = p;
       return;
@@ -628,13 +628,13 @@ function righeGraduatoriaUnificate() {
     const fonteNessunDato = { stato: "non_caricato" };
     sintetiche.push({
       bando_id: p.bando_id, numero_bando: p.numero_bando, codice: p.codice,
-      codice_sotto: p.codice_sotto, tipologia: p.tipologia || contesto?.tipologia, titolo: p.documento || "Graduatoria pubblica (oscurata)",
+      codice_sotto: p.codice_sotto, tipologia: p.tipologia || contesto?.tipologia, titolo: p.documento || "Graduatoria pubblica con i soli vincitori",
       titolo_bando: contesto?.titolo_bando, atto: "graduatoria", data: p.data, protocollo: p.protocollo,
       fonti: { sol: { stato: p.allegato_sol ? "presente" : "mancante", protocollo: p.protocollo, url: p.url },
         urp: { ...fonteNessunDato }, segreteria: { ...fonteNessunDato } },
       note: [...new Set(note)], rdp: p.rdp || [], link_codice: p.url, url_punteggi: p.url_punteggi,
       punteggi: punteggiPerRiga(p), scoreRecord: p, difforme: true, incompleto: !p.allegato_sol,
-      protocollo_diverso: note.some(n => n.startsWith("numero di protocollo della graduatoria pubblica (oscurata) diverso")),
+      protocollo_diverso: note.some(n => n.startsWith("numero di protocollo della graduatoria pubblica con i soli vincitori diverso")),
     });
   });
 
@@ -701,7 +701,7 @@ function tabellaSol(schede) {
     const docs = s.documenti.filter(d => d.categoria !== "altro");
     const haGrad = s.documenti.some(d => d.categoria === "graduatoria");
     if (s.data_pubbl_graduatoria && !haGrad && s.codice_sotto)
-      righe.push({ sede: etichettaSede(s), url: s.url, avviso: `data della graduatoria pubblica (oscurata) ${dataIt(s.data_pubbl_graduatoria)} senza documento pubblico` });
+      righe.push({ sede: etichettaSede(s), url: s.url, avviso: `data della graduatoria pubblica con i soli vincitori ${dataIt(s.data_pubbl_graduatoria)} senza documento pubblico` });
     docs.forEach(d => {
       const k = `${d.categoria}|${d.protocollo}|${d.titolo}`;
       if (visti.has(k)) { visti.get(k).codici += 1; return; }

@@ -27,7 +27,7 @@ def _adesso() -> str:
 
 def rilievi(riga: dict) -> list[str]:
     """Come rilievi() in solleciti.js."""
-    atto = "la graduatoria pubblica (oscurata)" if riga["atto"] == "graduatoria" else "il provvedimento di assunzione idoneo (scorrimento/utilizzo della graduatoria)"
+    atto = "la graduatoria pubblica con i soli vincitori" if riga["atto"] == "graduatoria" else "il provvedimento di assunzione idoneo (scorrimento/utilizzo della graduatoria)"
     testi = list(riga.get("note") or [])
     rif = f" (prot. {riga['protocollo']})" if riga.get("protocollo") else ""
     n_sol = riga.get("utilizzi_sol_codice") or 0
@@ -77,7 +77,7 @@ def righe_correnti(conn, dal: str, al: str, tutti: bool = False) -> list[dict]:
     return righe
 
 
-NON_ALLEGATA = "graduatoria pubblica (oscurata) non allegata su SOL"
+NON_ALLEGATA = "graduatoria pubblica con i soli vincitori non allegata su SOL"
 _SEDE_NEL_CODICE = re.compile(r"\s+-\s+\d{2}\b.*$")
 _PREFISSO_SEDE = re.compile(r"^sede «[^»]*»: ")
 
@@ -261,8 +261,8 @@ def _chiave_rilievo(testo: str) -> str:
     if testo.startswith("nota per il monitoraggio"):
         return "nota per il monitoraggio"
     testo = re.sub(r"\s*\((?:prot\.[^)]*|[^)]*candidati[^)]*|per questo codice[^)]*)\)", "", testo)
-    return testo.replace("graduatoria pubblica (oscurata) non allegata su SOL",
-                         "la graduatoria pubblica (oscurata) non risulta tra i dati attualmente disponibili da Selezioni Online")
+    return testo.replace("graduatoria pubblica con i soli vincitori non allegata su SOL",
+                         "la graduatoria pubblica con i soli vincitori non risulta tra i dati attualmente disponibili da Selezioni Online")
 
 
 def _presente(riga: dict, fonte: str) -> bool:

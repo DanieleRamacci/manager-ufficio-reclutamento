@@ -12,3 +12,4 @@
 - [X] T010 [US2] Difformità di SOL rispetto alle fonti (FR-006) per graduatorie e scorrimenti, in rosso, con filtro "solo con difformità"; protocollo di riferimento da allegato SOL, URP o file; riepilogo scorrimenti per protocollo in `punteggi_verifica.scorrimenti_sol` (schema 6) in monitoraggio/punteggi.py, monitoraggio/atti.py, monitoraggio/static/riepilogo.html
 - [X] T011 [US2] Link "Punteggi su SOL" (FR-007) in monitoraggio/fonti/sol.py, monitoraggio/web.py, monitoraggio/static/riepilogo.html; test in tests/test_punteggi.py
 - [X] T012 [US2] Segnalare gli esiti V/I/S solo quando nessun esito è compilato, non quando sono presenti esiti parziali
+- [X] T013 [US2] Usare la dicitura «graduatoria pubblica con i soli vincitori» in software, rilievi e messaggi generati, migrando le etichette salvate

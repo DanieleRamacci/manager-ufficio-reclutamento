@@ -140,7 +140,7 @@ def test_codice_sotto_e_graduatoria_senza_documento(db):
     assert utilizzo["codice_sotto"] == "14"                  # ricavato dal titolo del documento URP
     grad = next(r for r in righe if r["protocollo"] == "540538")
     assert grad["codice_sotto"] == "14"
-    senza = [r for r in righe if "data della graduatoria pubblica (oscurata) su SOL senza documento pubblico" in r["note"]]
+    senza = [r for r in righe if "data della graduatoria pubblica con i soli vincitori su SOL senza documento pubblico" in r["note"]]
     assert len(senza) == 1 and senza[0]["codice_sotto"] == "13" and senza[0]["fonti"]["sol"]["stato"] == "mancante"
 
 
@@ -280,8 +280,8 @@ def test_codice_sede_dal_codice_sol():
 
 
 def test_vecchio_rilievo_senza_sede_non_risulta_risolto():
-    vecchio = "protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL (5 candidati)"
-    attuali = [f"sede «A»: {vecchio}", "sede «B»: protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL (2 candidati)"]
+    vecchio = "protocollo della graduatoria pubblica con i soli vincitori non valorizzato sui candidati su SOL (5 candidati)"
+    attuali = [f"sede «A»: {vecchio}", "sede «B»: protocollo della graduatoria pubblica con i soli vincitori non valorizzato sui candidati su SOL (2 candidati)"]
     voci, badge = difformita._stato_rilievi({"rilievi_iniziali": json.dumps([vecchio]), "rilievi_attuali": json.dumps(attuali), "stato": difformita.APERTA})
     assert [v["testo"] for v in voci] == attuali
     assert not any(v["risolto"] or v["nuovo"] for v in voci)

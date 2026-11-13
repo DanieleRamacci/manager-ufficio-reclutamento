@@ -86,14 +86,14 @@ _RILIEVI_PUNTEGGI = ("mancano i punteggi", "esito (V/I", "non valorizzato sui ca
                      "punteggi su SOL solo per", "nessuna domanda inviata su SOL")
 
 INTESTAZIONE_EMAIL = "Email generata dal sistema di monitoraggio dei bandi."
-NOTA_GRADUATORIA = ("Per le graduatorie, il controllo riguarda la versione pubblica (oscurata) allegata su Selezioni Online "
+NOTA_GRADUATORIA = ("Per le graduatorie, il controllo riguarda la graduatoria pubblica con i soli vincitori, allegata su Selezioni Online "
                     "e pubblicata su URP, non quella riservata.")
-ISTRUZIONE_A = ("Graduatoria pubblica (oscurata) già presente su Selezioni Online: inserite i punteggi e gli esiti (V/I/R/S) di ogni "
+ISTRUZIONE_A = ("Graduatoria pubblica con i soli vincitori già presente su Selezioni Online: inserite i punteggi e gli esiti (V/I/R/S) di ogni "
                 "candidato, poi premete in alto il pulsante che valorizza automaticamente il numero di protocollo della "
-                "graduatoria pubblica (oscurata). Se il pulsante non funziona, rispondete a questa email segnalando che avete aggiornato i "
-                "dati ma non riuscite a valorizzare il protocollo: provvederemo noi a sbloccare la graduatoria pubblica (oscurata).")
-ISTRUZIONE_B = ("Graduatoria pubblica (oscurata) non ancora su Selezioni Online: compilate prima i punteggi e gli esiti, poi caricate la "
-                "graduatoria pubblica (oscurata) come allegato di tipo «graduatoria» indicando data e numero di protocollo; i campi si "
+                "graduatoria pubblica con i soli vincitori. Se il pulsante non funziona, rispondete a questa email segnalando che avete aggiornato i "
+                "dati ma non riuscite a valorizzare il protocollo: provvederemo noi a sbloccare la graduatoria pubblica con i soli vincitori.")
+ISTRUZIONE_B = ("Graduatoria pubblica con i soli vincitori non ancora su Selezioni Online: compilate prima i punteggi e gli esiti, poi caricate la "
+                "graduatoria pubblica con i soli vincitori come allegato di tipo «graduatoria» indicando data e numero di protocollo; i campi si "
                 "valorizzeranno in automatico.")
 ISTRUZIONE_C = ("Provvedimento di assunzione idoneo / scorrimento: va inserito a mano su Selezioni Online, con la "
                 "relativa data e numero di protocollo.")
@@ -149,7 +149,7 @@ def messaggio(conn, monitoraggio: dict, codice: str, righe_del_mese: list[dict] 
     n = sum(len(r["rilievi"]) for r in righe)
     voci = []
     for i, r in enumerate(righe, 1):
-        tipo = {"graduatoria": "Graduatoria pubblica (oscurata)", "scorrimento": "Provvedimento di assunzione idoneo / scorrimento"}.get(r["atto"], r["atto"])
+        tipo = {"graduatoria": "Graduatoria pubblica con i soli vincitori", "scorrimento": "Provvedimento di assunzione idoneo / scorrimento"}.get(r["atto"], r["atto"])
         testa = f"{i}) {tipo} del {_data_it(r.get('data'))}" + (f" – prot. {r['protocollo']}" if r.get("protocollo") else "")
         voci.append("\n".join([testa, *[f"   – {t}" for t in r["rilievi"]]]))
     saluto = f"Gentile {attivi[0]['nome']}," if len(attivi) == 1 and attivi[0]["nome"] else "Gentili tutte e tutti,"
@@ -169,7 +169,7 @@ def messaggio(conn, monitoraggio: dict, codice: str, righe_del_mese: list[dict] 
     if istruzioni:
         corpo += "\n\nCome procedere:\n" + "\n".join(f"- {x}" for x in istruzioni)
     copia = f" lasciando in copia il mio indirizzo ({posta.contatto_ufficio()})" if posta.contatto_ufficio() else ""
-    aggiornamento = "l'aggiornamento della graduatoria pubblica (oscurata) e dei dati" if con_graduatoria else "l'aggiornamento dei dati"
+    aggiornamento = "l'aggiornamento della graduatoria pubblica con i soli vincitori e dei dati" if con_graduatoria else "l'aggiornamento dei dati"
     if sollecito:
         corpo += ("\n\nSe aveste già provveduto, vi preghiamo di scusarci: i nostri dati si aggiornano periodicamente e la correzione potrebbe "
                   "non essere ancora visibile. In caso di dubbi o difficoltà, siamo a disposizione per aiutarvi.")

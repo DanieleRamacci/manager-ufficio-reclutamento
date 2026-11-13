@@ -138,10 +138,10 @@ def test_difformita_graduatoria(db, client_finto):
     assert righe["367.611 RIC"]["difformita"] == ["mancano i punteggi su SOL"]
     assert righe["367.611 RIC"]["url_punteggi"].endswith("/carica-punteggi?callId=m")
     d = righe["367.612 RIC"]["difformita"]
-    assert "protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL (1 candidati)" in d
+    assert "protocollo della graduatoria pubblica con i soli vincitori non valorizzato sui candidati su SOL (1 candidati)" in d
     assert not any("esito V/I/S" in rilievo for rilievo in d)
-    assert "numero di protocollo della graduatoria pubblica (oscurata) diverso tra allegato e candidati su SOL (1 candidati)" in d
-    assert any(x.startswith("data del protocollo della graduatoria pubblica (oscurata) diversa tra allegato e candidati su SOL (1 candidati: ") and "nell'allegato)" in x for x in d)
+    assert "numero di protocollo della graduatoria pubblica con i soli vincitori diverso tra allegato e candidati su SOL (1 candidati)" in d
+    assert any(x.startswith("data del protocollo della graduatoria pubblica con i soli vincitori diversa tra allegato e candidati su SOL (1 candidati: ") and "nell'allegato)" in x for x in d)
 
 
 def test_scorrimenti_candidati_s(db, client_finto):

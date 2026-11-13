@@ -23,12 +23,12 @@ def test_istruzioni_email_per_caso():
 
 
 def test_da_sbloccare():
-    assert comunicazioni.da_sbloccare(_riga("graduatoria", "presente", ["protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL (2 candidati)"]))
+    assert comunicazioni.da_sbloccare(_riga("graduatoria", "presente", ["protocollo della graduatoria pubblica con i soli vincitori non valorizzato sui candidati su SOL (2 candidati)"]))
     assert not comunicazioni.da_sbloccare(_riga("graduatoria", "presente", ["mancano i punteggi su SOL"]))
-    assert not comunicazioni.da_sbloccare(_riga("scorrimento", "mancante", ["protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL (2 candidati)"]))
+    assert not comunicazioni.da_sbloccare(_riga("scorrimento", "mancante", ["protocollo della graduatoria pubblica con i soli vincitori non valorizzato sui candidati su SOL (2 candidati)"]))
 
 
 def test_da_sbloccare_solo_se_la_graduatoria_e_su_sol():
-    testo = ["protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL (13 candidati)"]
+    testo = ["protocollo della graduatoria pubblica con i soli vincitori non valorizzato sui candidati su SOL (13 candidati)"]
     assert comunicazioni.da_sbloccare(_riga("graduatoria", "presente", testo))
     assert not comunicazioni.da_sbloccare(_riga("graduatoria", "mancante", testo))

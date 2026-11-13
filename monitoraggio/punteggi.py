@@ -188,14 +188,14 @@ def difformita(v: dict | None) -> list[str]:
     elif v["esito"] == "parziali":
         d.append(f"punteggi su SOL solo per {v['con_punteggi']} domande su {v['domande']}")
     if v.get("senza_protocollo"):
-        d.append(f"protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL ({v['senza_protocollo']} candidati)")
+        d.append(f"protocollo della graduatoria pubblica con i soli vincitori non valorizzato sui candidati su SOL ({v['senza_protocollo']} candidati)")
     # Senza il totale atteso di V/I/S, segnaliamo solo l'assenza completa degli esiti.
     if v.get("senza_esito") and not any(v.get(k) for k in ("vincitori", "idonei", "scorrimento")):
         d.append(f"nessun esito V/I/S compilato su SOL ({v['senza_esito']} candidati in graduatoria)")
     if v.get("protocollo_diverso"):
-        d.append(f"numero di protocollo della graduatoria pubblica (oscurata) diverso tra allegato e candidati su SOL ({v['protocollo_diverso']} candidati)")
+        d.append(f"numero di protocollo della graduatoria pubblica con i soli vincitori diverso tra allegato e candidati su SOL ({v['protocollo_diverso']} candidati)")
     if v.get("data_diversa"):
-        d.append(f"data del protocollo della graduatoria pubblica (oscurata) diversa tra allegato e candidati su SOL ({v['data_diversa']} candidati{_dettaglio_date(v)})")
+        d.append(f"data del protocollo della graduatoria pubblica con i soli vincitori diversa tra allegato e candidati su SOL ({v['data_diversa']} candidati{_dettaglio_date(v)})")
     return d
 
 
@@ -407,7 +407,7 @@ def elenco_periodo(conn, dal: str, al: str) -> list[dict]:
             **{k: v.get(k) for k in ("domande", "con_punteggi", "vincitori", "idonei", "scorrimento", "senza_protocollo",
                                      "senza_esito", "protocollo_diverso", "data_diversa", "esito", "verificato_il",
                                      "messaggio")},
-            "difformita": difformita(v) + ([] if rif["allegato_sol"] else ["graduatoria pubblica (oscurata) non allegata su SOL"])
+            "difformita": difformita(v) + ([] if rif["allegato_sol"] else ["graduatoria pubblica con i soli vincitori non allegata su SOL"])
                           + difformita_scorrimenti(sol_scorr, noti, dal, al),
             "scorrimenti": [{"data": g["data"], "protocolli": sorted(g["protocolli"]), "fonti": sorted(g["fonti"]),
                              **stato_scorrimento(g, sol_scorr)} for g in noti if dal <= (g["data"] or "") <= al],

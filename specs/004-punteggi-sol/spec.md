@@ -78,6 +78,8 @@ nel database: passano solo nel file generato.
   nella tendina dei candidati e nel dettaglio del bando.
 - **FR-008**: Nel database MUST finire solo conteggi e protocolli pubblici degli scorrimenti (numero di
   candidati S per protocollo), mai nominativi.
+- **FR-009**: Le etichette, le difformità e i messaggi generati MUST chiamare la graduatoria pubblica
+  «graduatoria pubblica con i soli vincitori».
 
 ## Assumptions
 

@@ -6,7 +6,7 @@ import sqlite3
 from . import config
 from .normalizza import AGGIUNTA_TIPOLOGIE, ANCORA_SCORRIMENTI, codice_sede, nota_sottotipo
 
-SCHEMA_VERSION = 26
+SCHEMA_VERSION = 27
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -492,15 +492,17 @@ CREATE TABLE IF NOT EXISTS invio_email (
 
 
 def testo_graduatoria_pubblica(testo: str) -> str:
-    """Versione 20: i vecchi rilievi diventano uguali ai nuovi, che dicono quale graduatoria è controllata."""
+    """Uniforma le diciture dei rilievi sulla graduatoria pubblica con i soli vincitori."""
     if testo.startswith("la graduatoria") and not testo.startswith("la graduatoria pubblica"):
-        testo = "la graduatoria pubblica (oscurata)" + testo[len("la graduatoria"):]
+        testo = "la graduatoria pubblica con i soli vincitori" + testo[len("la graduatoria"):]
+    testo = testo.replace("graduatoria pubblica (oscurata)", "graduatoria pubblica con i soli vincitori")
+    testo = testo.replace("Graduatoria pubblica (oscurata)", "Graduatoria pubblica con i soli vincitori")
     for vecchio, nuovo in (
-            ("protocollo graduatoria non valorizzato su SOL (", "protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL ("),
-            ("data protocollo graduatoria diversa su SOL (", "data del protocollo della graduatoria pubblica (oscurata) diversa tra allegato e candidati su SOL ("),
-            ("protocollo graduatoria diverso su SOL (", "numero di protocollo della graduatoria pubblica (oscurata) diverso tra allegato e candidati su SOL ("),
-            ("data graduatoria su SOL senza documento pubblico", "data della graduatoria pubblica (oscurata) su SOL senza documento pubblico"),
-            ("graduatoria non allegata su SOL", "graduatoria pubblica (oscurata) non allegata su SOL")):
+            ("protocollo graduatoria non valorizzato su SOL (", "protocollo della graduatoria pubblica con i soli vincitori non valorizzato sui candidati su SOL ("),
+            ("data protocollo graduatoria diversa su SOL (", "data del protocollo della graduatoria pubblica con i soli vincitori diversa tra allegato e candidati su SOL ("),
+            ("protocollo graduatoria diverso su SOL (", "numero di protocollo della graduatoria pubblica con i soli vincitori diverso tra allegato e candidati su SOL ("),
+            ("data graduatoria su SOL senza documento pubblico", "data della graduatoria pubblica con i soli vincitori su SOL senza documento pubblico"),
+            ("graduatoria non allegata su SOL", "graduatoria pubblica con i soli vincitori non allegata su SOL")):
         testo = testo.replace(vecchio, nuovo)
     sottotipo = re.fullmatch(r"sottotipo diverso: file (.+), titolo (.+)", testo)
     return nota_sottotipo(*sottotipo.groups()) if sottotipo else testo
@@ -508,6 +510,8 @@ def testo_graduatoria_pubblica(testo: str) -> str:
 
 def _migra_testi_graduatoria(conn: sqlite3.Connection) -> None:
     def con_tipologie(testo: str) -> str:
+        testo = testo.replace("graduatoria pubblica (oscurata)", "graduatoria pubblica con i soli vincitori")
+        testo = testo.replace("Graduatoria pubblica (oscurata)", "Graduatoria pubblica con i soli vincitori")
         return testo.replace(ANCORA_SCORRIMENTI, ANCORA_SCORRIMENTI + AGGIUNTA_TIPOLOGIE, 1) if AGGIUNTA_TIPOLOGIE not in testo else testo
     for r in conn.execute("SELECT valore FROM impostazione WHERE chiave = 'email_testo' AND valore IS NOT NULL").fetchall():
         conn.execute("UPDATE impostazione SET valore = ? WHERE chiave = 'email_testo'", (con_tipologie(r["valore"]),))
@@ -516,6 +520,12 @@ def _migra_testi_graduatoria(conn: sqlite3.Connection) -> None:
     for r in conn.execute("SELECT id, rilievi_iniziali, rilievi_attuali FROM difformita").fetchall():
         nuovi = [json.dumps([testo_graduatoria_pubblica(t) for t in json.loads(r[c])], ensure_ascii=False) for c in ("rilievi_iniziali", "rilievi_attuali")]
         conn.execute("UPDATE difformita SET rilievi_iniziali = ?, rilievi_attuali = ? WHERE id = ?", (*nuovi, r["id"]))
+    for r in conn.execute("SELECT id, note FROM monitoraggio_riga WHERE note IS NOT NULL").fetchall():
+        conn.execute("UPDATE monitoraggio_riga SET note = ? WHERE id = ?",
+                     (json.dumps([testo_graduatoria_pubblica(t) for t in json.loads(r["note"])], ensure_ascii=False), r["id"]))
+    for r in conn.execute("SELECT id, difformita FROM monitoraggio_punteggi WHERE difformita IS NOT NULL").fetchall():
+        conn.execute("UPDATE monitoraggio_punteggi SET difformita = ? WHERE id = ?",
+                     (json.dumps([testo_graduatoria_pubblica(t) for t in json.loads(r["difformita"])], ensure_ascii=False), r["id"]))
     for r in conn.execute("SELECT id, rilievo FROM segnalazione").fetchall():
         conn.execute("UPDATE segnalazione SET rilievo = ? WHERE id = ?", (testo_graduatoria_pubblica(r["rilievo"]), r["id"]))
 
@@ -655,6 +665,8 @@ def inizializza(conn: sqlite3.Connection) -> None:
                                  (*(json.dumps(x, ensure_ascii=False) for x in restano), d["id"]))
         if riga["versione"] < 26:
             _migra_profili_senza_livello(conn)
+        if riga["versione"] < 27:
+            _migra_testi_graduatoria(conn)
         conn.execute("UPDATE schema_version SET versione = ?", (SCHEMA_VERSION,))
 
 

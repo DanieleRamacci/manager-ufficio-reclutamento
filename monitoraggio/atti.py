@@ -264,7 +264,7 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
                           "titolo": s["codice_originale"], "persone": None,
                           "fonti": {"sol": {"stato": MANCANTE, "url": s["url"]}, "urp": {"stato": NON_APPLICABILE},
                                     "segreteria": {"stato": NON_APPLICABILE}},
-                          "note": ["data della graduatoria pubblica (oscurata) su SOL senza documento pubblico"]})
+                          "note": ["data della graduatoria pubblica con i soli vincitori su SOL senza documento pubblico"]})
 
         # documenti
         for gruppo in _unisci(voci.get(chiave, {})):

@@ -7,7 +7,7 @@ window.App = (() => {
   const MESI = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
   const TIPOLOGIE = { TI: "Tempo indeterminato", MOB: "Mobilità" };
   const NOMI_TIPOLOGIA = { tempo_indeterminato: "Tempo indeterminato", reclutamento_speciale: "Reclutamento speciale", categorie_protette: "Categorie protette", mobilita: "Mobilità", comando: "Comando" };
-  const ATTI = { bando: "Bando", graduatoria: "Graduatoria pubblica (oscurata)", scorrimento: "Scorrimento", rettifica: "Rettifica" };
+  const ATTI = { bando: "Bando", graduatoria: "Graduatoria pubblica con i soli vincitori", scorrimento: "Scorrimento", rettifica: "Rettifica" };
 
   async function chiama(url, opzioni) {
     const r = await fetch(url, { cache: "no-store", ...opzioni });
@@ -127,7 +127,7 @@ window.App = (() => {
     return `<div style="margin-bottom:8px">${lista.length} candidati con punteggi · V ${conta("V")} · I ${conta("I")} · S ${conta("S")}
       ${senza ? ` <span class="etichetta">${senza} senza protocollo graduatoria</span>` : ""}
       ${d.url_punteggi ? ` · <a href="${esc(d.url_punteggi)}" target="_blank" rel="noopener"><b>Apri i punteggi su Selezioni Online ↗</b></a>` : ""}
-      ${pubblica.protocollo || pubblica.data ? `<div class="small">Graduatoria pubblica (oscurata) allegata: ${pubblica.protocollo ? `prot. ${esc(pubblica.protocollo)}` : ""}${pubblica.data ? ` del ${esc(dataIt(pubblica.data))}` : ""}</div>` : ""}</div>
+      ${pubblica.protocollo || pubblica.data ? `<div class="small">Graduatoria pubblica con i soli vincitori allegata: ${pubblica.protocollo ? `prot. ${esc(pubblica.protocollo)}` : ""}${pubblica.data ? ` del ${esc(dataIt(pubblica.data))}` : ""}</div>` : ""}</div>
       <div class="scroll"><table><thead><tr><th>Pos.</th><th>Cognome</th><th>Nome</th><th>Nascita</th><th>Codice fiscale</th><th>Email</th><th>Email PEC</th>
         ${prove.map(p => `<th>${esc(p.nome || `Prova ${p.n}`)}${p.max ? ` /${esc(p.max)}` : ""}</th>`).join("")}<th>Totale</th><th>Esito</th><th>Prot. graduatoria</th><th>Data prot.</th></tr></thead><tbody>
       ${lista.map(c => `<tr><td>${esc(c.graduatoria)}</td><td>${esc(c.cognome)}</td><td>${esc(c.nome)}</td><td>${esc(dataIt(c.data_nascita))}</td><td class="mono">${esc(c.codice_fiscale)}</td><td>${esc(c.email)}</td><td>${esc(c.email_pec)}</td>

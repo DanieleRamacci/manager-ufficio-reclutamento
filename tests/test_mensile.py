@@ -1104,7 +1104,7 @@ def test_messaggio_standard_per_codice(ambiente, db):
     assert m["destinatari"] == ["rdp@cnr.it"] and m["referenti"][0]["nome"] == "Anna Bianchi"
     assert m["oggetto"] == f"Monitoraggio aprile 2026. Bando n° 367.479 CTER: Aggiornamento Dati Graduatoria Pubblica – Rif. {m['n_gestione']}" and len(m["n_gestione"]) == 4
     assert "\n\nGentile Anna Bianchi,\n" in m["corpo"] and "(rif." not in m["corpo"]
-    assert "1) Graduatoria pubblica (oscurata) del 12/04/2026" in m["corpo"] and comunicazioni_nota in m["corpo"] and "protocollo diverso: SOL 1001, URP 1002" in m["corpo"]
+    assert "1) Graduatoria pubblica con i soli vincitori del 12/04/2026" in m["corpo"] and comunicazioni_nota in m["corpo"] and "protocollo diverso: SOL 1001, URP 1002" in m["corpo"]
     assert "Cordiali saluti," in m["corpo"] and m["stato"] == "da_inviare"
     assert admin.get(f"/api/monitoraggi/{mese}/comunicazioni/inesistente/messaggio").status_code == 404
 
@@ -1435,7 +1435,7 @@ def test_cc_ufficio_multiplo_e_testo_di_riscontro(ambiente, db, monkeypatch):
         posta.salva_email({"cc": "nonvalido"}, "t")
     assert posta.impostazioni_email()["cc"] == "uno@cnr.it, due@cnr.it"  # non sovrascritto dall'errore
     m = admin.get(url + "/messaggio").get_json()
-    assert "Una volta completato l'aggiornamento della graduatoria pubblica (oscurata) e dei dati" in m["corpo"]
+    assert "Una volta completato l'aggiornamento della graduatoria pubblica con i soli vincitori e dei dati" in m["corpo"]
     assert "a questa email lasciando in copia il mio indirizzo (ufficio@esempio.it)" in m["corpo"]
     posta.salva_email({"prova_attiva": False, "ufficiali_attive": True}, "t")
     admin.post(url + "/invia", json={"modo": "ufficiale"})
@@ -1683,7 +1683,7 @@ def test_reinvio_usa_il_testo_sulla_graduatoria_pubblica(ambiente, db, monkeypat
     assert admin.post(url + "/invia", json={"modo": "ufficiale"}).status_code == 409  # già inviata: chiede conferma
     assert admin.post(url + "/invia", json={"modo": "ufficiale", "conferma": True}).status_code == 200
     m = inviati[-1]
-    assert "Aggiornamento Dati Graduatoria Pubblica" in m["Subject"] and "aggiornamento della graduatoria pubblica (oscurata)" in m.get_content()
+    assert "Aggiornamento Dati Graduatoria Pubblica" in m["Subject"] and "aggiornamento della graduatoria pubblica con i soli vincitori" in m.get_content()
     assert db.execute("SELECT corpo FROM comunicazione WHERE id = 'VECCHIA'").fetchone()[0] == "testo vecchio"  # lo storico non si riscrive
 
 
@@ -1732,8 +1732,8 @@ def test_vecchi_rilievi_riscritti_con_la_graduatoria_pubblica(ambiente, db):
     db.execute("UPDATE schema_version SET versione = 19")
     dbmod.inizializza(db)
     attuali = json.loads(db.execute("SELECT rilievi_attuali FROM difformita WHERE codice = '1 X'").fetchone()[0])
-    assert attuali == ["data del protocollo della graduatoria pubblica (oscurata) diversa tra allegato e candidati su SOL (22 candidati)",
-                       "la graduatoria pubblica (oscurata) (prot. 5) non risulta tra i dati attualmente disponibili da URP", "protocollo diverso: SOL 1, URP 2"]
+    assert attuali == ["data del protocollo della graduatoria pubblica con i soli vincitori diversa tra allegato e candidati su SOL (22 candidati)",
+                       "la graduatoria pubblica con i soli vincitori (prot. 5) non risulta tra i dati attualmente disponibili da URP", "protocollo diverso: SOL 1, URP 2"]
     # la nota sul subentro non è più una difformità: si controlla nel file scorrimenti compilato
     assert db.execute("SELECT versione FROM schema_version").fetchone()[0] == dbmod.SCHEMA_VERSION
 
@@ -1766,16 +1766,16 @@ def test_email_mai_graduatoria_generica(ambiente, db):
 def test_stesso_rilievo_con_altro_testo_non_risulta_risolto():
     import json
     from monitoraggio import difformita as d
-    SOL = "la graduatoria pubblica (oscurata) non risulta tra i dati attualmente disponibili da Selezioni Online"
-    SOL_PROT = "la graduatoria pubblica (oscurata) (prot. 454343) non risulta tra i dati attualmente disponibili da Selezioni Online"
-    URP = "la graduatoria pubblica (oscurata) non risulta tra i dati attualmente disponibili da URP"
-    NUOVO = "protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL (13 candidati)"
+    SOL = "la graduatoria pubblica con i soli vincitori non risulta tra i dati attualmente disponibili da Selezioni Online"
+    SOL_PROT = "la graduatoria pubblica con i soli vincitori (prot. 454343) non risulta tra i dati attualmente disponibili da Selezioni Online"
+    URP = "la graduatoria pubblica con i soli vincitori non risulta tra i dati attualmente disponibili da URP"
+    NUOVO = "protocollo della graduatoria pubblica con i soli vincitori non valorizzato sui candidati su SOL (13 candidati)"
     voce = {"rilievi_iniziali": json.dumps([SOL, URP]), "stato": d.APERTA,
-            "rilievi_attuali": json.dumps([SOL_PROT, "graduatoria pubblica (oscurata) non allegata su SOL", NUOVO])}
+            "rilievi_attuali": json.dumps([SOL_PROT, "graduatoria pubblica con i soli vincitori non allegata su SOL", NUOVO])}
     voci, badge = d._stato_rilievi(voce)
     assert voci == [{"testo": voci[0]["testo"], "risolto": False},
                     {"testo": URP, "risolto": True}, {"testo": NUOVO, "risolto": False, "nuovo": True}]
-    assert voci[0]["testo"] in (SOL_PROT, "graduatoria pubblica (oscurata) non allegata su SOL") and badge == "parziale"
+    assert voci[0]["testo"] in (SOL_PROT, "graduatoria pubblica con i soli vincitori non allegata su SOL") and badge == "parziale"
     # il conteggio dei candidati che cambia non è una correzione
     uguale = {"rilievi_iniziali": json.dumps(["esito (V/I/S) mancante su SOL (3 candidati)"]), "rilievi_attuali": json.dumps(["esito (V/I/S) mancante su SOL (1 candidati)"]), "stato": d.APERTA}
     assert d._stato_rilievi(uguale) == ([{"testo": "esito (V/I/S) mancante su SOL (1 candidati)", "risolto": False}], "da_correggere")
@@ -1810,8 +1810,8 @@ def _voce_registro(d, db, mese):
     return r, d._stato_rilievi(r)
 
 
-SEGR = "la graduatoria pubblica (oscurata) non risulta tra i dati attualmente disponibili da file di riepilogo della segreteria"
-SOL_TXT = "la graduatoria pubblica (oscurata) non risulta tra i dati attualmente disponibili da Selezioni Online"
+SEGR = "la graduatoria pubblica con i soli vincitori non risulta tra i dati attualmente disponibili da file di riepilogo della segreteria"
+SOL_TXT = "la graduatoria pubblica con i soli vincitori non risulta tra i dati attualmente disponibili da Selezioni Online"
 
 
 def test_senza_prova_il_rilievo_resta_aperto(ambiente, db, monkeypatch):
@@ -1849,12 +1849,12 @@ def test_con_la_prova_si_spunta_e_si_chiude(ambiente, db, monkeypatch):
 def test_ogni_tipo_di_rilievo_ha_la_sua_prova():
     from monitoraggio import difformita as d
     ok = _riga_registro(segreteria="presente")
-    for testo in (SOL_TXT, "la graduatoria pubblica (oscurata) (prot. 5) non risulta tra i dati attualmente disponibili da URP", SEGR,
+    for testo in (SOL_TXT, "la graduatoria pubblica con i soli vincitori (prot. 5) non risulta tra i dati attualmente disponibili da URP", SEGR,
                   "il provvedimento di assunzione idoneo (scorrimento/utilizzo della graduatoria) non risulta tra i dati attualmente disponibili da Selezioni Online (per questo codice su Selezioni Online risulta già 1 utilizzo)",
-                  "graduatoria pubblica (oscurata) non allegata su SOL", "data della graduatoria pubblica (oscurata) su SOL senza documento pubblico", "protocollo diverso: SOL 5, URP 5",
+                  "graduatoria pubblica con i soli vincitori non allegata su SOL", "data della graduatoria pubblica con i soli vincitori su SOL senza documento pubblico", "protocollo diverso: SOL 5, URP 5",
                   "tipologia da completare nel file", "nota per il monitoraggio: x", "mancano i punteggi su SOL", "esito (V/I/S) mancante su SOL (1 candidati)",
                   "nessuna domanda inviata su SOL", "punteggi su SOL solo per 1 domande su 2", "data assunzione idoneo diversa su SOL",
-                  "protocollo della graduatoria pubblica (oscurata) non valorizzato sui candidati su SOL (1 candidati)",
+                  "protocollo della graduatoria pubblica con i soli vincitori non valorizzato sui candidati su SOL (1 candidati)",
                   "provvedimento di assunzione idoneo (prot. 5) presente tra gli allegati SOL ma non risulta nei punteggi: nessun candidato S con questo protocollo"):
         assert d._correzione_accertata(testo, ok), testo
     assert not d._correzione_accertata("testo sconosciuto", ok)
