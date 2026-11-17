@@ -15,4 +15,5 @@
 - [X] T013 [US6] Copia alla segreteria ed elenco avvisi: monitoraggio/mensile_web.py, static/impostazioni.html (interruttore e orario dall'elenco delle attività)
 - [X] T014 [US6] Test dell'avviso: nuovi, già avvisati, prima attivazione, senza destinatari, errore e ritentativo
 - [X] T015 Suite completa di test e verifica dei conflitti con origin/main
+- [X] T017 Stato complessivo: colonna Comunicazione come nel monitoraggio (comunicazioni.per_atto, App.partiComunicazione), tolti copia e invio
 - [ ] T016 Verifica manuale nell'app in esecuzione (dopo il rilascio su Coolify)

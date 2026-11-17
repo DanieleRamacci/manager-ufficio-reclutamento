@@ -185,5 +185,27 @@ window.App = (() => {
     };
   }
 
-  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, json, toast, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati, contieneTesto, pannelloCandidati, testataArea, dividiPerSede, sediDellaRiga, elencoRilievi };
+  // Comunicazione ai referenti di un atto (monitoraggio e stato complessivo, spec 009): stato, protocollo dell'email, storico.
+  // Ritorna i pezzi; ogni pagina aggiunge le sue azioni.
+  function partiComunicazione(c) {
+    const storico = [...(c.storico || [])].sort((a, b) => String(a.data || "").localeCompare(String(b.data || "")));
+    let numeroInvio = 0;
+    const righeStorico = storico.map(s => {
+      const inviata = s.stato === "inviata";
+      const tipo = inviata ? (++numeroInvio === 1 ? "Prima comunicazione" : `Sollecito ${numeroInvio - 1}`)
+        : s.stato === "prova" ? "Invio di prova" : s.stato === "annullata" ? "Annullata" : "Da confermare";
+      const statoInvio = inviata ? (s.canale === "Segnata a mano" ? "segnata come inviata" : "inviata") : s.stato;
+      return `<div class="small" style="padding:4px 0;border-top:1px solid var(--border-soft)"><b>${tipo}</b> · ${ora(s.data)} · ${esc(statoInvio)}${s.utente ? ` · ${esc(s.utente)}` : ""}${s.oggetto ? `<div class="muted" title="${esc(s.oggetto)}" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.oggetto)}</div>` : ""}</div>`;
+    }).join("");
+    const invii = storico.filter(s => s.stato === "inviata").length, prove = storico.filter(s => s.stato === "prova").length;
+    const storicoHtml = storico.length ? `<details style="margin-top:5px"><summary class="small">Storico: ${invii} ${invii === 1 ? "invio" : "invii"}${prove ? ` · ${prove} prove` : ""}</summary>${righeStorico}</details>` : "";
+    const P = { in_attesa: ["p-na", "in attesa delle fonti"], in_regola: ["p-na", "in regola"], da_inviare: ["p-ko", "da inviare"],
+      da_confermare: ["p-warn", "copiata · da confermare"], inviata: ["p-ok", `inviata ${dataIt(c.quando).slice(0, 5)}`],
+      inviata_a_mano: ["p-ok", `inviata ${dataIt(c.quando).slice(0, 5)}`] }[c.stato] || ["p-blu", String(c.stato || "").replace(/_/g, " ")];
+    return { pillola: `<span class="pillola ${P[0]}">${esc(P[1])}</span>`, storico: storicoHtml,
+      id: c.id ? `<div class="mono muted2" style="font-size:10.5px;margin-top:3px">${esc(c.id)}</div>` : "",
+      azionabile: !["in_attesa", "in_regola"].includes(c.stato), inviata: ["inviata", "inviata_a_mano"].includes(c.stato) };
+  }
+
+  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, json, toast, partiComunicazione, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati, contieneTesto, pannelloCandidati, testataArea, dividiPerSede, sediDellaRiga, elencoRilievi };
 })();

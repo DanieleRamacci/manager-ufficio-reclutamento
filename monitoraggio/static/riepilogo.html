@@ -35,10 +35,6 @@
   .schede-atti { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
   .schede-atti [role="tab"][aria-selected="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
   .avviso-solleciti { margin: 4px 0 10px; }
-  .azioni-sollecito { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
-  .azioni-sollecito button { white-space: nowrap; }
-  #testo-sollecito { width: min(900px, 88vw); min-height: 220px; margin: 12px; font: 13px/1.45 ui-monospace, monospace; }
-  #dialog-sollecito .azioni { display: flex; justify-content: flex-end; padding: 0 12px 12px; }
   input, select, button { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--card); color: var(--text); }
   button { cursor: pointer; } button.primario { background: var(--accent); color: #fff; border-color: var(--accent); }
   button:disabled { opacity: .5; cursor: default; }
@@ -98,10 +94,16 @@
   .rdp div.email { font-size: 11.5px; margin-bottom: 5px; } button.link { border: 0; background: none; color: var(--accent); padding: 0; min-height: 0; font-size: 11.5px; }
   .legenda { display: inline-flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); font-weight: 400; }
   .legenda i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+  /* comunicazione come nel monitoraggio (spec 009) */
+  .pillola { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .p-ok { background: #e9f5ee; color: #1e7b45; } .p-ko { background: #fbe7e5; color: #b42318; } .p-warn { background: #fdf3dc; color: #9a6200; }
+  .p-na { background: #eef0f3; color: #6b7280; } .p-blu { background: #e7effb; color: #1f5fbf; }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; } .muted2 { color: #9aa1ab; } .small { font-size: 12.5px; }
+  a.link-monitoraggio { display: inline-block; padding: 3px 8px; border: 1px solid #c9ced6; border-radius: 6px; font-size: 12px; text-decoration: none; color: inherit; background: #fff; }
+  a.link-monitoraggio:hover { background: #fafbfc; }
 </style>
 <script src="/monitoraggio/menu.js" defer></script>
 <script src="/monitoraggio/app.js"></script>
-<script src="/monitoraggio/solleciti.js" defer></script>
 </head>
 <body>
 <header>
@@ -188,12 +190,6 @@
     <div class="scroll"><table id="atti-scorrimenti-mese"></table></div>
   </section>
 
-  <dialog id="dialog-sollecito">
-    <div class="testa"><b id="titolo-sollecito">Testo del sollecito</b><button type="button" id="chiudi-sollecito">Chiudi</button></div>
-    <textarea id="testo-sollecito" readonly aria-label="Testo da copiare manualmente"></textarea>
-    <div class="azioni muted" id="avviso-copia-manuale">La copia automatica non è disponibile: seleziona e copia il testo.</div>
-    <div class="azioni" id="azioni-invio" hidden><button class="primario" type="button" id="conferma-invio">Invia</button> <span class="muted" id="esito-invio" aria-live="polite"></span></div>
-  </dialog>
 
   <section>
     <h2>Mese per mese <span class="muted" id="dal"></span></h2>
@@ -238,7 +234,6 @@ let bandi = [];
 let timer = null;
 let statoFonti = null;
 let attiMese = [];
-const righeDelCodice = (riga) => attiMese.filter(a => window.Solleciti.chiave(a) === window.Solleciti.chiave(riga));
 let righeAttiMese = [];
 
 async function json(url, opzioni) {
@@ -385,10 +380,7 @@ function renderTabellaAtti(id, righe, conSollecito) {
       <td colspan="2"><div class="sede">↳ <b>${esc(s.codice)}</b>${s.link_sol ? `<div><a class="punteggi-sol" href="${esc(s.link_sol)}" target="_blank" rel="noopener">Selezioni Online ↗</a></div>` : ""}</div></td><td></td>
       <td>${s.punteggi ? chipPunteggi(s.punteggi) : ""}${s.punteggi?.scheda_id || s.scheda_id ? `<button type="button" class="btn-candidati btn-candidati-sede" data-scheda="${s.punteggi?.scheda_id || s.scheda_id}">${s.punteggi?.candidati ? `👥 ${s.punteggi.con_punteggi ?? ""} candidati ▾` : "👥 Apri dettaglio punteggi ▾"}</button>` : ""}${linkPunteggi(s.url_punteggi)}</td>
       <td></td><td colspan="3" class="small">${a.fonti.urp?.url ? `<a class="punteggi-sol" href="${esc(a.fonti.urp.url)}" target="_blank" rel="noopener">URP del bando ↗</a>` : ""}</td>
-      ${App.cellaRdp(s)}<td class="difformita">${(s.note || []).map(n => `<span class="chip ${/^protocollo/.test(n) ? "protdiv" : "err"}">${esc(n)}</span>`).join("") || `<span class="muted">nessuna difformità</span>`}</td></tr>`).join("") : "";
-  const sollecitabile = (a) => conSollecito && a.difforme && ["graduatoria", "scorrimento"].includes(a.atto)
-    && (a.data || "").startsWith($("mese-solleciti").value)
-    && attiMese.some(x => window.Solleciti.chiave(x) === window.Solleciti.chiave(a) && x.data === a.data);
+      ${App.cellaRdp(s)}<td class="difformita">${(s.note || []).map(n => `<span class="chip ${/^protocollo/.test(n) ? "protdiv" : "err"}">${esc(n)}</span>`).join("") || `<span class="muted">nessuna difformità</span>`}</td><td></td></tr>`).join("") : "";
   const righeHtml = righe.slice(0, 1000).map((a, i) => `<tr class="cliccabile ${a.difforme ? "difforme" : fontiInAttesa.length ? "" : "in-regola"}" data-id="${a.bando_id}" data-riga="${i}"><td>${dataIt(a.data)}</td><td><b>${esc(a.numero_bando || "")}</b></td>
       <td>${esc(a.codice || "")}${a.coordinatore ? `<div class="muted" title="Coordina il profilo ${esc(a.coordinatore.profilo)}">Coordinatore: ${esc(a.coordinatore.email)}</div>` : ""}</td><td>${TIPOLOGIE[a.tipologia] || esc(a.tipologia)}</td>
       <td><b>${ATTI[a.atto] || a.atto}</b>${a.sottotipo && a.sottotipo !== "non_specificato"
@@ -404,18 +396,18 @@ function renderTabellaAtti(id, righe, conSollecito) {
         ${linkPunteggi(a.url_punteggi)}</td>
       <td>${esc(a.protocollo || "")}</td>${cella(a.fonti.sol, "sol", a)}${cella(a.fonti.urp, "urp", a)}${cella(a.fonti.segreteria, "segreteria", a)}
       ${App.cellaRdp(a)}
-      <td class="difformita">${a.note.map(n => `<span class="chip ${/^protocollo/.test(n) ? "protdiv" : "err"}">${esc(n)}</span>`).join("")}${sollecitabile(a) ? `<div class="azioni-sollecito">${righeDelCodice(a).some(x => (x.rdp || []).some(r => r.email)) ? `<button type="button" class="btn-copia-email">Copia destinatari RdP</button>` : `<span class="chip warn">email RdP non disponibile</span>`}<button type="button" class="btn-copia-sollecito">Copia messaggio completo</button>${controlliInvio(a)}</div><span class="muted stato-copia" aria-live="polite"></span>` : ""}</td></tr>${sottoRighe(a)}`).join("");
+      <td class="difformita">${a.note.map(n => `<span class="chip ${/^protocollo/.test(n) ? "protdiv" : "err"}">${esc(n)}</span>`).join("")}</td>${cellaComunicazione(a.comunicazione)}</tr>${sottoRighe(a)}`).join("");
   $(id).innerHTML = `<thead><tr><th>Data</th><th>N. bando</th><th>Codice</th><th>Tipologia</th><th>Atto</th><th>Protocollo</th>
-      <th>Selezioni Online</th><th>URP</th><th>File segreteria</th><th>RdP</th><th>Note</th></tr></thead><tbody>` +
-    (righeHtml || `<tr><td colspan="11" class="muted">${conSollecito ? "Nessuna difformità rilevata per questo mese." : "Nessun atto nel periodo selezionato."}</td></tr>`) + "</tbody>" +
-    (righe.length > 1000 ? `<tfoot><tr><td colspan="11" class="muted">Mostrati i primi 1000: usa i filtri.</td></tr></tfoot>` : "");
+      <th>Selezioni Online</th><th>URP</th><th>File segreteria</th><th>RdP</th><th>Note</th><th>Comunicazione</th></tr></thead><tbody>` +
+    (righeHtml || `<tr><td colspan="12" class="muted">${conSollecito ? "Nessuna difformità rilevata per questo mese." : "Nessun atto nel periodo selezionato."}</td></tr>`) + "</tbody>" +
+    (righe.length > 1000 ? `<tfoot><tr><td colspan="12" class="muted">Mostrati i primi 1000: usa i filtri.</td></tr></tfoot>` : "");
   App.collegaRdp($(id));
   document.querySelectorAll(`#${id} button.btn-candidati-atto`).forEach(b => b.onclick = (e) => {
     e.stopPropagation();
     const a = righe[Number(b.closest("tr").dataset.riga)];
     const punteggi = a.punteggi || {};
     const datiPunteggi = punteggi.record || {};
-    apriCandidati(Number(b.dataset.scheda), b.closest("tr"), { tabella: `#${id}`, colonne: 11,
+    apriCandidati(Number(b.dataset.scheda), b.closest("tr"), { tabella: `#${id}`, colonne: 12,
       r: { ...datiPunteggi, protocollo: datiPunteggi.protocollo || a.protocollo, data: datiPunteggi.data || a.data,
         scorrimento: a.atto === "scorrimento" ? a.protocollo : datiPunteggi.scorrimento,
         domande: punteggi.domande, candidati_disponibili: !!punteggi.candidati,
@@ -427,7 +419,7 @@ function renderTabellaAtti(id, righe, conSollecito) {
     e.stopPropagation();
     const [i, j] = b.closest("tr").dataset.rigaSede.split(":").map(Number);
     const a = righe[i], s = a.sedi[j], p = s.punteggi || {};
-    apriCandidati(Number(b.dataset.scheda), b.closest("tr"), { tabella: `#${id}`, colonne: 11,
+    apriCandidati(Number(b.dataset.scheda), b.closest("tr"), { tabella: `#${id}`, colonne: 12,
       r: { ...(p.record || {}), protocollo: a.protocollo, data: a.data, scorrimento: a.atto === "scorrimento" ? a.protocollo : undefined,
         domande: p.domande, candidati_disponibili: !!p.candidati,
         messaggio_non_disponibile: "Collega Selezioni Online e premi Verifica punteggi per caricare la sottotabella dei candidati." } });
@@ -440,111 +432,22 @@ function renderTabellaAtti(id, righe, conSollecito) {
   document.querySelectorAll(`#${id} tr[data-id]`).forEach(tr => tr.onclick = () => {
     if (tr.dataset.id !== "null") apriDettaglio(tr.dataset.id); else location.href = "/monitoraggio/segreteria";
   });
-  const preparaCopia = async (b, creaEsito) => {
-    const riga = righe[Number(b.closest("tr").dataset.riga)];
-    const gruppo = righeDelCodice(riga);
-    const esito = await creaEsito(riga, gruppo);
-    const stato = b.closest("td").querySelector(".stato-copia");
-    if (esito.copiato) {
-      stato.textContent = esito.titolo === "Indirizzi RdP" ? "Indirizzi email copiati negli appunti." : "Messaggio completo copiato negli appunti.";
-      const testoOriginale = b.textContent;
-      b.textContent = "Copiato";
-      setTimeout(() => { b.textContent = testoOriginale; stato.textContent = ""; }, 3500);
-    } else {
-      $("titolo-sollecito").textContent = esito.titolo;
-      $("testo-sollecito").value = esito.testo;
-      $("avviso-copia-manuale").textContent = "Copia automatica non disponibile: seleziona il contenuto qui sopra e copialo manualmente.";
-      $("dialog-sollecito").showModal();
-      $("testo-sollecito").focus();
-      $("testo-sollecito").select();
-    }
-  };
-  document.querySelectorAll(`#${id} button.btn-copia-email`).forEach(b => b.onclick = e => {
-    e.stopPropagation();
-    preparaCopia(b, (_riga, gruppo) => window.Solleciti.copiaEmail(gruppo));
-  });
-  document.querySelectorAll(`#${id} button.btn-copia-sollecito`).forEach(b => b.onclick = e => {
-    e.stopPropagation();
-    const riga = righe[Number(b.closest("tr").dataset.riga)];
-    const gruppo = righeDelCodice(riga);
-    preparaCopia(b, () => window.Solleciti.copiaMessaggio(riga, gruppo, $("mese-solleciti").value));
-  });
-  document.querySelectorAll(`#${id} button.btn-invia-sollecito`).forEach(b => b.onclick = e => {
-    e.stopPropagation();
-    const riga = righe[Number(b.closest("tr").dataset.riga)];
-    apriInvio(riga, righeDelCodice(riga));
-  });
-  document.querySelectorAll(`#${id} input.spunta-sollecito`).forEach(c => {
-    c.onclick = e => e.stopPropagation();
-    c.onchange = () => spuntaSollecito(righe[Number(c.closest("tr").dataset.riga)], c.checked).catch(e => alert(e.message));
-  });
+  document.querySelectorAll(`#${id} a.link-monitoraggio`).forEach(l => l.onclick = (e) => e.stopPropagation());
 }
 
-// Monitoraggio del mese: invio e spunta per codice, solo se la pagina è aperta da un monitoraggio
+// La comunicazione si gestisce solo nel monitoraggio (spec 009): qui si vede com'è, con il link per aprire il messaggio.
+function cellaComunicazione(c) {
+  if (!c) return `<td></td>`;
+  const x = App.partiComunicazione(c);
+  const link = `<a class="link-monitoraggio" href="/monitoraggio/mensili/${encodeURIComponent(c.mese)}" title="Apri il monitoraggio di ${esc(c.titolo)}">Messaggio ↗</a>`;
+  return x.azionabile ? `<td style="min-width:150px">${x.pillola}<div style="margin-top:5px">${link}</div>${x.id}${x.storico}</td>`
+    : `<td>${x.pillola}${x.storico}</td>`;
+}
+
+// Barra del mese scelto: etichetta e modalità di prova delle email
 const parametri = new URLSearchParams(location.search);
 const monitoraggio = parametri.get("monitoraggio");
 let datiInvii = { solleciti: {}, posta: {} };
-let invioAperto = null;
-
-function controlliInvio(a) {
-  const chiuso = datiInvii.stato === "chiuso";
-  const stato = datiInvii.solleciti[window.Solleciti.chiave(a)];
-  const inviato = stato && stato.stato !== "da_confermare";
-  const etichettaStato = stato
-    ? `${inviato ? "Mandato sollecito" : "Da confermare"} il ${oraIt(stato.quando)}${stato.autore ? ` da ${esc(stato.autore)}` : ""}`
-    : "Non ancora inviata";
-  const classeStato = inviato ? "sollecito-inviato" : "warn";
-  const conRdp = righeDelCodice(a).some(x => (x.rdp || []).some(r => r.email));
-  if (chiuso) return `<span class="chip ${stato ? classeStato : "warn"}">${etichettaStato}</span>`;
-  return `<button type="button" class="btn-invia-sollecito solo-admin"${datiInvii.posta.configurata && conRdp ? "" : " disabled"}
-      title="${datiInvii.posta.configurata ? (conRdp ? "" : "Nessuna email RdP") : "Invio email non configurato"}">Anteprima e invio</button>
-    <label class="solo-admin"><input type="checkbox" class="spunta-sollecito"${stato ? " checked" : ""}> inviata</label>
-    <span class="chip ${stato ? classeStato : "warn"}"${stato?.stato === "inviata_a_mano" ? ` title="Registrato come inviato a mano"` : ""}>${etichettaStato}</span>`;
-}
-
-function apriInvio(riga, gruppo) {
-  const m = window.Solleciti.crea(riga, gruppo, $("mese-solleciti").value);
-  const destinatari = window.Solleciti.destinatari(gruppo);
-  const corpo = m.corpo + (m.link ? `\n\n${m.link}` : "");
-  invioAperto = { numero_bando: window.Solleciti.chiave(riga), destinatari, oggetto: m.oggetto, corpo };
-  $("titolo-sollecito").textContent = `Sollecito per ${window.Solleciti.chiave(riga)}`;
-  $("testo-sollecito").value = `A: ${destinatari.join("; ")}\nOggetto: ${m.oggetto}\n\n${corpo}`;
-  $("avviso-copia-manuale").textContent = datiInvii.posta.prova
-    ? `Modalità di prova: l'email andrà solo a ${datiInvii.posta.prova} e il bando non risulterà inviato.`
-    : "Attenzione: invio reale. L'email parte ai destinatari qui sopra premendo Invia.";
-  $("azioni-invio").hidden = false;
-  $("esito-invio").textContent = "";
-  $("dialog-sollecito").showModal();
-}
-
-async function inviaSollecito(conferma = false) {
-  const url = monitoraggio ? `/api/monitoraggi/${monitoraggio}/solleciti/invia` : "/api/monitoraggi/solleciti-periodo/invia";
-  const opzioni = (extra) => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...invioAperto,
-    ...(!monitoraggio ? { mese_dati: $("mese-solleciti").value } : {}), ...extra }) });
-  const r = await fetch(url, opzioni({ conferma }));
-  const corpo = await r.json().catch(() => ({}));
-  if (r.status === 409 && corpo.gia_inviato) {
-    if (confirm("Questo sollecito risulta già inviato. Vuoi inviarlo di nuovo?")) return inviaSollecito(true);
-    return;
-  }
-  if (!r.ok) { $("esito-invio").textContent = corpo.error || `Errore ${r.status}`; return; }
-  $("esito-invio").textContent = corpo.prova ? "Inviata in prova." : "Inviata.";
-  await caricaInvii();
-  disegnaSolleciti();
-  if (!monitoraggio) disegnaAtti();
-}
-
-async function spuntaSollecito(riga, inviata) {
-  const url = monitoraggio
-    ? `/api/monitoraggi/${monitoraggio}/solleciti/${encodeURIComponent(window.Solleciti.chiave(riga))}`
-    : "/api/monitoraggi/solleciti-periodo/spunta";
-  const dati = { inviata, ...(!monitoraggio ? { mese_dati: $("mese-solleciti").value, numero_bando: window.Solleciti.chiave(riga) } : {}) };
-  const r = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(dati) });
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Errore ${r.status}`);
-  await caricaInvii();
-  disegnaSolleciti();
-  if (!monitoraggio) disegnaAtti();
-}
 
 async function caricaInvii() {
   const meseDati = $("mese-solleciti").value;
@@ -746,7 +649,6 @@ async function apriDettaglio(id) {
 }
 
 $("chiudi").onclick = () => $("dettaglio").close();
-$("chiudi-sollecito").onclick = () => $("dialog-sollecito").close();
 
 // ---- punteggi delle graduatorie (spec 004)
 const ESITI_PUNTEGGI = { completi: ["ok", "punteggi completi"], parziali: ["warn", "punteggi parziali"],
@@ -953,8 +855,6 @@ $("mese-solleciti").value = parametri.get("mese") || meseDi(0);
 $("tipologia-solleciti").value = parametri.get("tipologia") || "";
 $("tipologia-solleciti").addEventListener("change", disegnaSolleciti);
 if (parametri.get("mese")) impostaMese(parametri.get("mese"));
-$("conferma-invio").onclick = () => inviaSollecito().catch(e => { $("esito-invio").textContent = e.message; });
-$("chiudi-sollecito").addEventListener("click", () => { $("azioni-invio").hidden = true; });
 if (monitoraggio) selezionaSchedaAtti("graduatorie-mese");
 $("mese-solleciti").addEventListener("change", () => Promise.all([caricaSolleciti(), caricaInvii()]).catch(e => {
   $("freschezza-graduatorie").textContent = `Impossibile caricare le difformità: ${e.message}`;

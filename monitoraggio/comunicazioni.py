@@ -53,6 +53,28 @@ def righe_mese(conn, monitoraggio: dict, tipologie: list[str] | None = None) -> 
     return righe
 
 
+def chiave_atto(riga: dict) -> tuple[str, str, str, str]:
+    return chiave(riga), riga["atto"], riga.get("protocollo") or "", riga.get("data") or ""
+
+
+def per_atto(conn, dal: str | None = None, al: str | None = None) -> dict[tuple, dict]:
+    """La comunicazione di ogni atto nel suo monitoraggio, calcolata come nella pagina del monitoraggio (stessa riga,
+    stesso stato e storico): serve allo stato complessivo per mostrarla senza un secondo modo di inviarla."""
+    risultato: dict[tuple, dict] = {}
+    for voce in mensile.elenco(conn):
+        m = mensile.leggi(conn, voce["mese"])
+        if not m:
+            continue
+        inizio, fine = mensile.periodo_dati(m)
+        if (dal and fine < dal) or (al and inizio > al):
+            continue
+        for r in righe_mese(conn, m):
+            if r["atto"] in difformita.ATTI_SEGUITI:
+                risultato.setdefault(chiave_atto(r), {**r["comunicazione"], "mese": m["mese"], "titolo": titolo_mese(m["mese_dati"]),
+                                                      "chiuso": m["stato"] == "chiuso"})
+    return risultato
+
+
 def conteggi(righe: list[dict]) -> dict:
     con_difformita = [r for r in righe if r["con_difformita"]]
     per_codice = {}

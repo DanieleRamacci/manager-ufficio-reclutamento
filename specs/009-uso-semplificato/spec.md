@@ -187,6 +187,10 @@ Dopo ogni aggiornamento notturno, quando viene pubblicato uno scorrimento/utiliz
 - **FR-029**: Gli invii MUST seguire le impostazioni email esistenti (prova / ufficiali); un errore di invio MUST NOT bloccare l'aggiornamento.
 - **FR-030**: L'amministratore MUST vedere l'elenco degli avvisi con esito, nelle Impostazioni.
 
+**Comunicazioni nello stato complessivo**
+
+- **FR-031**: Lo stato complessivo MUST mostrare per ogni graduatoria e scorrimento la comunicazione del suo monitoraggio come nella pagina del monitoraggio (stato, protocollo dell'email, storico degli invii) con il link al monitoraggio per aprire il messaggio; MUST NOT offrire un secondo modo di inviare: tolti "Copia destinatari RdP", "Copia messaggio completo", "Anteprima e invio" e la spunta (richiesta dell'utente del 2026-11-17).
+
 ### Key Entities
 
 - **Accesso**: chi è entrato, ruolo, modo di ingresso (link email, ticket SOL, area referenti), inizio e scadenza a 7 giorni.

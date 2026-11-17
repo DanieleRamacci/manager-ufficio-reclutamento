@@ -1859,3 +1859,18 @@ def test_ogni_tipo_di_rilievo_ha_la_sua_prova():
         assert d._correzione_accertata(testo, ok), testo
     assert not d._correzione_accertata("testo sconosciuto", ok)
     assert not d._correzione_accertata("protocollo diverso: SOL 5, URP 6", {"fonti": {"sol": {"stato": "presente", "protocollo": "5"}, "urp": {"stato": "presente", "protocollo": "6"}}})
+
+
+def test_stato_complessivo_mostra_la_comunicazione_come_nel_monitoraggio(ambiente, db):
+    """Spec 009: lo stato complessivo mostra la comunicazione del monitoraggio, con lo stesso stato e lo storico."""
+    admin, mese, url = _mese_con_rdp(ambiente, db)
+    nel_monitoraggio = lambda: admin.get(f"/api/monitoraggi/{mese}/atti").get_json()["righe"][0]["comunicazione"]  # noqa: E731
+    nello_stato = lambda: next(a for a in admin.get("/api/atti").get_json()["atti"] if a["atto"] == "graduatoria")["comunicazione"]  # noqa: E731
+    assert nello_stato()["stato"] == nel_monitoraggio()["stato"] == "da_inviare" and nello_stato()["mese"] == mese
+    admin.post(url + "/traccia", json={"canale": "Copia manuale"})
+    assert nello_stato()["stato"] == "da_confermare"
+    admin.put(f"/api/monitoraggi/{mese}/solleciti/367.479 CTER", json={"inviata": True})
+    c, m = nello_stato(), nel_monitoraggio()
+    assert c["stato"] == m["stato"] == "inviata" and c["id"] == m["id"] and len(c["storico"]) == len(m["storico"]) == 1
+    # un atto fuori da ogni monitoraggio non ha comunicazione
+    assert all(a["comunicazione"] is None for a in admin.get("/api/atti?dal=2020-01-01&al=2020-12-31").get_json()["atti"])
