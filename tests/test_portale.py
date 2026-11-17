@@ -242,7 +242,7 @@ def test_coordinatore_sceglie_i_profili_e_vede_quei_bandi_in_sola_consultazione(
     assert c.get("/api/area-referenti/chi").get_json() == {"email": COORD, "coordinatore": True, "profili": [], "anteprima": False}
     d = c.get("/api/area-referenti/profili").get_json()
     # l'elenco è completo, senza livelli, anche per i profili di cui non c'è ancora un bando
-    assert [(p["profilo"], p["titolare"]) for p in d["profili"]] == [(x, None) for x in (*profili.CATALOGO, profili.MOBILITA)]
+    assert [(p["profilo"], p["titolare"]) for p in d["profili"]] == [(x, None) for x in (*profili.CATALOGO, profili.CATEGORIE_PROTETTE, profili.RECLUTAMENTO_SPECIALE, profili.MOBILITA)]
     assert c.get(f"/api/area-referenti/consulta/monitoraggi/{mese}").get_json()["righe"] == []
     assert c.post("/api/area-referenti/profili/prendi", json={"profilo": CTER}).get_json() == {"ok": True}
     righe = c.get(f"/api/area-referenti/consulta/monitoraggi/{mese}").get_json()["righe"]
@@ -511,3 +511,38 @@ def test_coordinatore_anche_rdp_resta_solo_destinatario(area, db):
     admin.put(f"/api/monitoraggi/{mese}/comunicazioni/{CODICE_A}/indirizzi", json={"esclusi": [], "cc": [], "coordinatore": True})
     d = admin.get(f"/api/monitoraggi/{mese}/comunicazioni/{CODICE_A}/messaggio").get_json()
     assert d["destinatari"] == [ANNA] and ANNA not in d["cc"] and d["coordinatore"]["destinatario"] is True
+
+
+def test_categorie_protette_e_reclutamento_speciale_non_vanno_al_coordinatore_del_profilo():
+    """Spec 009: un CTER riservato alle categorie protette non è un bando pubblico del profilo CTER."""
+    assert profili.voce("tempo_indeterminato", CTER) == CTER
+    assert profili.voce("categorie_protette", CTER) == profili.CATEGORIE_PROTETTE
+    assert profili.voce("reclutamento_speciale", CTER) == profili.RECLUTAMENTO_SPECIALE
+    assert profili.voce("mobilita", CTER) == profili.voce("comando", None) == profili.MOBILITA
+    # la voce già calcolata resta la stessa se si ricalcola
+    assert profili.voce("categorie_protette", profili.CATEGORIE_PROTETTE) == profili.CATEGORIE_PROTETTE
+
+
+def test_segnalazione_di_errore_sulla_riga_con_le_fonti(area):
+    """Spec 009: «Segnala errore» vale per la riga intera e indica almeno una fonte; il falso positivo può indicarle."""
+    admin, mese, inviati = area
+    a, b = _entra(admin, inviati, ANNA), _entra(admin, inviati, BRUNO)
+    mia = a.get("/api/area-referenti/bandi").get_json()["monitoraggi"][0]["bandi"][0]
+    errore = {**_segnalazione(mese, mia), "tipo": "errore", "rilievo": "", "nota": "La data su URP è sbagliata"}
+    assert a.post("/api/area-referenti/segnala", json={**errore, "fonti": []}).status_code == 400
+    assert a.post("/api/area-referenti/segnala", json={**errore, "fonti": ["titulus"]}).status_code == 400
+    assert a.post("/api/area-referenti/segnala", json={**errore, "tipo": "altro", "fonti": ["urp"]}).status_code == 400
+    assert a.post("/api/area-referenti/segnala", json={**errore, "fonti": ["urp", "sol"]}).status_code == 200
+    di_bruno = b.get("/api/area-referenti/bandi").get_json()["monitoraggi"][0]["bandi"][0]
+    assert a.post("/api/area-referenti/segnala", json={**errore, **{k: di_bruno[k] or "" for k in ("chiave", "atto", "protocollo", "data")},
+                                                       "fonti": ["urp"]}).status_code == 404
+    # il falso positivo resta separato dall'errore sulla stessa riga e può indicare le fonti
+    assert a.post("/api/area-referenti/segnala", json={**_segnalazione(mese, mia), "fonti": ["segreteria"]}).status_code == 200
+    voci = {v["tipo"]: v for v in admin.get(f"/api/monitoraggi/{mese}/segnalazioni").get_json()["segnalazioni"]}
+    assert voci["errore"]["fonti"] == ["sol", "urp"] and voci["errore"]["rilievo"] == ""  # in ordine fisso
+    assert voci["falso_positivo"]["fonti"] == ["segreteria"]
+    righe = a.get(f"/api/area-referenti/consulta/monitoraggi/{mese}").get_json()["righe"]
+    riga = next(r for r in righe if r["chiave"] == mia["chiave"] and r["atto"] == mia["atto"])
+    assert riga["errore"]["segnalabile"] and riga["errore"]["segnalazione"]["fonti"] == ["sol", "urp"]
+    # chi non è RdP della riga non può segnalarla
+    assert all(not r["errore"]["segnalabile"] for r in righe if "rdp" not in r["come"])

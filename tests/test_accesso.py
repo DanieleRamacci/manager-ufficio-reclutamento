@@ -367,3 +367,25 @@ def test_si_puo_chiedere_il_link_con_l_email_in_tabella(db, tmp_path, monkeypatc
     c = _app(tmp_path, monkeypatch).test_client()
     assert c.post("/login/visualizzatore", data={"username": "Dirigente@cnr.it"}).status_code == 200
     assert inviate[0][0] == ["dirigente@cnr.it"]
+
+
+def test_accesso_dura_sette_giorni_anche_chiudendo_il_browser(db, tmp_path, monkeypatch):
+    """Spec 009: il cookie ha una scadenza (non sparisce alla chiusura del browser) e l'accesso vale 7 giorni."""
+    from datetime import datetime, timedelta, timezone
+    from email.utils import parsedate_to_datetime
+
+    app = _app(tmp_path, monkeypatch)
+    app.config.update(SESSION_PERMANENT=True, PERMANENT_SESSION_LIFETIME=accesso.DURATA_ACCESSO)
+    Session(app)
+    c = app.test_client()
+    r = c.post("/login", data={"ticket": TICKET, "next": "/monitoraggio"})
+    cookie = next(v for k, v in r.headers.items() if k == "Set-Cookie" and v.startswith("session="))
+    scade = parsedate_to_datetime(re.search(r"Expires=([^;]+)", cookie).group(1))
+    assert timedelta(days=6, hours=23) < scade - datetime.now(timezone.utc) <= timedelta(days=7)
+    with c.session_transaction() as s:
+        fino = datetime.fromisoformat(s["accesso_fino"])
+    assert timedelta(days=6, hours=23) < fino - datetime.now(timezone.utc) <= timedelta(days=7)
+    # dopo 7 giorni si rientra
+    with c.session_transaction() as s:
+        s["accesso_fino"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+    assert c.get("/monitoraggio").status_code == 302

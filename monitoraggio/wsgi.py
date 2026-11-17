@@ -7,7 +7,7 @@ from flask import Flask, redirect, session
 from flask_session import Session
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from . import accesso, attivita, collegamento, config, consulta, db, portale, scheduler, sol_sessione, utenti
+from . import accesso, attivita, collegamento, config, consulta, db, portale, pwa, scheduler, sol_sessione, utenti
 from .mensile_web import crea_blueprint_mensile
 from .web import PAGINE_LOCALI, crea_blueprint, crea_blueprint_pagine_esistenti
 
@@ -53,7 +53,8 @@ def crea_app() -> Flask:
         SECRET_KEY=os.environ["FLASK_SECRET_KEY"],
         SESSION_TYPE="filesystem",
         SESSION_FILE_DIR=str(cartella_sessioni),
-        SESSION_PERMANENT=False,
+        SESSION_PERMANENT=True,  # il cookie resta dopo la chiusura del browser o dell'app installata (spec 009)
+        PERMANENT_SESSION_LIFETIME=accesso.DURATA_ACCESSO,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SECURE=True,
         SESSION_COOKIE_SAMESITE="Lax",
@@ -67,6 +68,7 @@ def crea_app() -> Flask:
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
     app.register_blueprint(blueprint_accesso)
     app.register_blueprint(portale.bp)
+    app.register_blueprint(pwa.bp)  # manifest, icone e service worker: senza accesso (spec 009)
     if config.avviso_dati_non_persistenti():
         logging.getLogger(__name__).error(config.avviso_dati_non_persistenti())
     app.register_blueprint(crea_blueprint(protezione=protezione, solo_admin=solo_admin, ruolo_corrente=utenti.ruolo_corrente,

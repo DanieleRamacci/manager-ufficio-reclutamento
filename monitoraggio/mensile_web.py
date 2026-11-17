@@ -6,7 +6,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, redirect, request, send_file, send_from_directory, session
 
-from . import atti, attivita, comunicazioni, config, db, difformita, excel_mese, impostazioni, mensile, portale, posta, profili, punteggi, referenti, scorrimenti_compilato, sol_sessione, utenti
+from . import atti, attivita, avvisi_scorrimenti, comunicazioni, config, db, difformita, excel_mese, impostazioni, mensile, portale, posta, profili, punteggi, referenti, scorrimenti_compilato, sol_sessione, utenti
 
 STATIC = Path(__file__).resolve().parent / "static"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -108,6 +108,22 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
         return jsonify(impostazioni.stato_aggiornamenti())
+
+    @bp.get("/api/impostazioni/avvisi-scorrimenti")
+    @protezione
+    @solo_admin
+    def api_avvisi_scorrimenti():
+        return jsonify(avvisi_scorrimenti.stato())
+
+    @bp.put("/api/impostazioni/avvisi-scorrimenti")
+    @protezione
+    @solo_admin
+    def api_avvisi_scorrimenti_salva():
+        try:
+            avvisi_scorrimenti.salva_copia(str((request.get_json(silent=True) or {}).get("copia") or ""), utente_corrente())
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify(avvisi_scorrimenti.stato())
 
     @bp.get("/monitoraggio/utenti")
     @protezione

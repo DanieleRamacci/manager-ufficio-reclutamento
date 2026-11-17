@@ -25,11 +25,14 @@ log = logging.getLogger(__name__)
 
 PAGINA = "/referenti"
 DURATA_LINK = timedelta(minutes=15)
-DURATA_SESSIONE = timedelta(hours=8)
+DURATA_SESSIONE = timedelta(days=7)  # spec 009
+DURATA_ANTEPRIMA = timedelta(hours=8)
 ATTESA_TRA_EMAIL = timedelta(minutes=1)
 FINESTRA_IP = timedelta(hours=1)
 MAX_RICHIESTE_IP = 10
 NOTA_MAX = 1000
+FALSO_POSITIVO, ERRORE = "falso_positivo", "errore"
+FONTI_SEGNALABILI = ("sol", "urp", "segreteria")
 _STATIC = Path(__file__).resolve().parent / "static"
 
 _lock = threading.Lock()
@@ -66,7 +69,7 @@ def _anteprima() -> str | None:
 
 def avvia_anteprima(email: str) -> None:
     session["anteprima_referente"] = email
-    session["anteprima_fino"] = (_adesso() + DURATA_SESSIONE).isoformat()
+    session["anteprima_fino"] = (_adesso() + DURATA_ANTEPRIMA).isoformat()
 
 
 def puo_entrare(conn, email: str) -> bool:
@@ -153,13 +156,13 @@ def _chiave_atto(riga: dict) -> tuple[str, str, str]:
     return riga["atto"], riga.get("protocollo") or "", riga.get("data") or ""
 
 
-def _righe_di(conn, monitoraggio: dict, email: str, tutte: list[dict] | None = None) -> list[dict]:
+def _righe_di(conn, monitoraggio: dict, email: str, tutte: list[dict] | None = None, solo_seguiti: bool = True) -> list[dict]:
     """Gli atti seguiti di cui è RdP, tolti quelli da cui un amministratore l'ha escluso. Se il codice non ha RdP propri
     l'elenco contiene quelli di tutti i codici del bando: non si sa di chi sia l'atto, quindi non si mostra."""
     esclusi = {r["chiave"]: json.loads(r["esclusi"])
                for r in conn.execute("SELECT chiave, esclusi FROM comunicazione_indirizzi WHERE mese = ?", (monitoraggio["mese"],))}
     return [r for r in (comunicazioni.righe_mese(conn, monitoraggio) if tutte is None else tutte)
-            if r["atto"] in difformita.ATTI_SEGUITI and r.get("rdp_origine") != "tutti i codici"
+            if (r["atto"] in difformita.ATTI_SEGUITI or not solo_seguiti) and r.get("rdp_origine") != "tutti i codici"
             and email in {(p.get("email") or "").strip().lower() for p in r.get("rdp") or []}
             and email not in esclusi.get(r["chiave"], [])]
 
@@ -180,7 +183,7 @@ def _vista(conn, monitoraggio: dict, email: str, scelti: list[str], schede_profi
         rilievi = []
         for testo in r["rilievi"]:
             s = fatte.get((r["chiave"], atto, protocollo, data, testo))
-            rilievi.append({"testo": testo, "segnalazione": {"stato": s["stato"], "quando": s["quando"], "nota": s["nota"]} if s else None})
+            rilievi.append({"testo": testo, "segnalazione": {"stato": s["stato"], "quando": s["quando"], "nota": s["nota"], "fonti": json.loads(s["fonti"] or "[]")} if s else None})
         bandi.append({"chiave": r["chiave"], "titolo_bando": r.get("titolo_bando"), "atto": atto, "protocollo": protocollo, "data": data,
                       "fonti": {f: (r.get("fonti") or {}).get(f, {}).get("stato") for f in ("sol", "urp", "segreteria")},
                       "link_sol": r.get("link_codice"), "rilievi": rilievi, "rdp": rdp, "profilo": profilo_di(r),
@@ -240,6 +243,7 @@ def entra():
     finally:
         conn.close()
     session.clear()
+    session.permanent = True  # clear() toglie anche il flag: il cookie deve restare 7 giorni
     session["referente"] = voce[0]
     session["referente_fino"] = (_adesso() + DURATA_SESSIONE).isoformat()
     return jsonify({"ok": True})
@@ -398,13 +402,23 @@ def cedi_profilo(richiesta_id: int):
 @_serve_referente
 @_non_in_anteprima
 def segnala():
-    """La riga si ricalcola sul server: si può segnalare solo una difformità presente tra i propri bandi."""
+    """La riga si ricalcola sul server: si può segnalare solo un atto presente tra i propri bandi. Spec 009: «errore» vale per
+    la riga intera, anche senza difformità, e indica almeno una fonte sbagliata; «falso positivo» vale per un rilievo."""
     email = _referente()
     corpo = request.get_json(silent=True) or {}
     testo = lambda campo: str(corpo.get(campo) or "").strip()  # noqa: E731
     nota = testo("nota")
+    tipo = testo("tipo") or FALSO_POSITIVO
+    fonti_scelte = corpo.get("fonti") or []
+    if tipo not in (FALSO_POSITIVO, ERRORE):
+        return jsonify({"error": "Tipo di segnalazione non valido"}), 400
+    if not isinstance(fonti_scelte, list) or any(f not in FONTI_SEGNALABILI for f in fonti_scelte):
+        return jsonify({"error": "Fonte non valida"}), 400
+    fonti_scelte = [f for f in FONTI_SEGNALABILI if f in fonti_scelte]
     if not nota or len(nota) > NOTA_MAX:
         return jsonify({"error": f"Spiega il motivo in massimo {NOTA_MAX} caratteri"}), 400
+    if tipo == ERRORE and not fonti_scelte:
+        return jsonify({"error": "Indica almeno una fonte in cui i dati non sono corretti"}), 400
     if comunicazioni.contiene_dati_candidati(nota):
         return jsonify({"error": "Il testo sembra contenere un codice fiscale: toglilo e riprova"}), 400
     conn = _conn()
@@ -413,20 +427,21 @@ def segnala():
         if not m or m["stato"] != "aperto" or atti.fonti_in_attesa(conn):
             return jsonify({"error": "Questo monitoraggio non accetta segnalazioni"}), 409
         cercata = (testo("atto"), testo("protocollo"), testo("data"))
-        riga = next((r for r in _righe_di(conn, m, email) if r["chiave"] == testo("chiave") and _chiave_atto(r) == cercata), None)
-        if not riga or testo("rilievo") not in riga["rilievi"]:
-            return jsonify({"error": "Difformità non trovata tra i tuoi bandi: ricarica la pagina"}), 404
+        riga = next((r for r in _righe_di(conn, m, email, solo_seguiti=tipo == FALSO_POSITIVO) if r["chiave"] == testo("chiave") and _chiave_atto(r) == cercata), None)
+        rilievo = testo("rilievo") if tipo == FALSO_POSITIVO else ""
+        if not riga or (tipo == FALSO_POSITIVO and rilievo not in riga["rilievi"]):
+            return jsonify({"error": "Atto non trovato tra i tuoi bandi: ricarica la pagina"}), 404
         ora = _adesso().strftime("%Y-%m-%dT%H:%M:%SZ")
-        conn.execute("INSERT INTO segnalazione (mese, chiave, atto, protocollo, data, rilievo, nota, email, quando) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        conn.execute("INSERT INTO segnalazione (mese, chiave, atto, protocollo, data, rilievo, nota, email, quando, tipo, fonti) "
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                      "ON CONFLICT(mese, chiave, atto, protocollo, data, rilievo, email) DO UPDATE SET nota = excluded.nota, "
-                     "quando = excluded.quando, stato = 'aperta', gestita_da = NULL, gestita_il = NULL",
-                     (m["mese"], testo("chiave"), *cercata, testo("rilievo"), nota, email, ora))
+                     "quando = excluded.quando, tipo = excluded.tipo, fonti = excluded.fonti, stato = 'aperta', gestita_da = NULL, gestita_il = NULL",
+                     (m["mese"], testo("chiave"), *cercata, rilievo, nota, email, ora, tipo, json.dumps(fonti_scelte)))
         return jsonify({"ok": True})
     finally:
         conn.close()
 
 
-# --- per gli amministratori
 def elenco_coordinatori(conn) -> list[dict]:
     return [{**{k: r[k] for k in ("email", "aggiunto_da", "aggiunto_il")}, "profili": profili.di(conn, r["email"])}
             for r in conn.execute("SELECT * FROM coordinatore ORDER BY email")]
@@ -474,7 +489,8 @@ def conteggi(conn, mese: str) -> dict:
 
 
 def elenco(conn, mese: str) -> list[dict]:
-    return [dict(r) for r in conn.execute("SELECT * FROM segnalazione WHERE mese = ? ORDER BY stato = 'gestita', quando DESC, id DESC", (mese,))]
+    return [{**dict(r), "fonti": json.loads(r["fonti"] or "[]")}
+            for r in conn.execute("SELECT * FROM segnalazione WHERE mese = ? ORDER BY stato = 'gestita', quando DESC, id DESC", (mese,))]
 
 
 def imposta_gestita(conn, mese: str, id_segnalazione: int, gestita: bool, autore: str | None) -> bool:

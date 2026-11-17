@@ -6,7 +6,7 @@ import sqlite3
 from . import config
 from .normalizza import AGGIUNTA_TIPOLOGIE, ANCORA_SCORRIMENTI, codice_sede, nota_sottotipo
 
-SCHEMA_VERSION = 27
+SCHEMA_VERSION = 28
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -317,9 +317,28 @@ CREATE TABLE IF NOT EXISTS segnalazione (
     email TEXT NOT NULL,
     quando TEXT NOT NULL,
     stato TEXT NOT NULL DEFAULT 'aperta' CHECK (stato IN ('aperta', 'gestita')),
+    tipo TEXT NOT NULL DEFAULT 'falso_positivo',
+    fonti TEXT NOT NULL DEFAULT '[]',
     gestita_da TEXT,
     gestita_il TEXT,
     UNIQUE (mese, chiave, atto, protocollo, data, rilievo, email)
+);
+
+CREATE TABLE IF NOT EXISTS avviso_scorrimento (
+    id INTEGER PRIMARY KEY,
+    chiave TEXT NOT NULL,
+    bando_id INTEGER,
+    protocollo TEXT NOT NULL DEFAULT '',
+    data TEXT NOT NULL DEFAULT '',
+    url_urp TEXT,
+    destinatari TEXT NOT NULL DEFAULT '[]',
+    cc TEXT NOT NULL DEFAULT '[]',
+    esito TEXT NOT NULL CHECK (esito IN ('inviato', 'prova', 'senza_destinatari', 'errore', 'esistente')),
+    messaggio TEXT,
+    tentativi INTEGER NOT NULL DEFAULT 0,
+    rilevato_il TEXT NOT NULL,
+    quando TEXT NOT NULL,
+    UNIQUE (chiave, protocollo, data)
 );
 
 CREATE TABLE IF NOT EXISTS comunicazione_indirizzi (
@@ -614,6 +633,10 @@ def inizializza(conn: sqlite3.Connection) -> None:
     for colonna in ("cc", "message_id"):  # versioni 17 e 21
         if colonna not in colonne_comunicazione:
             conn.execute(f"ALTER TABLE comunicazione ADD COLUMN {colonna} TEXT")
+    colonne_segnalazione = {r[1] for r in conn.execute("PRAGMA table_info(segnalazione)")}
+    for colonna, tipo in (("tipo", "TEXT NOT NULL DEFAULT 'falso_positivo'"), ("fonti", "TEXT NOT NULL DEFAULT '[]'")):  # versione 28
+        if colonna not in colonne_segnalazione:
+            conn.execute(f"ALTER TABLE segnalazione ADD COLUMN {colonna} {tipo}")
     _migra_versioni(conn)
     _migra_comunicazioni(conn)
     riga = conn.execute("SELECT versione FROM schema_version").fetchone()

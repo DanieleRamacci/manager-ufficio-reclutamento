@@ -1,4 +1,6 @@
 // Barra superiore comune a tutte le pagine (specifiche grafiche, sezione 2). Le voci di "Altro" arrivano da /api/menu.
+// app installabile (spec 009): manifest e service worker, una volta sola per pagina
+if (!document.querySelector('script[src="/pwa.js"]')) { const s = document.createElement("script"); s.src = "/pwa.js"; s.defer = true; document.head.appendChild(s); }
 (function () {
   const STILE = `
     .mm-barra { position: sticky; top: 0; z-index: 1000; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 4px;

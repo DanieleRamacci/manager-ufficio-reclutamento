@@ -132,6 +132,10 @@ def monitoraggi(conn, v: Visitatore) -> dict:
                              "chiuso_il": m.get("chiuso_il")} for m in mensile.elenco(conn)]}
 
 
+def _stato_segnalazione(s) -> dict | None:
+    return {"stato": s["stato"], "quando": s["quando"], "nota": s["nota"], "fonti": json.loads(s["fonti"] or "[]")} if s else None
+
+
 def _segnalazioni(conn, mese: str, email: str) -> dict:
     return {(s["chiave"], s["atto"], s["protocollo"], s["data"], s["rilievo"]): s
             for s in conn.execute("SELECT * FROM segnalazione WHERE mese = ? AND email = ?", (mese, email))}
@@ -182,9 +186,12 @@ def monitoraggio(conn, v: Visitatore, mese: str) -> dict | None:
             s = fatte.get((*chiave_atto, x["testo"]))
             rilievi.append({"testo": x["testo"], "risolto": bool(x.get("risolto")),
                             "segnalabile": v.area and "rdp" in motivi and aperto and x["testo"] in (r.get("rilievi") or []),
-                            "segnalazione": {"stato": s["stato"], "quando": s["quando"], "nota": s["nota"]} if s else None})
+                            "segnalazione": _stato_segnalazione(s)})
         c = r.get("comunicazione") or {}
-        base["righe"].append({**_riga(r, v, motivi), "chiave": r.get("chiave"), "n_gestione": r.get("n_gestione"), "rilievi": rilievi,
+        # spec 009: «Segnala errore» su ogni riga dell'RdP, anche senza difformità (rilievo vuoto = segnalazione della riga)
+        errore = {"segnalabile": bool(v.area and "rdp" in motivi and aperto),
+                  "segnalazione": _stato_segnalazione(fatte.get((*chiave_atto, "")))}
+        base["righe"].append({**_riga(r, v, motivi), "chiave": r.get("chiave"), "n_gestione": r.get("n_gestione"), "rilievi": rilievi, "errore": errore,
                               "badge": reg["badge"] if reg else None, "comunicazione": {"stato": c.get("stato"), "quando": c.get("quando")}})
     return base
 

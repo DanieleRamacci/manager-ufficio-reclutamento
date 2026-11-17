@@ -1,0 +1,17 @@
+{
+  "name": "Monitoraggio bandi – Ufficio reclutamento",
+  "short_name": "Monitoraggio",
+  "description": "Stato dei bandi, monitoraggi mensili e difformità tra le fonti.",
+  "lang": "it",
+  "id": "/app",
+  "start_url": "/app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#1f3a5f",
+  "icons": [
+    {"src": "/icona-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/icona-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/icona-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

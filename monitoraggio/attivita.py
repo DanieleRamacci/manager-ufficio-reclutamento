@@ -4,7 +4,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
-from . import collegamento, config, db, difformita, impostazioni, notifiche, posta, referenti
+from . import avvisi_scorrimenti, collegamento, config, db, difformita, impostazioni, notifiche, posta, referenti
 from .raccolta import RaccoltaInCorso, avanzamento, raccogli
 
 log = logging.getLogger(__name__)
@@ -14,6 +14,7 @@ ATTIVITA = {
     "urp": {"nome": "Raccolta URP", "descrizione": "Bandi, allegati, archivio e controllo dei PDF", "scarto": 15, "attiva": True},
     "referenti": {"nome": "Aggiornamento referenti (RdP)", "descrizione": "Richiede un accesso: da lanciare con Esegui ora", "scarto": 45, "attiva": False},
     "confronto": {"nome": "Confronto fonti e difformità", "descrizione": "Aggiorna i badge delle correzioni", "scarto": 60, "attiva": True},
+    "scorrimenti": {"nome": "Avviso scorrimenti ai referenti", "descrizione": "Email agli RdP per ogni nuovo scorrimento presente su URP e nel file della segreteria", "scarto": 75, "attiva": False},
     "riepilogo": {"nome": "Riepilogo email agli amministratori", "descrizione": "Esito della notte all'indirizzo dell'avviso", "scarto": 90, "attiva": False},
 }
 _in_corso: set[str] = set()
@@ -198,6 +199,8 @@ def _lavoro(chiave: str, avviata_da: str, token, modalita) -> None:
         elif chiave == "confronto":
             difformita.sincronizza_tutti("confronto notturno")
             esito, dettaglio = "ok", "Difformità aggiornate"
+        elif chiave == "scorrimenti":
+            esito, dettaglio = avvisi_scorrimenti.esegui()
         else:
             esito, dettaglio = _esegui_riepilogo()
     except RaccoltaInCorso:

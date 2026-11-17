@@ -5,7 +5,9 @@ l'avviso arriva a entrambi, chi lo ha può cederlo e l'amministratore decide in 
 I profili sono quelli del contratto, senza il livello («Collaboratore tecnico enti di ricerca» vale per IV, V e VI): l'elenco
 è completo anche prima che un bando di quel profilo sia letto da Selezioni Online, e la scelta vale per i bandi futuri.
 In più c'è la voce «Mobilità», esclusiva come un profilo: comprende tutti i bandi di mobilità (e i comandi), di ogni profilo.
-Così ogni bando ha un solo coordinatore: quello di «Mobilità» per la mobilità, quello del profilo per gli altri.
+Spec 009 (scelta dell'utente del 2026-11-16): categorie protette e reclutamento speciale non fanno parte dei bandi pubblici
+del profilo, quindi hanno ognuno una voce propria come «Mobilità»; la mobilità resta prioritaria.
+Così ogni bando ha un solo coordinatore: quello della voce del suo tipo, oppure quello del profilo per gli altri.
 Altre eccezioni si aggiungono qui, se serviranno.
 """
 import json
@@ -37,6 +39,11 @@ CATALOGO = tuple(LIVELLI)
 MOBILITA = "Mobilità"
 TIPI_MOBILITA = ("mobilita", "comando")  # l'URP distingue il comando solo dal testo del bando
 LIVELLI[MOBILITA] = "Tutti i bandi di mobilità e i comandi, di ogni profilo"
+CATEGORIE_PROTETTE = "Categorie protette"
+RECLUTAMENTO_SPECIALE = "Reclutamento speciale"
+VOCI_TIPOLOGIA = {"categorie_protette": CATEGORIE_PROTETTE, "reclutamento_speciale": RECLUTAMENTO_SPECIALE}
+LIVELLI[CATEGORIE_PROTETTE] = "Tutti i bandi delle categorie protette, di ogni profilo"
+LIVELLI[RECLUTAMENTO_SPECIALE] = "Tutti i bandi di reclutamento speciale, di ogni profilo"
 _LIVELLO = re.compile(r"\b(?:livello\s+(?:[ivx]+|\d+)|(?:[ivx]+|\d+)\s*[°^]?\s*livello)\b", re.I)
 
 
@@ -60,18 +67,21 @@ def famiglia(profilo_sol: str | None) -> str | None:
 
 
 def voce(tipologia: str | None, profilo: str | None) -> str | None:
-    """La voce dell'elenco a cui appartiene un bando: «Mobilità» per la mobilità, altrimenti il suo profilo."""
-    return MOBILITA if tipologia in TIPI_MOBILITA else profilo
+    """La voce dell'elenco a cui appartiene un bando: «Mobilità» per la mobilità, la voce del tipo per categorie protette
+    e reclutamento speciale, altrimenti il suo profilo."""
+    if tipologia in TIPI_MOBILITA:
+        return MOBILITA
+    return VOCI_TIPOLOGIA.get(tipologia, profilo)
 
 
 def disponibili(conn) -> list[str]:
-    """Tutti i profili del contratto, più quelli letti da Selezioni Online che non vi rientrano, e «Mobilità»."""
+    """Tutti i profili del contratto, più quelli letti da Selezioni Online che non vi rientrano, e le voci per tipo."""
     altri = set()
     for s in conn.execute("SELECT dati_extra FROM scheda WHERE fonte = 'sol' AND presente = 1 AND dati_extra IS NOT NULL"):
         nome = famiglia(json.loads(s["dati_extra"]).get("profilo"))
         if nome and nome not in CATALOGO:
             altri.add(nome)
-    return [*CATALOGO, *sorted(altri), MOBILITA]
+    return [*CATALOGO, *sorted(altri), *VOCI_TIPOLOGIA.values(), MOBILITA]
 
 
 def per_bando(conn) -> tuple[dict, dict, dict]:

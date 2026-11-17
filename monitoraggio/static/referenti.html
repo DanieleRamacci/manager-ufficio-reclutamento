@@ -6,6 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <title>Area referenti</title>
   <link rel="stylesheet" href="/monitoraggio/app.css">
+  <script src="/pwa.js" defer></script>
   <style>
     .area { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
     .accesso { max-width: 460px; }
@@ -31,7 +32,7 @@
 
   function moduloAccesso(messaggio) {
     $("contenuto").innerHTML = `<section class="accesso">
-      <p>Qui i responsabili del procedimento (RdP) e i coordinatori vedono lo stato dei loro bandi e le difformità, e possono segnalare eventuali falsi positivi.</p>
+      <p>Qui i responsabili del procedimento (RdP) e i coordinatori vedono lo stato dei loro bandi e le difformità, e possono segnalare falsi positivi ed errori, indicando la fonte da correggere.</p>
       ${messaggio ? `<div class="ok" role="status">${esc(messaggio)}</div>` : ""}
       <form id="modulo"><label>Il tuo indirizzo email da referente su Selezioni Online
         <input type="email" id="email" required autocomplete="email"></label>

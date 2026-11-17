@@ -24,7 +24,7 @@
   const parti = location.pathname.slice(BASE.length).split("/").filter(Boolean);
   const vista = parti[0] === "monitoraggi" ? (parti[1] ? "mese" : "elenco") : "stato";
   if (!AREA) { const s = document.createElement("script"); s.src = "/monitoraggio/menu.js"; document.head.appendChild(s); }
-  const filtri = { q: "", atto: "", difformi: false, come: "", tipologia: "", schedaStato: "stato", schedaMese: "difformita" };
+  const filtri = { q: "", atto: "", difformi: false, come: "", tipologia: "", schedaStato: "stato", schedaMese: "tutti" };
   let dati = null;
 
   const errore = (err) => { $("contenuto").innerHTML = `<div class="errore" role="alert">${esc(err.message || err)}</div>`; };
@@ -112,7 +112,7 @@
     const mese = filtri.meseStato || meseCorrente();
     const graduatorie = conteggioTipo(dati.righe, "graduatoria", mese), scorrimenti = conteggioTipo(dati.righe, "scorrimento", mese);
     return `<nav class="schede" role="tablist" aria-label="Viste dello stato complessivo">
-      <button type="button" role="tab" data-stato="stato" aria-selected="${filtri.schedaStato === "stato"}">Stato complessivo</button>
+      <button type="button" role="tab" data-stato="stato" aria-selected="${filtri.schedaStato === "stato"}">Tutti gli atti (${dati.righe.length})</button>
       <button type="button" role="tab" data-stato="graduatoria" aria-selected="${filtri.schedaStato === "graduatoria"}">Graduatorie pubbliche del mese (${graduatorie})</button>
       <button type="button" role="tab" data-stato="scorrimento" aria-selected="${filtri.schedaStato === "scorrimento"}">Scorrimenti del mese (${scorrimenti})</button>
       <label class="muted">Mese <input type="month" id="mese-stato" value="${esc(mese)}"></label>
@@ -159,13 +159,24 @@
   function cellaRilievi(r, i) {
     const badge = r.badge && r.badge !== "da_correggere" ? `<div style="margin-bottom:4px"><span class="badge ${r.badge}">${{ corretta: "Corretta", parziale: "Parzialmente corretta", da_controllare: "Da controllare" }[r.badge] || r.badge}</span></div>` : "";
     const generali = r.rilievi.map((x, j) => ({ ...x, j })).filter(x => !/^sede «/.test(x.testo));
-    if (!generali.length) return `<td>${badge}</td>`;
+    const errore = bloccoErrore(r, i);
+    if (!generali.length) return `<td${errore ? ' style="min-width:200px"' : ""}>${badge}${errore}</td>`;
     return `<td style="min-width:240px">${badge}<ul class="rilievi">${generali.map(x => { const j = x.j;
       const s = x.segnalazione;
       const stato = s ? `<span class="pillola ${s.stato === "gestita" ? "p-ok" : "p-warn"}">${s.stato === "gestita" ? "segnalazione gestita" : `segnalata il ${esc(dataIt(s.quando))}`}</span> ` : "";
       const segnala = x.segnalabile ? `<button type="button" class="piccolo" data-segnala="${i}:${j}">${s ? "Modifica la segnalazione" : "Segnala falso positivo"}</button>` : "";
       return `<li class="${x.risolto ? "risolto" : ""}">${esc(x.testo)}${stato || segnala ? `<div style="margin-top:3px">${stato}${segnala}</div><div id="form-${i}-${j}"></div>` : ""}</li>`;
-    }).join("")}</ul></td>`;
+    }).join("")}</ul>${errore}</td>`;
+  }
+  // spec 009: su ogni riga dell'RdP, anche senza difformità, si segnala un errore indicando la fonte sbagliata
+  const NOMI_FONTI = { sol: "Selezioni Online", urp: "URP", segreteria: "File di riepilogo della segreteria" };
+  const testoFonti = (s) => s?.fonti?.length ? ` · ${s.fonti.map(f => NOMI_FONTI[f] || f).join(", ")}` : "";
+  function bloccoErrore(r, i) {
+    const e = r.errore || {}, s = e.segnalazione;
+    if (!e.segnalabile && !s) return "";
+    const stato = s ? `<span class="pillola ${s.stato === "gestita" ? "p-ok" : "p-warn"}">${s.stato === "gestita" ? "errore segnalato, gestito" : `errore segnalato il ${esc(dataIt(s.quando))}`}${esc(testoFonti(s))}</span> ` : "";
+    const pulsante = e.segnalabile ? `<button type="button" class="piccolo" data-segnala="${i}:e">${s ? "Modifica la segnalazione di errore" : "Segnala errore"}</button>` : "";
+    return `<div style="margin-top:6px">${stato}${pulsante}</div><div id="form-${i}-e"></div>`;
   }
   function cellaComunicazione(c) {
     const [classe, testo] = COMUNICAZIONE[c.stato] || ["p-blu", `${String(c.stato || "").replace(/_/g, " ")}`];
@@ -175,7 +186,7 @@
     const v = dati.visitatore;
     const chiuso = dati.stato === "chiuso";
     const R = dati.righe, conta = f => R.filter(f).length, contaD = f => R.filter(r => f(r) && r.difforme).length;
-    const schede = [["difformita", "Tutte le difformità", conta(r => r.difforme), 0], ["bando", "Bandi pubblicati", conta(r => r.atto === "bando"), 0],
+    const schede = [["tutti", "Tutti", R.length, conta(r => r.difforme)], ["difformita", "Tutte le difformità", conta(r => r.difforme), 0], ["bando", "Bandi pubblicati", conta(r => r.atto === "bando"), 0],
       ["graduatoria", "Graduatorie pubbliche", conta(r => r.atto === "graduatoria"), contaD(r => r.atto === "graduatoria")],
       ["scorrimento", "Scorrimenti", conta(r => r.atto === "scorrimento"), contaD(r => r.atto === "scorrimento")],
       ["subentro", "Subentri", conta(r => r.sottotipo === "subentro"), contaD(r => r.sottotipo === "subentro")]];
@@ -188,7 +199,8 @@
       <section>${barraFiltri(v)}<div id="tabella"></div></section>`;
     const tabella = () => {
       let base = dati.righe;
-      if (filtri.schedaMese === "difformita") base = base.filter(r => r.difforme);
+      if (filtri.schedaMese === "tutti") base = dati.righe;
+      else if (filtri.schedaMese === "difformita") base = base.filter(r => r.difforme);
       else if (filtri.schedaMese === "subentro") base = base.filter(r => r.sottotipo === "subentro");
       else base = base.filter(r => r.atto === filtri.schedaMese);
       const righe = filtrate(base);
@@ -201,7 +213,7 @@
       collegaRdp($("tabella")); collegaCandidati($("tabella"), 13);
       document.querySelectorAll("[data-segnala]").forEach(b => {
         if (v.anteprima) { b.disabled = true; b.title = "Disattivato nell'anteprima"; return; }
-        b.onclick = () => apriSegnala(...b.dataset.segnala.split(":").map(Number));
+        b.onclick = () => { const [i, j] = b.dataset.segnala.split(":"); apriSegnala(Number(i), j === "e" ? "e" : Number(j)); };
       });
     };
     if ($("mese-monitoraggio")) $("mese-monitoraggio").onchange = e => { location.href = `${BASE}/monitoraggi/${encodeURIComponent(e.target.value)}`; };
@@ -217,16 +229,24 @@
       <td colspan="5" class="small">${r.fonti?.urp?.url ? `<a href="${esc(r.fonti.urp.url)}" target="_blank" rel="noopener noreferrer">URP del bando ↗</a>` : ""}</td>
       <td>${perSede.get(s.codice) ? rilieviSede(perSede.get(s.codice)) : elencoRilievi((s.note || []).map(testo => ({ testo })))}</td>${s.rdp ? cellaRdp(s) : "<td></td>"}<td></td>${cellaPunteggi({ ...s, atto: r.atto, come: r.come })}</tr>`).join("");
   }
+  // j: indice del rilievo (falso positivo) oppure "e" (errore sulla riga). Nota obbligatoria; fonti obbligatorie per l'errore.
   function apriSegnala(i, j) {
-    const r = dati.righe[i], x = r.rilievi[j], area = $(`form-${i}-${j}`);
+    const r = dati.righe[i], errore = j === "e", x = errore ? null : r.rilievi[j], area = $(`form-${i}-${j}`);
+    const prec = errore ? r.errore?.segnalazione : x.segnalazione, scelte = prec?.fonti || [];
     area.className = "rilievo-form";
-    area.innerHTML = `<label class="small">Perché è un falso positivo?<textarea id="nota-${i}-${j}" maxlength="1000">${esc(x.segnalazione?.nota)}</textarea></label>
+    area.innerHTML = `<label class="small">${errore ? "Che cosa non è corretto in questa riga?" : "Perché è un falso positivo?"}<textarea id="nota-${i}-${j}" maxlength="1000">${esc(prec?.nota)}</textarea></label>
+      <fieldset class="small" style="border:0;padding:0;margin:4px 0"><legend>${errore ? "In quale fonte i dati non sono corretti? (almeno una)" : "In quale fonte i dati non sono corretti? (facoltativo)"}</legend>
+        ${Object.entries(NOMI_FONTI).map(([k, n]) => `<label class="spunta" style="margin-right:10px"><input type="checkbox" name="fonte-${i}-${j}" value="${k}"${scelte.includes(k) ? " checked" : ""}> ${esc(n)}</label>`).join("")}</fieldset>
       <div class="muted small">Non inserire dati dei candidati.</div>
       <div class="riga" style="margin-top:4px"><button class="primario piccolo" type="button" id="invia-${i}-${j}">Invia segnalazione</button><button class="piccolo" type="button" id="annulla-${i}-${j}">Annulla</button></div>`;
     $(`annulla-${i}-${j}`).onclick = () => { area.innerHTML = ""; };
     $(`invia-${i}-${j}`).onclick = async () => {
+      const fonti = [...area.querySelectorAll(`input[name="fonte-${i}-${j}"]:checked`)].map(c => c.value);
+      if (!$(`nota-${i}-${j}`).value.trim()) { toast("Scrivi il motivo della segnalazione"); return; }
+      if (errore && !fonti.length) { toast("Indica almeno una fonte in cui i dati non sono corretti"); return; }
       try {
-        await chiama("/api/area-referenti/segnala", json("POST", { mese: dati.mese, chiave: r.chiave, atto: r.atto, protocollo: r.protocollo || "", data: r.data || "", rilievo: x.testo, nota: $(`nota-${i}-${j}`).value }));
+        await chiama("/api/area-referenti/segnala", json("POST", { mese: dati.mese, chiave: r.chiave, atto: r.atto, protocollo: r.protocollo || "", data: r.data || "",
+          tipo: errore ? "errore" : "falso_positivo", rilievo: errore ? "" : x.testo, fonti, nota: $(`nota-${i}-${j}`).value }));
         toast("Segnalazione inviata"); await carica();
       } catch (err) { toast(err.message); }
     };

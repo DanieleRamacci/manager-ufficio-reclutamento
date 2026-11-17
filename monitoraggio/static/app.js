@@ -1,4 +1,6 @@
 // Funzioni comuni delle pagine (specifiche grafiche, sezione 2): celle fonte, RdP, candidati, finestre, toast.
+// app installabile (spec 009): manifest e service worker, una volta sola per pagina
+if (!document.querySelector('script[src="/pwa.js"]')) { const s = document.createElement("script"); s.src = "/pwa.js"; s.defer = true; document.head.appendChild(s); }
 window.App = (() => {
   const $ = (id) => document.getElementById(id);
   const esc = (t) => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

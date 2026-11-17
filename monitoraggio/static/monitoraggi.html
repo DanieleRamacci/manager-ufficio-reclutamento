@@ -114,7 +114,7 @@
       const m = stato.m, c = stato.atti.conteggi, chiuso = m.stato === "chiuso";
       const R = stato.atti.righe;
       const conta = (f) => R.filter(f).length, contaD = (f) => R.filter(r => f(r) && r.con_difformita).length;
-      const SCHEDE = [["difformita", "Tutte le difformità", c.difformita, c.difformita],
+      const SCHEDE = [["tutti", "Tutti", R.length, c.difformita], ["difformita", "Tutte le difformità", c.difformita, c.difformita],
         ["bando", "Bandi pubblicati", conta(r => r.atto === "bando"), 0],
         ["graduatoria", "Graduatorie pubbliche", conta(r => r.atto === "graduatoria"), contaD(r => r.atto === "graduatoria")],
         ["scorrimento", "Scorrimenti", conta(r => r.atto === "scorrimento"), contaD(r => r.atto === "scorrimento")],
@@ -161,7 +161,7 @@
     function disegnaScheda() {
       const s = stato.scheda;
       $("filtri-atti").innerHTML = "";
-      if (["difformita", "bando", "graduatoria", "scorrimento", "subentro"].includes(s)) return schedaAtti();
+      if (["tutti", "difformita", "bando", "graduatoria", "scorrimento", "subentro"].includes(s)) return schedaAtti();
       if (s === "correzioni") return schedaCorrezioni();
       if (s === "comunicazioni") return schedaComunicazioni();
       if (s === "segnalazioni") return schedaSegnalazioni();
@@ -224,7 +224,7 @@
       const f = stato.filtri, s = stato.scheda;
       return stato.atti.righe.filter(r => {
         if (s === "difformita" && !r.con_difformita && !r.registro) return false;
-        if (s === "subentro" ? r.sottotipo !== "subentro" : (s !== "difformita" && r.atto !== s)) return false;
+        if (s === "subentro" ? r.sottotipo !== "subentro" : (!["tutti", "difformita"].includes(s) && r.atto !== s)) return false;
         if (f.tipologia && r.gruppo_tipologia && r.gruppo_tipologia !== f.tipologia) return false;
         if (f.solo && !r.con_difformita) return false;
         if (f.comunicazione === "da_inviare" && r.comunicazione.stato !== "da_inviare") return false;
@@ -523,10 +523,11 @@
       const m = stato.m, chiuso = m.stato === "chiuso";
       $("corpo-scheda").innerHTML = `<section><p class="muted">Caricamento…</p></section>`;
       const { segnalazioni: s } = await chiama(`/api/monitoraggi/${m.mese}/segnalazioni`);
-      $("corpo-scheda").innerHTML = `<section><p class="muted small">Falsi positivi segnalati dai referenti dall'area referenti. Segnarne una come gestita non cambia le difformità: serve solo a tenere traccia.</p>
-        <div class="scroll"><table style="min-width:900px"><thead><tr><th>Data</th><th>Bando</th><th>Atto</th><th>Difformità</th><th>Motivo</th><th>Referente</th><th>Stato</th></tr></thead><tbody>
-        ${s.map(x => `<tr><td style="white-space:nowrap">${ora(x.quando)}</td><td>${esc(x.chiave)}</td><td class="small">${esc(ATTI[x.atto] || x.atto)}${x.protocollo ? `<div class="mono">${esc(x.protocollo)}</div>` : ""}</td><td class="small">${esc(x.rilievo)}</td><td class="small">${esc(x.nota)}</td><td class="small">${esc(x.email)}</td>
-          <td><span class="pillola ${x.stato === "gestita" ? "p-ok" : "p-warn"}">${x.stato === "gestita" ? "gestita" : "da vedere"}</span>${chiuso ? "" : `<div class="solo-admin" style="margin-top:5px"><button type="button" class="piccolo" data-gestita="${x.id}" data-valore="${x.stato !== "gestita"}">${x.stato === "gestita" ? "Riapri" : "Segna gestita"}</button></div>`}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Nessuna segnalazione.</td></tr>`}</tbody></table></div></section>`;
+      $("corpo-scheda").innerHTML = `<section><p class="muted small">Falsi positivi ed errori segnalati dai referenti dall'area referenti, con la fonte da correggere. Segnarne una come gestita non cambia le difformità: serve solo a tenere traccia.</p>
+        <div class="scroll"><table style="min-width:1000px"><thead><tr><th>Data</th><th>Tipo</th><th>Bando</th><th>Atto</th><th>Difformità</th><th>Fonti da correggere</th><th>Motivo</th><th>Referente</th><th>Stato</th></tr></thead><tbody>
+        ${s.map(x => `<tr><td style="white-space:nowrap">${ora(x.quando)}</td><td><span class="pillola ${x.tipo === "errore" ? "p-ko" : "p-warn"}">${x.tipo === "errore" ? "errore" : "falso positivo"}</span></td><td>${esc(x.chiave)}</td><td class="small">${esc(ATTI[x.atto] || x.atto)}${x.protocollo ? `<div class="mono">${esc(x.protocollo)}</div>` : ""}</td><td class="small">${esc(x.rilievo || "—")}</td>
+          <td class="small">${(x.fonti || []).map(f => esc({ sol: "Selezioni Online", urp: "URP", segreteria: "File segreteria" }[f] || f)).join(", ") || `<span class="muted2">non indicata</span>`}</td><td class="small">${esc(x.nota)}</td><td class="small">${esc(x.email)}</td>
+          <td><span class="pillola ${x.stato === "gestita" ? "p-ok" : "p-warn"}">${x.stato === "gestita" ? "gestita" : "da vedere"}</span>${chiuso ? "" : `<div class="solo-admin" style="margin-top:5px"><button type="button" class="piccolo" data-gestita="${x.id}" data-valore="${x.stato !== "gestita"}">${x.stato === "gestita" ? "Riapri" : "Segna gestita"}</button></div>`}</td></tr>`).join("") || `<tr><td colspan="9" class="muted">Nessuna segnalazione.</td></tr>`}</tbody></table></div></section>`;
       document.querySelectorAll("[data-gestita]").forEach(b => b.onclick = async () => {
         try { await chiama(`/api/monitoraggi/${m.mese}/segnalazioni/${b.dataset.gestita}`, corpoJson("PUT", { gestita: b.dataset.valore === "true" })); await dettaglio(); }
         catch (err) { toast(err.message); }

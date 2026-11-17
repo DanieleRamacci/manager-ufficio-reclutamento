@@ -80,6 +80,7 @@ def _login_sso(app):
     """
     import os
     import secrets
+    from datetime import timedelta
 
     from dotenv import load_dotenv
 
@@ -94,7 +95,8 @@ def _login_sso(app):
     cartella = config.data_dir() / "flask_session"
     cartella.mkdir(parents=True, exist_ok=True)
     app.config.update(SECRET_KEY=os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32),
-                      SESSION_TYPE="filesystem", SESSION_FILE_DIR=str(cartella), SESSION_PERMANENT=False)
+                      SESSION_TYPE="filesystem", SESSION_FILE_DIR=str(cartella), SESSION_PERMANENT=True,
+                      PERMANENT_SESSION_LIFETIME=timedelta(days=7))
     Session(app)
     app.register_blueprint(auth.auth_bp)
     return auth.token_valido, lambda: session.get("user_email"), "/login?next=/monitoraggio", "/logout"

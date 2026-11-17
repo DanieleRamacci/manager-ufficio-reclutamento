@@ -26,7 +26,7 @@ from . import config, posta, sol_sessione, utenti
 
 log = logging.getLogger(__name__)
 
-DURATA_ACCESSO = timedelta(hours=12)
+DURATA_ACCESSO = timedelta(days=7)  # spec 009: si chiede un nuovo link al più una volta a settimana
 DURATA_LINK = timedelta(minutes=2)
 DURATA_LINK_EMAIL = timedelta(minutes=15)
 ATTESA_TRA_EMAIL = timedelta(minutes=1)
@@ -138,6 +138,7 @@ def _riconosci(testo: str) -> tuple[dict | None, str | None, int]:
 
 def _apri_sessione(chi: dict, solo_lettura: bool = False) -> None:
     session.clear()
+    session.permanent = True  # clear() toglie anche il flag: il cookie deve restare 7 giorni
     session["user"] = chi["username"]
     session["user_email"] = chi["email"] or chi["username"]
     session["solo_lettura"] = solo_lettura

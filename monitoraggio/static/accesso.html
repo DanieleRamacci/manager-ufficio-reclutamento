@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Accesso Monitoraggio bandi</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <script src="/pwa.js" defer></script>
   <style>
     body { font-family: "IBM Plex Sans", system-ui, sans-serif; background: #f3f4f6; color: #1b2230; margin: 0; padding: 32px 16px; }
     main { max-width: 620px; margin: 0 auto; background: #fff; border: 1px solid #e3e6eb; border-radius: 10px; padding: 24px; }
@@ -54,9 +55,19 @@
       <input id="username" name="username" type="text" autocomplete="username" placeholder="nome.cognome o email" value="{{ utente }}" required>
       <button type="submit">Richiedi link temporaneo</button>
     </form>
-    <p class="nota">Ricevi nella tua casella CNR un link valido 15 minuti.</p>
+    <p class="nota">Ricevi nella tua casella CNR un link da aprire entro 15 minuti. Una volta entrato resti collegato per 7 giorni, anche se chiudi il browser: su un computer condiviso ricordati di premere «Esci».</p>
     {% if utente and not messaggio and not errore %}<script>document.getElementById("richiesta").submit();</script>{% endif %}
     {% endif %}
+    <details class="installa">
+      <summary>Installa l'app sul computer</summary>
+      <p class="nota" style="margin-top:8px">Il monitoraggio si può installare come un programma: si apre dall'icona sul desktop in una finestra propria. Funziona solo online e non salva dati sul computer.</p>
+      <ul class="nota">
+        <li><b>Windows</b> (Edge o Chrome): apri questa pagina, premi l'icona <i>Installa</i> a destra nella barra degli indirizzi (oppure menu ⋯ → <i>App</i> → <i>Installa questo sito come app</i>). L'app compare nel menu Start; con il tasto destro puoi aggiungerla alla barra delle applicazioni o al desktop.</li>
+        <li><b>Mac con Chrome o Edge</b>: stessa icona <i>Installa</i> nella barra degli indirizzi; l'app compare nel Launchpad e puoi tenerla nel Dock.</li>
+        <li><b>Mac con Safari</b>: menu <i>File</i> → <i>Aggiungi al Dock</i>. Safari tiene l'app separata dal browser: la prima volta entra dall'app stessa.</li>
+      </ul>
+      <p class="nota">Una volta entrato resti collegato 7 giorni anche nell'app.</p>
+    </details>
   </main>
 </body>
 </html>

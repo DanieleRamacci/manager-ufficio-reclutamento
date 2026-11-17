@@ -76,6 +76,14 @@
           <button type="submit">Salva</button><span class="muted small" id="esito-avviso" aria-live="polite"></span>
         </form>
         <p class="muted small" id="note-aggiornamenti"></p>
+        <h3>Avviso scorrimenti ai referenti</h3>
+        <p class="muted small" style="margin-top:0">Con l'attività «Avviso scorrimenti ai referenti» attiva, dopo l'aggiornamento notturno gli RdP ricevono un'email per ogni nuovo scorrimento presente sia su URP sia nel file della segreteria, con il link al documento URP. Ogni scorrimento si avvisa una sola volta; alla prima esecuzione quelli già presenti vengono solo registrati. Gli invii seguono le impostazioni Email (prova / ufficiali).</p>
+        <form id="modulo-scorrimenti" class="riga">
+          <label>In copia (segreteria) <input type="text" id="scorrimenti-cc" autocomplete="off" size="40" placeholder="una o più email separate da virgola"></label>
+          <button type="submit">Salva</button><span class="muted small" id="esito-scorrimenti" aria-live="polite"></span>
+        </form>
+        <div class="errore" id="errore-scorrimenti" role="alert" hidden style="margin-top:8px"></div>
+        <div class="scroll" style="margin-top:8px"><table id="avvisi-scorrimenti" style="min-width:760px"></table></div>
         <h3>Storico esecuzioni</h3>
         <div class="riga" style="margin-bottom:8px"><label>Attività <select id="f-attivita"><option value="">Tutte</option></select></label><label class="spunta"><input type="checkbox" id="f-problemi"> solo con avvisi o errori</label></div>
         <div class="scroll"><table id="storico" style="min-width:640px"></table></div>
@@ -84,7 +92,7 @@
   </div>
 </main>
 <script>
-  const { $, esc, ora, chiama, json, toast, copia } = App;
+  const { $, esc, ora, dataIt, chiama, json, toast, copia } = App;
   const errore = (id, testo) => { $(id).hidden = !testo; $(id).textContent = testo || ""; };
   function mostraSezione() {
     const s = ["utenti", "email", "aggiornamenti"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "utenti";
@@ -251,6 +259,24 @@
     try { errore("errore-attivita"); await chiama("/api/impostazioni/aggiornamenti", json("PUT", { giorno_completa: $("giorno").value, avviso_modo: $("avviso-modo").value, avviso_indirizzo: $("avviso-indirizzo").value })); $("esito-avviso").textContent = "Salvato."; caricaAttivita(); }
     catch (err) { errore("errore-attivita", err.message); }
   };
+
+  // --- avviso scorrimenti (spec 009)
+  const ESITI_AVVISO = { inviato: ["p-ok", "inviato"], prova: ["p-blu", "in prova"], senza_destinatari: ["p-warn", "senza RdP"], errore: ["p-ko", "non inviato"] };
+  function mostraScorrimenti(d) {
+    if (document.activeElement?.id !== "scorrimenti-cc") $("scorrimenti-cc").value = d.copia.join(", ");
+    $("avvisi-scorrimenti").innerHTML = `<thead><tr><th>Data</th><th>Bando</th><th>Scorrimento</th><th>Destinatari</th><th>Esito</th></tr></thead><tbody>` + (d.avvisi.map(a => `<tr>
+      <td style="white-space:nowrap">${ora(a.quando)}</td><td>${esc(a.chiave)}</td>
+      <td class="small">${esc(dataIt(a.data))}${a.protocollo ? ` · prot. ${esc(a.protocollo)}` : ""}${a.url_urp ? ` · <a href="${esc(a.url_urp)}" target="_blank" rel="noopener noreferrer">URP ↗</a>` : ""}</td>
+      <td class="small">${esc(a.destinatari.join(", ")) || "—"}${a.cc.length ? `<div class="muted">Cc: ${esc(a.cc.join(", "))}</div>` : ""}</td>
+      <td><span class="pillola ${(ESITI_AVVISO[a.esito] || ["p-na"])[0]}">${(ESITI_AVVISO[a.esito] || [0, a.esito])[1]}</span>${a.messaggio ? `<div class="muted small">${esc(a.messaggio)}</div>` : ""}</td></tr>`).join("")
+      || `<tr><td colspan="5" class="muted">${d.iniziato_il ? "Nessun nuovo scorrimento avvisato." : "L'avviso non è ancora partito: attiva l'attività qui sopra."}</td></tr>`) + `</tbody>`;
+  }
+  $("modulo-scorrimenti").onsubmit = async (e) => {
+    e.preventDefault();
+    try { errore("errore-scorrimenti"); mostraScorrimenti(await chiama("/api/impostazioni/avvisi-scorrimenti", json("PUT", { copia: $("scorrimenti-cc").value }))); $("esito-scorrimenti").textContent = "Salvato."; }
+    catch (err) { errore("errore-scorrimenti", err.message); }
+  };
+  chiama("/api/impostazioni/avvisi-scorrimenti").then(mostraScorrimenti).catch(e => errore("errore-scorrimenti", e.message));
 
   caricaUtenti().catch(e => errore("errore-utenti", e.message));
   chiama("/api/impostazioni/posta").then(mostraEmail).catch(e => errore("errore-email", e.message));

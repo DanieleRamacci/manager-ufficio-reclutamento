@@ -1218,7 +1218,7 @@ def test_attivita_orari_stato_e_storico(ambiente):
     from monitoraggio import attivita
     admin = ambiente()
     d = admin.get("/api/impostazioni/attivita").get_json()
-    assert [a["chiave"] for a in d["attivita"]] == ["sol", "urp", "referenti", "confronto", "riepilogo"]
+    assert [a["chiave"] for a in d["attivita"]] == ["sol", "urp", "referenti", "confronto", "scorrimenti", "riepilogo"]
     assert d["attivita"][0]["attiva"] is True and d["attivita"][2]["attiva"] is False
     assert admin.put("/api/impostazioni/attivita/urp", json={"orario": "25:00"}).status_code == 400
     assert admin.put("/api/impostazioni/attivita/xx", json={"attiva": True}).status_code == 400

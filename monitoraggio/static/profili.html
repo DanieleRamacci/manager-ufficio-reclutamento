@@ -18,13 +18,13 @@
     try { await chiama(url, json("POST", corpo)); toast(messaggio); await carica(); }
     catch (err) { toast(err.message); await carica(); }  // es. il profilo è stato appena scelto da un altro
   }
-  const MOBILITA = "Mobilità";
+  const PRIMA_VOCE_PER_TIPO = "Categorie protette";  // da qui le voci per tipo di bando, non per profilo
   function riga(p) {
     const preso = p.titolare && !p.mio;
     const stato = p.mio ? "<b>te</b>" : preso ? `scelto da ${esc(p.titolare)}` : `<span class="muted2">libero</span>`;
     const chiedi = !preso ? "" : p.chiesto ? `<span class="pillola p-warn">richiesta inviata</span>`
       : `<button type="button" class="piccolo" data-richiedi="${esc(p.profilo)}" title="La richiesta avvisa te e chi lo ha scelto">Chiedi di prenderlo</button>`;
-    return `<tr${p.profilo === MOBILITA ? ' style="border-top:2px solid var(--border)"' : ""}>
+    return `<tr${p.profilo === PRIMA_VOCE_PER_TIPO ? ' style="border-top:2px solid var(--border)"' : ""}>
       <td><label class="spunta"${preso ? ` title="Lo ha scelto ${esc(p.titolare)}"` : ""}><input type="checkbox" data-profilo="${esc(p.profilo)}"${p.mio ? " checked" : ""}${preso ? " disabled" : ""}> <b>${esc(p.profilo)}</b></label></td>
       <td class="small muted">${esc(p.livelli || "tutti i livelli")}</td><td>${stato}</td><td>${chiedi}</td></tr>`;
   }
@@ -32,7 +32,7 @@
     const miei = dati.profili.filter(p => p.mio);
     $("contenuto").innerHTML = `<section><h1>Profili che coordino</h1>
         <p class="muted small" style="margin:4px 0 0">Spunta i profili che coordini: vedi i bandi di quei profili, anche quelli non ancora pubblicati. Ogni profilo comprende tutti i suoi livelli.
-        «Mobilità» comprende tutti i bandi di mobilità, di ogni profilo.</p>
+        «Categorie protette», «Reclutamento speciale» e «Mobilità» comprendono tutti i bandi di quel tipo, di ogni profilo: questi bandi non rientrano nel profilo.</p>
         <p class="muted small" style="margin:4px 0 0">Ogni profilo ha un solo coordinatore: se lo ha già scelto un'altra persona non puoi spuntarlo, ma puoi chiedere di prenderlo.
         La richiesta avvisa entrambi; chi lo ha può cederlo, altrimenti decide l'Ufficio reclutamento.</p>
         ${miei.length ? `<p style="margin:10px 0 0"><a class="pulsante" href="/referenti/monitoraggi">Vai ai monitoraggi</a> <a href="/referenti/stato" style="margin-left:8px">Stato complessivo</a></p>`
