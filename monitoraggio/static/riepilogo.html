@@ -99,7 +99,8 @@
   .p-ok { background: #e9f5ee; color: #1e7b45; } .p-ko { background: #fbe7e5; color: #b42318; } .p-warn { background: #fdf3dc; color: #9a6200; }
   .p-na { background: #eef0f3; color: #6b7280; } .p-blu { background: #e7effb; color: #1f5fbf; }
   .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; } .muted2 { color: #9aa1ab; } .small { font-size: 12.5px; }
-  a.link-monitoraggio { display: inline-block; padding: 3px 8px; border: 1px solid #c9ced6; border-radius: 6px; font-size: 12px; text-decoration: none; color: inherit; background: #fff; }
+  .link-monitoraggio { cursor: pointer; font: inherit; }
+  a.link-monitoraggio, button.link-monitoraggio { display: inline-block; padding: 3px 8px; border: 1px solid #c9ced6; border-radius: 6px; font-size: 12px; text-decoration: none; color: inherit; background: #fff; }
   a.link-monitoraggio:hover { background: #fafbfc; }
   .spunta-com { font-size: 12px; display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
 </style>
@@ -439,17 +440,57 @@ function renderTabellaAtti(id, righe, conSollecito) {
     c.closest("label").onclick = e => e.stopPropagation();
     c.onchange = () => spuntaComunicazione(c);
   });
+  document.querySelectorAll(`#${id} input.spunta-periodo`).forEach(c => {
+    c.onclick = e => e.stopPropagation();
+    c.closest("label").onclick = e => e.stopPropagation();
+    c.onchange = () => spuntaPeriodo(c);
+  });
+  document.querySelectorAll(`#${id} button.btn-messaggio-nuovo`).forEach(b => b.onclick = (e) => { e.stopPropagation(); apriMessaggioNuovo(b); });
 }
 
 // Comunicazione come nel monitoraggio (spec 009): stesso stato, storico e spunta; «Messaggio» apre lo stesso pannello del monitoraggio.
 function cellaComunicazione(a) {
   const c = a.comunicazione;
-  if (!c) return ["graduatoria", "scorrimento"].includes(a.atto) ? `<td><span class="muted2 small">nessun monitoraggio per questo mese</span></td>` : `<td></td>`;
+  if (!c && !a.comunicabile) return `<td></td>`;
+  if (!c) {  // nessun monitoraggio per il mese: si può scrivere lo stesso, il monitoraggio si crea alla prima azione
+    const mese = (a.data || "").slice(0, 7);
+    return `<td style="min-width:150px"><span class="pillola ${a.difforme ? "p-ko" : "p-na"}">${a.difforme ? "da inviare" : "in regola"}</span>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:5px"><button type="button" class="link-monitoraggio btn-messaggio-nuovo" data-mese-dati="${esc(mese)}" data-c="${esc(a.chiave)}">Messaggio</button>
+      <label class="spunta-com"><input type="checkbox" class="spunta-periodo" data-mese-dati="${esc(mese)}" data-c="${esc(a.chiave)}"> inviata</label></div>
+      <div class="muted2 small" style="margin-top:3px">nessun monitoraggio per questo mese: si crea al primo invio</div></td>`;
+  }
   const x = App.partiComunicazione(c);
   if (!x.azionabile) return `<td>${x.pillola}${x.storico}</td>`;
   const link = `<a class="link-monitoraggio" target="_blank" rel="noopener" href="/monitoraggio/mensili/${encodeURIComponent(c.mese)}?messaggio=${encodeURIComponent(c.chiave)}" title="Apre il messaggio nel monitoraggio di ${esc(c.titolo)}">Messaggio</a>`;
   const spunta = c.chiuso ? "" : `<label class="spunta-com"><input type="checkbox" class="spunta-inviata" data-mese="${esc(c.mese)}" data-c="${esc(c.chiave)}"${x.inviata ? " checked" : ""}> inviata</label>`;
   return `<td style="min-width:150px">${x.pillola}<div style="display:flex;gap:8px;align-items:center;margin-top:5px">${link}${spunta}</div>${x.id}${x.storico}</td>`;
+}
+
+const confermaNuovoMonitoraggio = (meseDati) => confirm(`Per i dati di ${meseDati.split("-").reverse().join("/")} non c'è ancora un monitoraggio.\n\nViene creato ora (in corso), così la comunicazione resta registrata come quelle del monitoraggio. Continuare?`);
+
+// Messaggio di un atto senza monitoraggio: crea il monitoraggio del mese e apre lo stesso pannello del monitoraggio.
+async function apriMessaggioNuovo(b) {
+  if (!confermaNuovoMonitoraggio(b.dataset.meseDati)) return;
+  const finestra = window.open("about:blank", "_blank");  // aperta subito: dopo l'attesa il browser la bloccherebbe
+  try {
+    const r = await fetch("/api/monitoraggi/per-mese-dati", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mese_dati: b.dataset.meseDati }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || `Errore ${r.status}`);
+    const url = `/monitoraggio/mensili/${encodeURIComponent(d.mese)}?messaggio=${encodeURIComponent(b.dataset.c)}`;
+    if (finestra) finestra.location.href = url; else location.href = url;
+    await caricaAtti();
+  } catch (err) { if (finestra) finestra.close(); alert(err.message); }
+}
+
+async function spuntaPeriodo(casella) {
+  if (casella.checked && !confermaNuovoMonitoraggio(casella.dataset.meseDati)) { casella.checked = false; return; }
+  try {
+    const r = await fetch("/api/monitoraggi/solleciti-periodo/spunta", { method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mese_dati: casella.dataset.meseDati, numero_bando: casella.dataset.c, inviata: casella.checked }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Errore ${r.status}`);
+    await caricaAtti();
+    await caricaSolleciti(false);
+  } catch (err) { casella.checked = !casella.checked; alert(err.message); }
 }
 
 async function spuntaComunicazione(casella) {

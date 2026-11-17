@@ -617,6 +617,9 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
             per_atto = comunicazioni.per_atto(conn, request.args.get("dal") or None, request.args.get("al") or None)
             for r in righe:  # la comunicazione come nel monitoraggio (spec 009): stato, protocollo dell'email, storico
                 r["comunicazione"] = comunicazioni.comunicazione_di(per_atto, r)
+                # senza monitoraggio si può comunque scrivere: il monitoraggio del mese si crea al primo invio
+                r["chiave"] = comunicazioni.chiave(r)
+                r["comunicabile"] = r["atto"] in difformita.ATTI_SEGUITI and config.nel_monitoraggio(r.get("tipologia")) and bool(r.get("data"))
             return jsonify({"dal": request.args.get("dal") or config.monitoraggio_dal().isoformat(),
                             "totale": len(righe), "atti": righe, "fonti_in_attesa": atti.fonti_in_attesa(conn)})
         finally:

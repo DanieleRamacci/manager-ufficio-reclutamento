@@ -1883,3 +1883,22 @@ def test_comunicazione_nello_stato_complessivo_anche_con_codice_scritto_diverso(
     riga = next(a for a in admin.get("/api/atti").get_json()["atti"] if a["atto"] == "graduatoria")
     assert comunicazioni.comunicazione_di(per_atto, {**riga, "codice": "367.479 - 01 ROMA"})["mese"] == mese
     assert comunicazioni.comunicazione_di(per_atto, {**riga, "codice": "altro", "protocollo": "999"}) is None
+
+
+def test_stato_complessivo_comunica_anche_senza_monitoraggio(ambiente, db):
+    """Spec 009: dallo stato complessivo si scrive anche se il monitoraggio del mese non c'è: si crea alla prima azione."""
+    from monitoraggio import collegamento
+    salva(db, "sol", [scheda("sol", "s1", "367.479 CTER", "367.479", documenti=[doc("g1", "graduatoria", "1001", "2026-04-12")])])
+    salva(db, "urp", [scheda("urp", "/node/1", "367.479 CTER", "367.479", documenti=[doc("g2", "graduatoria", "1002", "2026-04-12")])])
+    collegamento.collega(db)
+    admin = ambiente()
+    riga = lambda: next(a for a in admin.get("/api/atti").get_json()["atti"] if a["atto"] == "graduatoria")  # noqa: E731
+    r = riga()
+    assert r["comunicazione"] is None and r["comunicabile"] is True and r["chiave"] == "367.479 CTER"
+    assert admin.post("/api/monitoraggi/per-mese-dati", json={"mese_dati": "aprile"}).status_code == 400
+    d = admin.post("/api/monitoraggi/per-mese-dati", json={"mese_dati": "2026-04"}).get_json()
+    assert d == {"mese": "2026-05", "creato": True}
+    assert admin.post("/api/monitoraggi/per-mese-dati", json={"mese_dati": "2026-04"}).get_json() == {"mese": "2026-05", "creato": False}
+    assert riga()["comunicazione"]["mese"] == "2026-05"  # da ora la riga segue il monitoraggio
+    lettore = admin.application.test_client()
+    assert lettore.post("/api/monitoraggi/per-mese-dati", json={"mese_dati": "2026-04"}).status_code in (302, 401, 403)

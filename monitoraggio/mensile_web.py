@@ -891,6 +891,37 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         finally:
             conn.close()
 
+    def _monitoraggio_del_periodo(conn, mese_dati: str):
+        """Il monitoraggio del mese dei dati; se non c'è lo crea (mese successivo), come al primo invio dallo Stato complessivo.
+        Ritorna (mese, None) oppure (None, risposta di errore)."""
+        esistente = conn.execute("SELECT mese FROM monitoraggio_mese WHERE mese_dati = ? ORDER BY mese DESC LIMIT 1", (mese_dati,)).fetchone()
+        if esistente:
+            return esistente["mese"], None
+        mese_monitoraggio = mensile.mese_successivo(mese_dati)
+        if _trova(conn, mese_monitoraggio):
+            return None, (jsonify({"error": "Esiste già un monitoraggio per il mese successivo, associato a un altro periodo di dati"}), 409)
+        mensile.crea(conn, mese_monitoraggio, mese_dati, utente_corrente())
+        difformita.sincronizza(conn, mese_monitoraggio, "primo sollecito dallo Stato complessivo", utente_corrente())
+        return mese_monitoraggio, None
+
+    @bp.post("/api/monitoraggi/per-mese-dati")
+    @protezione
+    @solo_admin
+    def api_monitoraggio_per_mese_dati():
+        """Dallo Stato complessivo (spec 009): il monitoraggio in cui inviare la comunicazione di un atto, creato se manca."""
+        mese_dati = str((request.get_json(silent=True) or {}).get("mese_dati") or "")
+        if not mensile.mese_valido(mese_dati):
+            return jsonify({"error": "Mese dei dati non valido"}), 400
+        conn = _conn()
+        try:
+            gia = conn.execute("SELECT 1 FROM monitoraggio_mese WHERE mese_dati = ?", (mese_dati,)).fetchone()
+            mese_monitoraggio, errore = _monitoraggio_del_periodo(conn, mese_dati)
+            return errore or jsonify({"mese": mese_monitoraggio, "creato": not gia})
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        finally:
+            conn.close()
+
     @bp.get("/api/monitoraggi/solleciti-periodo")
     @protezione
     @solo_admin
@@ -935,15 +966,9 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             bloccata = _fonti_non_pronte(conn)
             if bloccata:
                 return bloccata
-            esistente = conn.execute("SELECT mese FROM monitoraggio_mese WHERE mese_dati = ? ORDER BY mese DESC LIMIT 1", (mese_dati,)).fetchone()
-            if esistente:
-                mese_monitoraggio = esistente["mese"]
-            else:
-                mese_monitoraggio = mensile.mese_successivo(mese_dati)
-                if _trova(conn, mese_monitoraggio):
-                    return jsonify({"error": "Esiste già un monitoraggio per il mese successivo, associato a un altro periodo di dati"}), 409
-                mensile.crea(conn, mese_monitoraggio, mese_dati, utente_corrente())
-                difformita.sincronizza(conn, mese_monitoraggio, "primo sollecito dallo Stato complessivo", utente_corrente())
+            mese_monitoraggio, errore = _monitoraggio_del_periodo(conn, mese_dati)
+            if errore:
+                return errore
             mensile.verifica_aperto(conn, mese_monitoraggio)
             if numero in mensile.solleciti(conn, mese_monitoraggio) and not corpo.get("conferma"):
                 return jsonify({"error": "Sollecito già segnato come inviato", "gia_inviato": True}), 409
@@ -967,15 +992,9 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             return jsonify({"error": "Mese e bando sono obbligatori"}), 400
         conn = _conn()
         try:
-            esistente = conn.execute("SELECT mese FROM monitoraggio_mese WHERE mese_dati = ? ORDER BY mese DESC LIMIT 1", (mese_dati,)).fetchone()
-            if esistente:
-                mese_monitoraggio = esistente["mese"]
-            else:
-                mese_monitoraggio = mensile.mese_successivo(mese_dati)
-                if _trova(conn, mese_monitoraggio):
-                    return jsonify({"error": "Esiste già un monitoraggio per il mese successivo, associato a un altro periodo di dati"}), 409
-                mensile.crea(conn, mese_monitoraggio, mese_dati, utente_corrente())
-                difformita.sincronizza(conn, mese_monitoraggio, "primo sollecito dallo Stato complessivo", utente_corrente())
+            mese_monitoraggio, errore = _monitoraggio_del_periodo(conn, mese_dati)
+            if errore:
+                return errore
             mensile.verifica_aperto(conn, mese_monitoraggio)
             if bool(corpo.get("inviata")):
                 mensile.segna(conn, mese_monitoraggio, numero, "inviata_a_mano", utente_corrente())

@@ -189,7 +189,7 @@ Dopo ogni aggiornamento notturno, quando viene pubblicato uno scorrimento/utiliz
 
 **Comunicazioni nello stato complessivo**
 
-- **FR-031**: Lo stato complessivo MUST mostrare per ogni graduatoria e scorrimento la comunicazione del suo monitoraggio come nella pagina del monitoraggio (stato, protocollo dell'email, storico degli invii) con la spunta "inviata" e il pulsante "Messaggio" che apre lo stesso pannello del monitoraggio (anteprima, modifica, destinatari, copia, invio); gli atti fuori da ogni monitoraggio lo indicano. MUST NOT avere un secondo flusso di invio separato: tolti "Copia destinatari RdP", "Copia messaggio completo", "Anteprima e invio" e la spunta (richiesta dell'utente del 2026-11-17).
+- **FR-031**: Lo stato complessivo MUST mostrare per ogni graduatoria e scorrimento la comunicazione del suo monitoraggio come nella pagina del monitoraggio (stato, protocollo dell'email, storico degli invii) con la spunta "inviata" e il pulsante "Messaggio" che apre lo stesso pannello del monitoraggio (anteprima, modifica, destinatari, copia, invio); anche per gli atti di un mese senza monitoraggio si può aprire il messaggio o segnare l'invio: il monitoraggio di quel mese si crea alla prima azione, dopo conferma (richiesta dell'utente del 2026-11-17). MUST NOT avere un secondo flusso di invio separato: tolti "Copia destinatari RdP", "Copia messaggio completo", "Anteprima e invio" e la spunta (richiesta dell'utente del 2026-11-17).
 
 ### Key Entities
 
