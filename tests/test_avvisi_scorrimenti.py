@@ -1,28 +1,23 @@
-"""Avviso automatico agli RdP per ogni nuovo scorrimento e per le sue nuove difformità (spec 009, US6)."""
+"""Avviso automatico agli RdP per ogni nuovo scorrimento pubblicato (spec 009, US6): solo lo scorrimento, non le difformità."""
 import pytest
 
-from monitoraggio import atti, attivita, avvisi_scorrimenti as av, difformita, posta
+from monitoraggio import atti, attivita, avvisi_scorrimenti as av, posta
 
 URL = "https://www.urp.cnr.it/doc/scorrimento.pdf"
 
 
 def _scorrimento(codice="380.12", protocollo="0012345", data="2026-11-10", rdp=("anna@cnr.it",), urp=atti.PRESENTE,
-                 seg=atti.PRESENTE, sol=atti.PRESENTE, atto="scorrimento"):
-    fonti = {"urp": {"stato": urp, "url": URL}, "segreteria": {"stato": seg}, "sol": {"stato": sol}}
+                 seg=atti.PRESENTE, sol=atti.MANCANTE, atto="scorrimento", tipologia="tempo_indeterminato"):
     return {"atto": atto, "numero_bando": codice, "codice": codice, "bando_id": 1, "titolo_bando": "Bando di prova",
-            "tipologia": "tempo_indeterminato", "protocollo": protocollo, "data": data, "note": [],
-            "difforme": atti.MANCANTE in (urp, seg, sol),
-            "rdp": [{"email": e, "nome": "Anna", "cognome": "Neri"} for e in rdp], "fonti": fonti}
-
-
-def _aggiorna_difforme(r):
-    r["difforme"] = bool(r["note"]) or any(f["stato"] == atti.MANCANTE for f in r["fonti"].values())
+            "tipologia": tipologia, "protocollo": protocollo, "data": data, "note": ["una difformità"], "difforme": True,
+            "rdp": [{"email": e, "nome": "Anna", "cognome": "Neri"} for e in rdp],
+            "fonti": {"urp": {"stato": urp, "url": URL}, "segreteria": {"stato": seg}, "sol": {"stato": sol}}}
 
 
 @pytest.fixture
 def ambiente(db, monkeypatch):
     righe, inviati = [], []
-    monkeypatch.setattr(difformita, "righe_correnti", lambda conn, *a, **k: righe)
+    monkeypatch.setattr(atti, "elenco_atti", lambda conn, *a, **k: righe)
     monkeypatch.setattr(atti, "fonti_in_attesa", lambda conn: [])
     monkeypatch.setattr(posta, "configurata", lambda: True)
 
@@ -38,82 +33,45 @@ def ambiente(db, monkeypatch):
 
 def test_prima_esecuzione_registra_gli_esistenti_senza_email(ambiente):
     righe, inviati = ambiente
-    righe.append(_scorrimento(sol=atti.MANCANTE))
+    righe.append(_scorrimento())
     esito, dettaglio = av.esegui()
     assert esito == "ok" and "1 scorrimenti già presenti" in dettaglio and inviati == []
     av.esegui()
-    assert inviati == []  # già registrato con le sue difformità: niente email nemmeno dopo
+    assert inviati == []
 
 
-def test_nuovo_scorrimento_con_le_sue_difformita_agli_rdp_dell_ufficio(ambiente):
+def test_nuovo_scorrimento_avvisa_gli_rdp_dell_ufficio_una_volta(ambiente):
     righe, inviati = ambiente
-    av.esegui()  # attivazione, nessuno scorrimento
+    av.esegui()  # attivazione
     av.salva_copia("Segreteria@cnr.it", "admin")
-    righe.append(_scorrimento(rdp=("anna@cnr.it", "esterno@altroente.it"), sol=atti.MANCANTE))
-    assert av.esegui() == ("ok", "1 nuovi scorrimenti avvisati, 0 avvisi di nuove difformità")
+    r = _scorrimento(rdp=("anna@cnr.it", "esterno@altroente.it"))
+    righe.append(r)
+    assert av.esegui() == ("ok", "1 avvisi inviati")
     e = inviati[0]
     assert e["a"] == ["anna@cnr.it"] and e["cc"] == ["segreteria@cnr.it"]  # l'RdP esterno no
-    assert URL in e["corpo"] and "380.12" in e["oggetto"] and "10/11/2026" in e["oggetto"]
-    assert "Selezioni Online" in e["corpo"] and "risultano queste difformità" in e["corpo"]
-    assert "verificare che lo scorrimento sia corretto" in e["corpo"] and "richiederlo a chi si è occupato" in e["corpo"]
+    assert "dal file di riepilogo della segreteria e da URP la pubblicazione di uno scorrimento" in e["corpo"]
+    assert URL in e["corpo"] and "380.12" in e["oggetto"] and "10/11/2026" in e["corpo"] and "prot. 0012345" in e["corpo"]
+    assert "Se lo scorrimento non vi è stato notificato" in e["corpo"] and "richiedere il provvedimento di scorrimento" in e["corpo"]
+    assert "difformità" not in e["corpo"].lower()  # le difformità restano nell'email manuale
+    r["note"] = ["altra difformità"]
     for _ in range(3):
         av.esegui()
-    assert len(inviati) == 1  # mai due volte la stessa cosa
+    assert len(inviati) == 1  # una volta sola, anche se cambiano le difformità
     voce = av.stato()["avvisi"][0]
-    assert voce["evento"] == "nuovo" and voce["esito"] == "inviato" and voce["destinatari"] == ["anna@cnr.it"] and voce["rilievi"]
+    assert voce["esito"] == "inviato" and voce["destinatari"] == ["anna@cnr.it"]
 
 
-def test_basta_una_fonte_tra_segreteria_e_urp(ambiente):
+def test_dice_da_quale_fonte_e_mette_il_link_solo_se_su_urp(ambiente):
     righe, inviati = ambiente
     av.esegui()
     righe += [_scorrimento(protocollo="1", urp=atti.MANCANTE), _scorrimento(protocollo="2", seg=atti.MANCANTE),
-              _scorrimento(protocollo="3", urp=atti.MANCANTE, seg=atti.MANCANTE), _scorrimento(protocollo="4", atto="graduatoria")]
+              _scorrimento(protocollo="3", urp=atti.MANCANTE, seg=atti.MANCANTE), _scorrimento(protocollo="4", atto="graduatoria"),
+              _scorrimento(protocollo="5", tipologia="categorie_protette")]
     av.esegui()
-    assert len(inviati) == 2 and all("prot." in x["corpo"] for x in inviati)
-
-
-def test_nuova_difformita_su_uno_scorrimento_gia_avvisato(ambiente):
-    righe, inviati = ambiente
-    av.esegui()
-    r = _scorrimento()
-    righe.append(r)
-    av.esegui()
-    assert len(inviati) == 1 and "difformità" not in inviati[0]["oggetto"]
-    r["fonti"]["sol"]["stato"] = atti.MANCANTE  # sparisce da SOL: difformità nuova
-    _aggiorna_difforme(r)
-    assert av.esegui() == ("ok", "0 nuovi scorrimenti avvisati, 1 avvisi di nuove difformità")
-    assert "nuove difformità" in inviati[1]["oggetto"] and "Selezioni Online" in inviati[1]["corpo"]
-    av.esegui()
-    assert len(inviati) == 2  # la stessa difformità non si ripete
-    r["fonti"]["sol"]["stato"] = atti.PRESENTE  # corretta: nessuna email
-    _aggiorna_difforme(r)
-    av.esegui()
-    assert len(inviati) == 2
-    assert [x["evento"] for x in av.stato()["avvisi"]] == ["difformita", "nuovo"]
-
-
-def test_nuova_difformita_anche_sugli_scorrimenti_gia_presenti_all_attivazione(ambiente):
-    righe, inviati = ambiente
-    r = _scorrimento()
-    righe.append(r)
-    av.esegui()  # attivazione: registrato senza email
-    r["note"] = ["protocollo diverso: URP 1, file 2"]
-    _aggiorna_difforme(r)
-    av.esegui()
-    assert len(inviati) == 1 and "nuove difformità" in inviati[0]["oggetto"] and "protocollo diverso" in inviati[0]["corpo"]
-
-
-def test_errore_su_una_difformita_non_ripete_l_annuncio(ambiente):
-    righe, inviati = ambiente
-    r = _scorrimento(rdp=("errore@cnr.it",))
-    righe.append(r)
-    av.esegui()  # attivazione
-    r["note"] = ["nota nuova"]
-    _aggiorna_difforme(r)
-    assert av.esegui()[0] == "errore"
-    r["rdp"] = [{"email": "anna@cnr.it"}]
-    av.esegui()
-    assert len(inviati) == 1 and "nuove difformità" in inviati[0]["oggetto"]  # si ritenta la difformità, non l'annuncio
+    corpi = {x["corpo"].split("prot. ")[1].split(".")[0]: x["corpo"] for x in inviati}
+    assert set(corpi) == {"1", "2"}
+    assert "abbiamo rilevato dal file di riepilogo della segreteria la pubblicazione" in corpi["1"] and URL not in corpi["1"]
+    assert "abbiamo rilevato da URP la pubblicazione" in corpi["2"] and URL in corpi["2"]
 
 
 def test_senza_rdp_dell_ufficio_errore_e_ritentativo(ambiente):
@@ -121,10 +79,10 @@ def test_senza_rdp_dell_ufficio_errore_e_ritentativo(ambiente):
     av.esegui()
     righe += [_scorrimento(protocollo="1", rdp=("esterno@altroente.it",)), _scorrimento(protocollo="2", rdp=("errore@cnr.it",))]
     esito, dettaglio = av.esegui()
-    assert esito == "errore" and "1 senza RdP dell'ufficio" in dettaglio and "1 non inviati" in dettaglio
+    assert esito == "errore" and dettaglio == "0 avvisi inviati, 1 senza RdP dell'ufficio, 1 non inviati"
     esiti = {a["protocollo"]: a for a in av.stato()["avvisi"]}
     assert esiti["1"]["messaggio"] == "Nessuno degli RdP fa parte dell'ufficio" and esiti["2"]["esito"] == "errore"
-    assert av.esegui()[1] == "0 nuovi scorrimenti avvisati, 0 avvisi di nuove difformità, 1 non inviati"  # si ritenta solo l'errore
+    assert av.esegui()[1] == "0 avvisi inviati, 1 non inviati"  # si ritenta solo l'errore
     righe[1]["rdp"] = [{"email": "anna@cnr.it"}]
     av.esegui()
     assert len(inviati) == 1 and inviati[0]["a"] == ["anna@cnr.it"]

@@ -77,7 +77,7 @@
         </form>
         <p class="muted small" id="note-aggiornamenti"></p>
         <h3>Avviso scorrimenti ai referenti</h3>
-        <p class="muted small" style="margin-top:0">Con l'attività «Avviso scorrimenti ai referenti» attiva, dopo l'aggiornamento notturno gli RdP <b>che fanno parte dell'ufficio</b> ricevono un'email per ogni nuovo scorrimento trovato nel file della segreteria o su URP, con le sue difformità e il link al documento URP, e un'altra email se sullo stesso scorrimento compaiono difformità nuove. Ogni evento si comunica una sola volta e resta registrato qui sotto; alla prima esecuzione gli scorrimenti già presenti vengono solo registrati. Gli invii seguono le impostazioni Email (prova / ufficiali).</p>
+        <p class="muted small" style="margin-top:0">Con l'attività «Avviso scorrimenti ai referenti» attiva, dopo l'aggiornamento notturno gli RdP <b>che fanno parte dell'ufficio</b> ricevono un'email per ogni nuovo scorrimento pubblicato, trovato nel file della segreteria e/o su URP, con il link al documento URP: se non è stato loro notificato, chiedono il provvedimento a chi se n'è occupato. Le difformità restano nell'email manuale del monitoraggio. Ogni scorrimento si avvisa una sola volta e l'invio resta registrato qui sotto; alla prima esecuzione gli scorrimenti già presenti vengono solo registrati. Gli invii seguono le impostazioni Email (prova / ufficiali).</p>
         <form id="modulo-scorrimenti">
           <label class="campo-largo">Persone dell'ufficio che ricevono l'avviso, se sono RdP del bando <textarea id="scorrimenti-interni" style="min-height:70px" placeholder="una email per riga, o separate da virgola"></textarea></label>
           <p class="muted small" style="margin:4px 0 0">Gli RdP esterni all'ufficio non ricevono nulla. Con l'elenco vuoto non parte nessuna email. Chi viene aggiunto dopo riceve solo gli scorrimenti degli ultimi 30 giorni.</p>
@@ -85,7 +85,7 @@
           <button type="submit">Salva</button><span class="muted small" id="esito-scorrimenti" aria-live="polite"></span></div>
         </form>
         <div class="errore" id="errore-scorrimenti" role="alert" hidden style="margin-top:8px"></div>
-        <div class="scroll" style="margin-top:8px"><table id="avvisi-scorrimenti" style="min-width:980px"></table></div>
+        <div class="scroll" style="margin-top:8px"><table id="avvisi-scorrimenti" style="min-width:760px"></table></div>
         <h3>Storico esecuzioni</h3>
         <div class="riga" style="margin-bottom:8px"><label>Attività <select id="f-attivita"><option value="">Tutte</option></select></label><label class="spunta"><input type="checkbox" id="f-problemi"> solo con avvisi o errori</label></div>
         <div class="scroll"><table id="storico" style="min-width:640px"></table></div>
@@ -267,13 +267,12 @@
   function mostraScorrimenti(d) {
     if (document.activeElement?.id !== "scorrimenti-cc") $("scorrimenti-cc").value = d.copia.join(", ");
     if (document.activeElement?.id !== "scorrimenti-interni") $("scorrimenti-interni").value = d.interni.join("\n");
-    $("avvisi-scorrimenti").innerHTML = `<thead><tr><th>Data</th><th>Evento</th><th>Bando</th><th>Scorrimento</th><th>Difformità comunicate</th><th>Destinatari</th><th>Esito</th></tr></thead><tbody>` + (d.avvisi.map(a => `<tr>
-      <td style="white-space:nowrap">${ora(a.quando)}</td><td class="small">${a.evento === "nuovo" ? "nuovo scorrimento" : "nuove difformità"}</td><td>${esc(a.chiave)}</td>
+    $("avvisi-scorrimenti").innerHTML = `<thead><tr><th>Data</th><th>Bando</th><th>Scorrimento</th><th>Destinatari</th><th>Esito</th></tr></thead><tbody>` + (d.avvisi.map(a => `<tr>
+      <td style="white-space:nowrap">${ora(a.quando)}</td><td>${esc(a.chiave)}</td>
       <td class="small">${esc(dataIt(a.data))}${a.protocollo ? ` · prot. ${esc(a.protocollo)}` : ""}${a.url_urp ? ` · <a href="${esc(a.url_urp)}" target="_blank" rel="noopener noreferrer">URP ↗</a>` : ""}</td>
-      <td class="small">${a.rilievi.length ? `<ul class="rilievi">${a.rilievi.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : `<span class="muted2">nessuna</span>`}</td>
       <td class="small">${esc(a.destinatari.join(", ")) || "—"}${a.cc.length ? `<div class="muted">Cc: ${esc(a.cc.join(", "))}</div>` : ""}</td>
       <td><span class="pillola ${(ESITI_AVVISO[a.esito] || ["p-na"])[0]}">${(ESITI_AVVISO[a.esito] || [0, a.esito])[1]}</span>${a.messaggio ? `<div class="muted small">${esc(a.messaggio)}</div>` : ""}</td></tr>`).join("")
-      || `<tr><td colspan="7" class="muted">${d.iniziato_il ? "Nessun nuovo scorrimento avvisato." : "L'avviso non è ancora partito: attiva l'attività qui sopra."}</td></tr>`) + `</tbody>`;
+      || `<tr><td colspan="5" class="muted">${d.iniziato_il ? "Nessun nuovo scorrimento avvisato." : "L'avviso non è ancora partito: attiva l'attività qui sopra."}</td></tr>`) + `</tbody>`;
   }
   $("modulo-scorrimenti").onsubmit = async (e) => {
     e.preventDefault();

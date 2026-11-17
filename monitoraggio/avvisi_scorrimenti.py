@@ -1,21 +1,20 @@
-"""Avviso automatico agli RdP per ogni nuovo scorrimento/utilizzo di graduatoria e per le sue difformità (spec 009, US6).
+"""Avviso automatico agli RdP per ogni nuovo scorrimento/utilizzo di graduatoria (spec 009, US6).
 
-Dopo l'aggiornamento notturno, da quando la funzione è attiva (scelta dell'utente del 2026-11-17):
-- uno scorrimento nuovo, presente nel file della segreteria o su URP, fa partire un'email agli RdP con le difformità
-  che ha in quel momento e il link al documento su URP, in copia la segreteria;
-- su uno scorrimento già avvisato, una difformità nuova (non ancora comunicata) fa partire un'email con le sole novità.
-Nel database ogni scorrimento tiene le difformità già comunicate e ogni invio resta registrato: niente si ripete ogni notte.
-Alla prima esecuzione quello che c'è già si registra come «esistente», senza email.
-Gli invii seguono le impostazioni email (prova / ufficiali). Nessuna fonte viene modificata.
-Solo gli RdP interni all'ufficio ricevono l'avviso (elenco nelle Impostazioni, scelta dell'utente del 2026-11-17): tra gli RdP
-ci sono anche persone esterne. Con l'elenco vuoto non parte nessuna email.
+Scelta dell'utente del 2026-11-17: l'email automatica riguarda solo la pubblicazione dello scorrimento. Dopo l'aggiornamento
+notturno, uno scorrimento nuovo trovato nel file della segreteria e/o su URP fa partire un'email agli RdP dell'ufficio che
+dice dove è stato rilevato, con il link al documento URP, e chiede di richiedere il provvedimento a chi se n'è occupato se
+non è stato notificato. Le difformità (compreso lo scorrimento mancante su Selezioni Online) restano nell'email manuale del
+monitoraggio. Ogni scorrimento si avvisa una volta sola e ogni invio resta registrato; alla prima esecuzione quelli già
+presenti si registrano come «esistente», senza email.
+Solo gli RdP interni all'ufficio ricevono l'avviso (elenco nelle Impostazioni): tra gli RdP ci sono anche persone esterne.
+Con l'elenco vuoto non parte nessuna email.
 """
 import json
 import logging
 import re
 from datetime import datetime, timedelta, timezone
 
-from . import atti, comunicazioni, config, db, difformita, impostazioni, posta
+from . import atti, comunicazioni, config, db, impostazioni, posta
 
 log = logging.getLogger(__name__)
 INIZIATO = "avviso_scorrimenti_iniziato"
@@ -64,14 +63,14 @@ def salva_copia(testo: str | None, autore: str | None) -> list[str]:
 
 
 def scorrimenti_trovati(conn) -> list[dict]:
-    """Scorrimenti/utilizzi del monitoraggio presenti nel file della segreteria o su URP, con le difformità calcolate
-    come nel monitoraggio (stessi testi delle email ai referenti)."""
-    trovati = []
-    for r in difformita.righe_correnti(conn, config.monitoraggio_dal().isoformat(), "9999-12-31"):
-        fonti = r.get("fonti") or {}
-        if r["atto"] == "scorrimento" and any((fonti.get(f) or {}).get("stato") == atti.PRESENTE for f in ("segreteria", "urp")):
-            trovati.append({**r, "rilievi_avviso": difformita.rilievi(r) if r.get("difforme") else []})
-    return trovati
+    """Scorrimenti/utilizzi del monitoraggio presenti nel file della segreteria o su URP."""
+    return [r for r in atti.elenco_atti(conn)
+            if r["atto"] == "scorrimento" and config.nel_monitoraggio(r.get("tipologia")) and _dove(r)]
+
+
+def _dove(r: dict) -> list[str]:
+    fonti = r.get("fonti") or {}
+    return [f for f in ("segreteria", "urp") if (fonti.get(f) or {}).get("stato") == atti.PRESENTE]
 
 
 def _rdp(r: dict) -> list[str]:
@@ -83,41 +82,26 @@ def _data_it(iso: str | None) -> str:
     return datetime.strptime(iso, "%Y-%m-%d").strftime("%d/%m/%Y") if iso and re.fullmatch(r"\d{4}-\d{2}-\d{2}", iso) else (iso or "")
 
 
-NOMI = {"sol": "Selezioni Online", "urp": "URP", "segreteria": "file di riepilogo della segreteria"}
+_DOVE = {("segreteria", "urp"): "dal file di riepilogo della segreteria e da URP", ("segreteria",): "dal file di riepilogo della segreteria",
+         ("urp",): "da URP"}
 
 
-def messaggio(r: dict, evento: str = "nuovo", rilievi: list[str] | None = None) -> tuple[str, str]:
-    """`evento`: «nuovo» (scorrimento appena trovato, con tutte le difformità attuali) o «difformita» (solo le nuove)."""
-    rilievi = r.get("rilievi_avviso", []) if rilievi is None else rilievi
+def messaggio(r: dict) -> tuple[str, str]:
     codice = comunicazioni.chiave(r)
     titolo = f" – {r['titolo_bando']}" if r.get("titolo_bando") else ""
     prot = f", prot. {r['protocollo']}" if r.get("protocollo") else ""
-    atto = f"provvedimento del {_data_it(r.get('data'))}{prot}"
     link = ((r.get("fonti") or {}).get("urp") or {}).get("url")
-    presente = [NOMI[f] for f in ("segreteria", "urp", "sol") if ((r.get("fonti") or {}).get(f) or {}).get("stato") == atti.PRESENTE]
-    elenco = "".join(f"- {x}\n" for x in rilievi)
-    if evento == "nuovo":
-        oggetto = f"Bando n° {codice}: rilevato uno scorrimento di graduatoria del {_data_it(r.get('data'))}"
-        apertura = (f"nell'aggiornamento dei dati del monitoraggio è stato rilevato uno scorrimento/utilizzo della graduatoria per il bando "
-                    f"{codice}{titolo}: {atto}, presente su: {', '.join(presente)}.\n\n"
-                    + (f"Dai dati attualmente disponibili risultano queste difformità:\n{elenco}\n" if rilievi else ""))
-    else:
-        oggetto = f"Bando n° {codice}: nuove difformità sullo scorrimento del {_data_it(r.get('data'))}"
-        apertura = (f"per lo scorrimento/utilizzo della graduatoria del bando {codice}{titolo} ({atto}), già segnalato in precedenza, "
-                    f"dai dati attualmente disponibili risultano queste nuove difformità:\n{elenco}\n")
-    corpo = (f"Gentili tutte e tutti,\n\n{apertura}"
-             + (f"Documento pubblicato su URP: {link}\n\n" if link else "")
-             + "Vi chiediamo di verificare che lo scorrimento sia corretto e riportato su Selezioni Online e, se non disponete del "
-             "provvedimento, di richiederlo a chi si è occupato dello scorrimento.\n\n"
+    oggetto = f"Bando n° {codice}: rilevata la pubblicazione di uno scorrimento di graduatoria"
+    corpo = (f"Gentili tutte e tutti,\n\nabbiamo rilevato {_DOVE[tuple(_dove(r))]} la pubblicazione di uno scorrimento/utilizzo della "
+             f"graduatoria per il bando {codice}{titolo}: provvedimento del {_data_it(r.get('data'))}{prot}.\n\n"
+             + (f"Documento pubblicato su URP: {link}\n\n" if link and "urp" in _dove(r) else "")
+             + "Se lo scorrimento non vi è stato notificato, vi chiediamo di richiedere il provvedimento di scorrimento a chi se n'è occupato.\n\n"
              f"Cordiali saluti,\n{posta.impostazioni_email()['firma'] or ''}\n")
     return oggetto, corpo
 
 
-def _registra_base(conn, r: dict, ora: str) -> None:
-    conn.execute("INSERT OR IGNORE INTO avviso_scorrimento (chiave, bando_id, protocollo, data, url_urp, esito, rilevato_il, quando, rilievi) "
-                 "VALUES (?, ?, ?, ?, ?, 'esistente', ?, ?, ?)",
-                 (comunicazioni.chiave(r), r.get("bando_id"), r.get("protocollo") or "", r.get("data") or "",
-                  ((r.get("fonti") or {}).get("urp") or {}).get("url"), ora, ora, json.dumps(r["rilievi_avviso"], ensure_ascii=False)))
+def _url(r: dict) -> str | None:
+    return ((r.get("fonti") or {}).get("urp") or {}).get("url")
 
 
 def esegui() -> tuple[str, str]:
@@ -131,7 +115,9 @@ def esegui() -> tuple[str, str]:
         ora = _adesso()
         if not impostazioni._leggi(INIZIATO):
             for r in trovati:
-                _registra_base(conn, r, ora)
+                conn.execute("INSERT OR IGNORE INTO avviso_scorrimento (chiave, bando_id, protocollo, data, url_urp, esito, rilevato_il, quando) "
+                             "VALUES (?, ?, ?, ?, ?, 'esistente', ?, ?)",
+                             (comunicazioni.chiave(r), r.get("bando_id"), r.get("protocollo") or "", r.get("data") or "", _url(r), ora, ora))
             impostazioni._scrivi(conn, INIZIATO, ora, "attività")
             return "ok", f"Prima esecuzione: {len(trovati)} scorrimenti già presenti registrati senza email"
         if not posta.configurata():
@@ -142,60 +128,37 @@ def esegui() -> tuple[str, str]:
         copia = copia_segreteria()
         recente = (datetime.now(timezone.utc) - timedelta(days=GIORNI_RECUPERO)).strftime("%Y-%m-%dT%H:%M:%SZ")
         gia = {(a["chiave"], a["protocollo"], a["data"]): a for a in conn.execute("SELECT * FROM avviso_scorrimento")}
-        # annunciati: già presenti all'attivazione o con l'email del nuovo scorrimento partita
-        annunciati = {r["avviso_id"] for r in conn.execute(
-            "SELECT DISTINCT avviso_id FROM avviso_scorrimento_invio WHERE evento = 'nuovo' AND esito IN ('inviato', 'prova')")}
-        conteggi = {"nuovi": 0, "difformita": 0, "senza": 0, "errori": 0}
+        inviati = errori = senza = 0
         for r in trovati:
             chiave = (comunicazioni.chiave(r), r.get("protocollo") or "", r.get("data") or "")
             prima = gia.get(chiave)
-            attuali = r["rilievi_avviso"]
-            comunicati = json.loads(prima["rilievi"]) if prima else []
-            if prima is None or (prima["esito"] != "esistente" and prima["id"] not in annunciati):
-                evento, da_dire = "nuovo", attuali  # mai annunciato: tutto lo stato attuale
-                if prima is not None and ((prima["esito"] == "errore" and prima["tentativi"] >= MAX_TENTATIVI)
-                                          or (prima["esito"] == "senza_destinatari" and prima["rilevato_il"] < recente)):
-                    continue
-            else:
-                da_dire = [x for x in attuali if x not in comunicati]
-                if not da_dire:
-                    continue
-                evento = "difformita"
+            if prima is not None and not ((prima["esito"] == "errore" and prima["tentativi"] < MAX_TENTATIVI)
+                                          or (prima["esito"] == "senza_destinatari" and prima["rilevato_il"] >= recente)):
+                continue  # già avvisato, già presente all'attivazione, o non più da ritentare
             tutti = _rdp(r)
             destinatari = [e for e in tutti if e in ufficio]
-            if not destinatari and prima is not None and prima["esito"] == "senza_destinatari" and evento == "nuovo":
+            if not destinatari and prima is not None and prima["esito"] == "senza_destinatari":
                 continue  # già registrato senza RdP dell'ufficio: si riprova in silenzio finché è recente
             esito, testo = "senza_destinatari", ("Nessuno degli RdP fa parte dell'ufficio" if tutti else "Nessuna email RdP per il bando")
             if destinatari:
-                oggetto, corpo = messaggio(r, evento, da_dire)
+                oggetto, corpo = messaggio(r)
                 try:
                     esito, testo = ("prova" if posta.invia(destinatari, oggetto, corpo, cc=copia) else "inviato"), None
                 except posta.PostaErrore as e:
                     esito, testo = "errore", str(e)
-            conteggi["errori" if esito == "errore" else "senza" if esito == "senza_destinatari" else "nuovi" if evento == "nuovo" else "difformita"] += 1
-            # le difformità comunicate: tutte quelle attuali se l'email è partita (o non c'era a chi mandarla per una difformità);
-            # per un errore restano quelle di prima, così si ritenta
-            if esito in ("inviato", "prova") or (esito == "senza_destinatari" and evento == "difformita"):
-                comunicati_ora = list(dict.fromkeys([*comunicati, *attuali]))
-            else:
-                comunicati_ora = comunicati
-            # l'esito della riga riguarda l'annuncio dello scorrimento; quelli delle difformità stanno negli invii
-            esito_riga = prima["esito"] if evento == "difformita" else esito
-            conn.execute("INSERT INTO avviso_scorrimento (chiave, bando_id, protocollo, data, url_urp, destinatari, cc, esito, messaggio, tentativi, rilevato_il, quando, rilievi) "
-                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?) ON CONFLICT(chiave, protocollo, data) DO UPDATE SET url_urp = excluded.url_urp, "
+            inviati += esito in ("inviato", "prova")
+            errori += esito == "errore"
+            senza += esito == "senza_destinatari"
+            conn.execute("INSERT INTO avviso_scorrimento (chiave, bando_id, protocollo, data, url_urp, destinatari, cc, esito, messaggio, tentativi, rilevato_il, quando) "
+                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) ON CONFLICT(chiave, protocollo, data) DO UPDATE SET url_urp = excluded.url_urp, "
                          "destinatari = excluded.destinatari, cc = excluded.cc, esito = excluded.esito, messaggio = excluded.messaggio, "
-                         "tentativi = avviso_scorrimento.tentativi + ?, quando = excluded.quando, rilievi = excluded.rilievi",
-                         (chiave[0], r.get("bando_id"), chiave[1], chiave[2], ((r.get("fonti") or {}).get("urp") or {}).get("url"),
-                          json.dumps(destinatari), json.dumps(copia), esito_riga, testo, ora, ora, json.dumps(comunicati_ora, ensure_ascii=False),
-                          1 if evento == "nuovo" else 0))  # i tentativi contano solo per l'annuncio
+                         "tentativi = avviso_scorrimento.tentativi + 1, quando = excluded.quando",
+                         (*chiave[:1], r.get("bando_id"), *chiave[1:], _url(r), json.dumps(destinatari), json.dumps(copia), esito, testo, ora, ora))
             avviso_id = conn.execute("SELECT id FROM avviso_scorrimento WHERE chiave = ? AND protocollo = ? AND data = ?", chiave).fetchone()["id"]
-            conn.execute("INSERT INTO avviso_scorrimento_invio (avviso_id, quando, evento, esito, destinatari, cc, rilievi, messaggio) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                         (avviso_id, ora, evento, esito, json.dumps(destinatari), json.dumps(copia), json.dumps(da_dire, ensure_ascii=False), testo))
-        c = conteggi
-        dettaglio = (f"{c['nuovi']} nuovi scorrimenti avvisati, {c['difformita']} avvisi di nuove difformità"
-                     + (f", {c['senza']} senza RdP dell'ufficio" if c["senza"] else "") + (f", {c['errori']} non inviati" if c["errori"] else ""))
-        inviati = c["nuovi"] + c["difformita"]
-        return ("errore" if c["errori"] and not inviati else "avviso" if c["errori"] or c["senza"] else "ok"), dettaglio
+            conn.execute("INSERT INTO avviso_scorrimento_invio (avviso_id, quando, evento, esito, destinatari, cc, messaggio) VALUES (?, ?, 'nuovo', ?, ?, ?, ?)",
+                         (avviso_id, ora, esito, json.dumps(destinatari), json.dumps(copia), testo))
+        dettaglio = f"{inviati} avvisi inviati" + (f", {senza} senza RdP dell'ufficio" if senza else "") + (f", {errori} non inviati" if errori else "")
+        return ("errore" if errori and not inviati else "avviso" if errori or senza else "ok"), dettaglio
     except Exception as e:  # l'avviso non deve mai bloccare gli aggiornamenti
         log.exception("Avviso scorrimenti non riuscito")
         return "errore", f"Errore imprevisto ({type(e).__name__})"
@@ -208,8 +171,8 @@ def elenco(limite: int = 50) -> list[dict]:
     conn = db.connetti()
     db.inizializza(conn)
     try:
-        return [{**dict(r), **{k: json.loads(r[k]) for k in ("destinatari", "cc", "rilievi")}} for r in conn.execute(
-            "SELECT i.id, i.quando, i.evento, i.esito, i.destinatari, i.cc, i.rilievi, i.messaggio, a.chiave, a.protocollo, a.data, a.url_urp "
+        return [{**dict(r), **{k: json.loads(r[k]) for k in ("destinatari", "cc")}} for r in conn.execute(
+            "SELECT i.id, i.quando, i.esito, i.destinatari, i.cc, i.messaggio, a.chiave, a.protocollo, a.data, a.url_urp "
             "FROM avviso_scorrimento_invio i JOIN avviso_scorrimento a ON a.id = i.avviso_id ORDER BY i.id DESC LIMIT ?", (limite,))]
     finally:
         conn.close()

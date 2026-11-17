@@ -108,23 +108,22 @@ Un bando di categorie protette o di reclutamento speciale ha un profilo (per ese
 
 ### User Story 6 - Avviso automatico ai referenti per ogni nuovo scorrimento (Priority: P1)
 
-Dopo ogni aggiornamento notturno, quando uno scorrimento/utilizzo di graduatoria risulta sia nel file della segreteria sia su URP e non è ancora stato avvisato, il sistema scrive agli RdP del bando: "è stato trovato uno scorrimento", con data, protocollo e link al documento su URP, e chiede di verificare che sia corretto e, se serve, di richiedere il documento a chi si è occupato dello scorrimento. In copia va l'indirizzo della segreteria indicato nelle Impostazioni (oltre alla copia fissa dell'ufficio).
+Dopo ogni aggiornamento notturno, quando viene pubblicato uno scorrimento/utilizzo di graduatoria nuovo, trovato nel file della segreteria e/o su URP, il sistema scrive agli RdP del bando che fanno parte dell'ufficio: "abbiamo rilevato dal file della segreteria e da URP (oppure solo da uno dei due) la pubblicazione di uno scorrimento", con data, protocollo e link al documento su URP, e chiede, se lo scorrimento non è stato loro notificato, di richiedere il provvedimento a chi se n'è occupato. In copia va l'indirizzo della segreteria indicato nelle Impostazioni. L'email automatica riguarda solo lo scorrimento: le difformità, compreso lo scorrimento mancante su Selezioni Online, restano nell'email manuale del monitoraggio (scelta dell'utente del 2026-11-17).
 
-**Why this priority**: oggi gli RdP scoprono gli scorrimenti solo con il monitoraggio mensile; l'avviso immediato permette di correggere subito Selezioni Online.
+**Why this priority**: oggi gli RdP scoprono gli scorrimenti solo con il monitoraggio mensile.
 
-**Independent Test**: Con l'avviso attivo e le email in prova, caricare un file della segreteria con uno scorrimento nuovo già presente su URP; dopo l'aggiornamento notturno arriva all'indirizzo di prova un'email per gli RdP del bando con il link URP; all'aggiornamento successivo non ne arriva una seconda.
+**Independent Test**: Con l'avviso attivo e le email in prova, caricare un file della segreteria con uno scorrimento nuovo; dopo l'aggiornamento notturno arriva all'indirizzo di prova un'email per gli RdP dell'ufficio; all'aggiornamento successivo non ne arriva una seconda.
 
 **Acceptance Scenarios**:
 
-1. **Given** un nuovo scorrimento presente nel file della segreteria o su URP, **When** finisce l'aggiornamento notturno, **Then** parte un'email agli RdP del bando con data, protocollo, link URP e la richiesta di verifica, con in copia l'indirizzo della segreteria.
-2. **Given** uno scorrimento già avvisato, **When** finiscono gli aggiornamenti successivi, **Then** non parte un'altra email.
-3. **Given** uno scorrimento già avvisato su cui compare una difformità nuova, **When** finisce l'aggiornamento, **Then** parte un'email con le sole difformità nuove; le stesse non si ripetono nelle notti successive e una difformità corretta non genera email.
-4. **Given** l'avviso appena attivato, **When** gira il primo aggiornamento, **Then** gli scorrimenti già presenti vengono registrati come "già esistenti" senza email: si avvisano solo quelli nuovi.
-5. **Given** un bando senza email RdP, **When** si trova lo scorrimento, **Then** non parte nessuna email e l'avviso resta registrato "senza destinatari", visibile all'amministratore.
-9. **Given** un bando con un RdP interno e uno esterno all'ufficio, **When** parte l'avviso, **Then** lo riceve solo l'RdP interno; se nessun RdP è interno l'avviso resta registrato "nessun RdP dell'ufficio".
-6. **Given** le email in modalità di prova, **When** parte un avviso, **Then** arriva solo all'indirizzo di prova con i destinatari reali nel testo, come le altre email.
-7. **Given** un invio non riuscito, **When** si apre l'elenco degli avvisi, **Then** l'avviso risulta "non inviato" con il motivo e viene ritentato all'aggiornamento successivo.
-8. **Given** l'avviso disattivato nelle Impostazioni, **When** finisce l'aggiornamento, **Then** non parte nessuna email.
+1. **Given** un nuovo scorrimento nel file della segreteria e su URP, **When** finisce l'aggiornamento notturno, **Then** parte un'email agli RdP dell'ufficio che dice "dal file della segreteria e da URP", con il link URP, in copia la segreteria.
+2. **Given** un nuovo scorrimento solo nel file della segreteria (o solo su URP), **When** finisce l'aggiornamento, **Then** l'email dice da quale fonte è stato rilevato; il link URP c'è solo se è su URP.
+3. **Given** uno scorrimento già avvisato, **When** finiscono gli aggiornamenti successivi, **Then** non parte un'altra email, anche se cambiano le sue difformità.
+4. **Given** l'avviso appena attivato, **When** gira il primo aggiornamento, **Then** gli scorrimenti già presenti vengono registrati come "già esistenti" senza email.
+5. **Given** un bando con RdP interni ed esterni all'ufficio, **When** parte l'avviso, **Then** lo ricevono solo gli interni; se nessuno è interno l'avviso resta registrato "nessun RdP dell'ufficio".
+6. **Given** le email in modalità di prova, **When** parte un avviso, **Then** arriva solo all'indirizzo di prova con i destinatari reali nel testo.
+7. **Given** un invio non riuscito, **When** si apre l'elenco degli avvisi, **Then** risulta "non inviato" con il motivo e viene ritentato all'aggiornamento successivo.
+8. **Given** l'avviso disattivato o l'elenco delle persone dell'ufficio vuoto, **When** finisce l'aggiornamento, **Then** non parte nessuna email.
 
 ### Edge Cases
 
@@ -181,9 +180,9 @@ Dopo ogni aggiornamento notturno, quando uno scorrimento/utilizzo di graduatoria
 
 **Avviso scorrimenti**
 
-- **FR-025**: Alla fine di ogni aggiornamento pianificato il sistema MUST individuare, nelle tipologie del monitoraggio, gli scorrimenti/utilizzi presenti nel file della segreteria o su URP non ancora annunciati, e le difformità degli scorrimenti non ancora comunicate (stessi testi del monitoraggio). Scelta dell'utente del 2026-11-17: si avvisa ogni nuovo scorrimento e ogni nuova difformità relativa agli scorrimenti, da quando la funzione è attiva.
-- **FR-026**: Per ciascuno MUST inviare un'email ai soli RdP del bando (o del codice) che fanno parte dell'ufficio, secondo l'elenco delle persone dell'ufficio nelle Impostazioni (gli RdP esterni non ricevono nulla; con l'elenco vuoto non parte nessuna email; chi entra nell'elenco dopo riceve solo gli scorrimenti rilevati negli ultimi 30 giorni), con bando, data, protocollo, link al documento URP e la richiesta di verificare lo scorrimento e, se serve, di richiedere il documento a chi se n'è occupato; in copia l'indirizzo della segreteria delle Impostazioni e la copia fissa dell'ufficio.
-- **FR-027**: Ogni scorrimento MUST essere annunciato al più una volta e ogni difformità comunicata al più una volta; il database MUST tenere per ogni scorrimento le difformità già comunicate e ogni invio come evento (nuovo scorrimento / nuove difformità) con esito (inviato, in prova, senza destinatari, non inviato) e data. Gli scorrimenti già presenti all'attivazione si registrano come esistenti con le loro difformità.
+- **FR-025**: Alla fine di ogni aggiornamento pianificato il sistema MUST individuare gli scorrimenti/utilizzi, nelle tipologie del monitoraggio, presenti nel file della segreteria e/o su URP e non ancora avvisati.
+- **FR-026**: Per ciascuno MUST inviare un'email ai soli RdP del bando (o del codice) che fanno parte dell'ufficio, secondo l'elenco nelle Impostazioni (con l'elenco vuoto non parte nessuna email; chi entra nell'elenco dopo riceve solo gli scorrimenti rilevati negli ultimi 30 giorni), che dice da quale fonte è stata rilevata la pubblicazione (file della segreteria, URP o entrambi), con bando, data, protocollo e link al documento URP, e chiede di richiedere il provvedimento se non è stato notificato; in copia la segreteria delle Impostazioni e la copia fissa dell'ufficio. L'email MUST NOT contenere le difformità, che restano nell'email manuale del monitoraggio.
+- **FR-027**: Ogni scorrimento MUST essere avvisato al più una volta; ogni invio MUST restare registrato con esito (inviato, in prova, senza destinatari, non inviato) e data; gli scorrimenti presenti all'attivazione si registrano come esistenti.
 - **FR-028**: L'avviso MUST essere disattivato finché un amministratore non lo attiva; alla prima attivazione gli scorrimenti già presenti MUST essere registrati senza email.
 - **FR-029**: Gli invii MUST seguire le impostazioni email esistenti (prova / ufficiali); un errore di invio MUST NOT bloccare l'aggiornamento.
 - **FR-030**: L'amministratore MUST vedere l'elenco degli avvisi con esito, nelle Impostazioni.
