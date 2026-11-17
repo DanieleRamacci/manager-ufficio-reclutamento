@@ -6,7 +6,7 @@ import sqlite3
 from . import config
 from .normalizza import AGGIUNTA_TIPOLOGIE, ANCORA_SCORRIMENTI, codice_sede, nota_sottotipo
 
-SCHEMA_VERSION = 28
+SCHEMA_VERSION = 29
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -338,7 +338,20 @@ CREATE TABLE IF NOT EXISTS avviso_scorrimento (
     tentativi INTEGER NOT NULL DEFAULT 0,
     rilevato_il TEXT NOT NULL,
     quando TEXT NOT NULL,
+    rilievi TEXT NOT NULL DEFAULT '[]',
     UNIQUE (chiave, protocollo, data)
+);
+
+CREATE TABLE IF NOT EXISTS avviso_scorrimento_invio (
+    id INTEGER PRIMARY KEY,
+    avviso_id INTEGER NOT NULL REFERENCES avviso_scorrimento(id),
+    quando TEXT NOT NULL,
+    evento TEXT NOT NULL CHECK (evento IN ('nuovo', 'difformita')),
+    esito TEXT NOT NULL,
+    destinatari TEXT NOT NULL DEFAULT '[]',
+    cc TEXT NOT NULL DEFAULT '[]',
+    rilievi TEXT NOT NULL DEFAULT '[]',
+    messaggio TEXT
 );
 
 CREATE TABLE IF NOT EXISTS comunicazione_indirizzi (
@@ -633,6 +646,8 @@ def inizializza(conn: sqlite3.Connection) -> None:
     for colonna in ("cc", "message_id"):  # versioni 17 e 21
         if colonna not in colonne_comunicazione:
             conn.execute(f"ALTER TABLE comunicazione ADD COLUMN {colonna} TEXT")
+    if "rilievi" not in {r[1] for r in conn.execute("PRAGMA table_info(avviso_scorrimento)")}:  # versione 29
+        conn.execute("ALTER TABLE avviso_scorrimento ADD COLUMN rilievi TEXT NOT NULL DEFAULT '[]'")
     colonne_segnalazione = {r[1] for r in conn.execute("PRAGMA table_info(segnalazione)")}
     for colonna, tipo in (("tipo", "TEXT NOT NULL DEFAULT 'falso_positivo'"), ("fonti", "TEXT NOT NULL DEFAULT '[]'")):  # versione 28
         if colonna not in colonne_segnalazione:

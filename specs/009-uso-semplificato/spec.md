@@ -116,9 +116,9 @@ Dopo ogni aggiornamento notturno, quando uno scorrimento/utilizzo di graduatoria
 
 **Acceptance Scenarios**:
 
-1. **Given** un nuovo scorrimento presente sia nel file della segreteria sia su URP, **When** finisce l'aggiornamento notturno, **Then** parte un'email agli RdP del bando con data, protocollo, link URP e la richiesta di verifica, con in copia l'indirizzo della segreteria.
+1. **Given** un nuovo scorrimento presente nel file della segreteria o su URP, **When** finisce l'aggiornamento notturno, **Then** parte un'email agli RdP del bando con data, protocollo, link URP e la richiesta di verifica, con in copia l'indirizzo della segreteria.
 2. **Given** uno scorrimento già avvisato, **When** finiscono gli aggiornamenti successivi, **Then** non parte un'altra email.
-3. **Given** uno scorrimento presente solo in una delle due fonti, **When** finisce l'aggiornamento, **Then** non parte nessuna email; parte quando compare anche nell'altra.
+3. **Given** uno scorrimento già avvisato su cui compare una difformità nuova, **When** finisce l'aggiornamento, **Then** parte un'email con le sole difformità nuove; le stesse non si ripetono nelle notti successive e una difformità corretta non genera email.
 4. **Given** l'avviso appena attivato, **When** gira il primo aggiornamento, **Then** gli scorrimenti già presenti vengono registrati come "già esistenti" senza email: si avvisano solo quelli nuovi.
 5. **Given** un bando senza email RdP, **When** si trova lo scorrimento, **Then** non parte nessuna email e l'avviso resta registrato "senza destinatari", visibile all'amministratore.
 9. **Given** un bando con un RdP interno e uno esterno all'ufficio, **When** parte l'avviso, **Then** lo riceve solo l'RdP interno; se nessun RdP è interno l'avviso resta registrato "nessun RdP dell'ufficio".
@@ -181,9 +181,9 @@ Dopo ogni aggiornamento notturno, quando uno scorrimento/utilizzo di graduatoria
 
 **Avviso scorrimenti**
 
-- **FR-025**: Alla fine di ogni aggiornamento pianificato il sistema MUST individuare gli scorrimenti/utilizzi presenti sia nel file della segreteria sia su URP, nelle tipologie del monitoraggio, non ancora avvisati.
+- **FR-025**: Alla fine di ogni aggiornamento pianificato il sistema MUST individuare, nelle tipologie del monitoraggio, gli scorrimenti/utilizzi presenti nel file della segreteria o su URP non ancora annunciati, e le difformità degli scorrimenti non ancora comunicate (stessi testi del monitoraggio). Scelta dell'utente del 2026-11-17: si avvisa ogni nuovo scorrimento e ogni nuova difformità relativa agli scorrimenti, da quando la funzione è attiva.
 - **FR-026**: Per ciascuno MUST inviare un'email ai soli RdP del bando (o del codice) che fanno parte dell'ufficio, secondo l'elenco delle persone dell'ufficio nelle Impostazioni (gli RdP esterni non ricevono nulla; con l'elenco vuoto non parte nessuna email; chi entra nell'elenco dopo riceve solo gli scorrimenti rilevati negli ultimi 30 giorni), con bando, data, protocollo, link al documento URP e la richiesta di verificare lo scorrimento e, se serve, di richiedere il documento a chi se n'è occupato; in copia l'indirizzo della segreteria delle Impostazioni e la copia fissa dell'ufficio.
-- **FR-027**: Ogni scorrimento MUST essere avvisato al più una volta; l'esito (inviato, in prova, senza destinatari, non inviato, già esistente) MUST restare registrato con data.
+- **FR-027**: Ogni scorrimento MUST essere annunciato al più una volta e ogni difformità comunicata al più una volta; il database MUST tenere per ogni scorrimento le difformità già comunicate e ogni invio come evento (nuovo scorrimento / nuove difformità) con esito (inviato, in prova, senza destinatari, non inviato) e data. Gli scorrimenti già presenti all'attivazione si registrano come esistenti con le loro difformità.
 - **FR-028**: L'avviso MUST essere disattivato finché un amministratore non lo attiva; alla prima attivazione gli scorrimenti già presenti MUST essere registrati senza email.
 - **FR-029**: Gli invii MUST seguire le impostazioni email esistenti (prova / ufficiali); un errore di invio MUST NOT bloccare l'aggiornamento.
 - **FR-030**: L'amministratore MUST vedere l'elenco degli avvisi con esito, nelle Impostazioni.
