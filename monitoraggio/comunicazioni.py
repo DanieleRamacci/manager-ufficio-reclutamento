@@ -71,7 +71,7 @@ def per_atto(conn, dal: str | None = None, al: str | None = None) -> dict[tuple,
         for r in righe_mese(conn, m):
             if r["atto"] in difformita.ATTI_SEGUITI:
                 risultato.setdefault(chiave_atto(r), {**r["comunicazione"], "mese": m["mese"], "titolo": titolo_mese(m["mese_dati"]),
-                                                      "chiuso": m["stato"] == "chiuso"})
+                                                      "chiuso": m["stato"] == "chiuso", "chiave": r["chiave"]})
     return risultato
 
 

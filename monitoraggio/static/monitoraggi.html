@@ -610,7 +610,9 @@
       document.querySelectorAll("[data-versione]").forEach(a => a.onclick = async (e) => { e.preventDefault(); stato.ver = Number(a.dataset.versione); stato.m = await chiama(`/api/monitoraggi/${m.mese}?versione=${stato.ver}`); disegna(); });
     }
 
-    (meseScelto ? dettaglio() : elenco()).catch(errorePagina);
+    // dallo stato complessivo: /monitoraggio/mensili/<mese>?messaggio=<codice> apre subito il messaggio di quel bando
+    const daAprire = new URLSearchParams(location.search).get("messaggio");
+    (meseScelto ? dettaglio().then(() => { if (daAprire) { history.replaceState(null, "", location.pathname); apriMessaggio(daAprire); } }) : elenco()).catch(errorePagina);
   </script>
 </body>
 </html>

@@ -1866,7 +1866,7 @@ def test_stato_complessivo_mostra_la_comunicazione_come_nel_monitoraggio(ambient
     admin, mese, url = _mese_con_rdp(ambiente, db)
     nel_monitoraggio = lambda: admin.get(f"/api/monitoraggi/{mese}/atti").get_json()["righe"][0]["comunicazione"]  # noqa: E731
     nello_stato = lambda: next(a for a in admin.get("/api/atti").get_json()["atti"] if a["atto"] == "graduatoria")["comunicazione"]  # noqa: E731
-    assert nello_stato()["stato"] == nel_monitoraggio()["stato"] == "da_inviare" and nello_stato()["mese"] == mese
+    assert nello_stato()["stato"] == nel_monitoraggio()["stato"] == "da_inviare" and nello_stato()["mese"] == mese and nello_stato()["chiave"] == "367.479 CTER"
     admin.post(url + "/traccia", json={"canale": "Copia manuale"})
     assert nello_stato()["stato"] == "da_confermare"
     admin.put(f"/api/monitoraggi/{mese}/solleciti/367.479 CTER", json={"inviata": True})

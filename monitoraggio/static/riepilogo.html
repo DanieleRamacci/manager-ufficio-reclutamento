@@ -101,6 +101,7 @@
   .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; } .muted2 { color: #9aa1ab; } .small { font-size: 12.5px; }
   a.link-monitoraggio { display: inline-block; padding: 3px 8px; border: 1px solid #c9ced6; border-radius: 6px; font-size: 12px; text-decoration: none; color: inherit; background: #fff; }
   a.link-monitoraggio:hover { background: #fafbfc; }
+  .spunta-com { font-size: 12px; display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
 </style>
 <script src="/monitoraggio/menu.js" defer></script>
 <script src="/monitoraggio/app.js"></script>
@@ -396,7 +397,7 @@ function renderTabellaAtti(id, righe, conSollecito) {
         ${linkPunteggi(a.url_punteggi)}</td>
       <td>${esc(a.protocollo || "")}</td>${cella(a.fonti.sol, "sol", a)}${cella(a.fonti.urp, "urp", a)}${cella(a.fonti.segreteria, "segreteria", a)}
       ${App.cellaRdp(a)}
-      <td class="difformita">${a.note.map(n => `<span class="chip ${/^protocollo/.test(n) ? "protdiv" : "err"}">${esc(n)}</span>`).join("")}</td>${cellaComunicazione(a.comunicazione)}</tr>${sottoRighe(a)}`).join("");
+      <td class="difformita">${a.note.map(n => `<span class="chip ${/^protocollo/.test(n) ? "protdiv" : "err"}">${esc(n)}</span>`).join("")}</td>${cellaComunicazione(a)}</tr>${sottoRighe(a)}`).join("");
   $(id).innerHTML = `<thead><tr><th>Data</th><th>N. bando</th><th>Codice</th><th>Tipologia</th><th>Atto</th><th>Protocollo</th>
       <th>Selezioni Online</th><th>URP</th><th>File segreteria</th><th>RdP</th><th>Note</th><th>Comunicazione</th></tr></thead><tbody>` +
     (righeHtml || `<tr><td colspan="12" class="muted">${conSollecito ? "Nessuna difformità rilevata per questo mese." : "Nessun atto nel periodo selezionato."}</td></tr>`) + "</tbody>" +
@@ -433,15 +434,32 @@ function renderTabellaAtti(id, righe, conSollecito) {
     if (tr.dataset.id !== "null") apriDettaglio(tr.dataset.id); else location.href = "/monitoraggio/segreteria";
   });
   document.querySelectorAll(`#${id} a.link-monitoraggio`).forEach(l => l.onclick = (e) => e.stopPropagation());
+  document.querySelectorAll(`#${id} input.spunta-inviata`).forEach(c => {
+    c.onclick = e => e.stopPropagation();
+    c.closest("label").onclick = e => e.stopPropagation();
+    c.onchange = () => spuntaComunicazione(c);
+  });
 }
 
-// La comunicazione si gestisce solo nel monitoraggio (spec 009): qui si vede com'è, con il link per aprire il messaggio.
-function cellaComunicazione(c) {
-  if (!c) return `<td></td>`;
+// Comunicazione come nel monitoraggio (spec 009): stesso stato, storico e spunta; «Messaggio» apre lo stesso pannello del monitoraggio.
+function cellaComunicazione(a) {
+  const c = a.comunicazione;
+  if (!c) return ["graduatoria", "scorrimento"].includes(a.atto) ? `<td><span class="muted2 small">nessun monitoraggio per questo mese</span></td>` : `<td></td>`;
   const x = App.partiComunicazione(c);
-  const link = `<a class="link-monitoraggio" href="/monitoraggio/mensili/${encodeURIComponent(c.mese)}" title="Apri il monitoraggio di ${esc(c.titolo)}">Messaggio ↗</a>`;
-  return x.azionabile ? `<td style="min-width:150px">${x.pillola}<div style="margin-top:5px">${link}</div>${x.id}${x.storico}</td>`
-    : `<td>${x.pillola}${x.storico}</td>`;
+  if (!x.azionabile) return `<td>${x.pillola}${x.storico}</td>`;
+  const link = `<a class="link-monitoraggio" target="_blank" rel="noopener" href="/monitoraggio/mensili/${encodeURIComponent(c.mese)}?messaggio=${encodeURIComponent(c.chiave)}" title="Apre il messaggio nel monitoraggio di ${esc(c.titolo)}">Messaggio</a>`;
+  const spunta = c.chiuso ? "" : `<label class="spunta-com"><input type="checkbox" class="spunta-inviata" data-mese="${esc(c.mese)}" data-c="${esc(c.chiave)}"${x.inviata ? " checked" : ""}> inviata</label>`;
+  return `<td style="min-width:150px">${x.pillola}<div style="display:flex;gap:8px;align-items:center;margin-top:5px">${link}${spunta}</div>${x.id}${x.storico}</td>`;
+}
+
+async function spuntaComunicazione(casella) {
+  try {
+    const r = await fetch(`/api/monitoraggi/${encodeURIComponent(casella.dataset.mese)}/solleciti/${encodeURIComponent(casella.dataset.c)}`,
+      { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ inviata: casella.checked }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Errore ${r.status}`);
+    await caricaAtti();
+    await caricaSolleciti(false);
+  } catch (err) { casella.checked = !casella.checked; alert(err.message); }
 }
 
 // Barra del mese scelto: etichetta e modalità di prova delle email
