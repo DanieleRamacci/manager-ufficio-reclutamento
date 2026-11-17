@@ -616,7 +616,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
             righe = atti.elenco_atti(conn, request.args.get("dal") or None, request.args.get("al") or None)
             per_atto = comunicazioni.per_atto(conn, request.args.get("dal") or None, request.args.get("al") or None)
             for r in righe:  # la comunicazione come nel monitoraggio (spec 009): stato, protocollo dell'email, storico
-                r["comunicazione"] = per_atto.get(comunicazioni.chiave_atto(r))
+                r["comunicazione"] = comunicazioni.comunicazione_di(per_atto, r)
             return jsonify({"dal": request.args.get("dal") or config.monitoraggio_dal().isoformat(),
                             "totale": len(righe), "atti": righe, "fonti_in_attesa": atti.fonti_in_attesa(conn)})
         finally:

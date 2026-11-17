@@ -1874,3 +1874,12 @@ def test_stato_complessivo_mostra_la_comunicazione_come_nel_monitoraggio(ambient
     assert c["stato"] == m["stato"] == "inviata" and c["id"] == m["id"] and len(c["storico"]) == len(m["storico"]) == 1
     # un atto fuori da ogni monitoraggio non ha comunicazione
     assert all(a["comunicazione"] is None for a in admin.get("/api/atti?dal=2020-01-01&al=2020-12-31").get_json()["atti"])
+
+
+def test_comunicazione_nello_stato_complessivo_anche_con_codice_scritto_diverso(ambiente, db):
+    from monitoraggio import comunicazioni
+    admin, mese, url = _mese_con_rdp(ambiente, db)
+    per_atto = comunicazioni.per_atto(db)
+    riga = next(a for a in admin.get("/api/atti").get_json()["atti"] if a["atto"] == "graduatoria")
+    assert comunicazioni.comunicazione_di(per_atto, {**riga, "codice": "367.479 - 01 ROMA"})["mese"] == mese
+    assert comunicazioni.comunicazione_di(per_atto, {**riga, "codice": "altro", "protocollo": "999"}) is None

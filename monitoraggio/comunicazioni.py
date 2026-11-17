@@ -70,9 +70,17 @@ def per_atto(conn, dal: str | None = None, al: str | None = None) -> dict[tuple,
             continue
         for r in righe_mese(conn, m):
             if r["atto"] in difformita.ATTI_SEGUITI:
-                risultato.setdefault(chiave_atto(r), {**r["comunicazione"], "mese": m["mese"], "titolo": titolo_mese(m["mese_dati"]),
-                                                      "chiuso": m["stato"] == "chiuso", "chiave": r["chiave"]})
+                voce_c = {**r["comunicazione"], "mese": m["mese"], "titolo": titolo_mese(m["mese_dati"]),
+                          "chiuso": m["stato"] == "chiuso", "chiave": r["chiave"]}
+                risultato.setdefault(chiave_atto(r), voce_c)
+                if r.get("protocollo"):  # di riserva: il codice può essere scritto diverso (bandi a più sedi), il protocollo no
+                    risultato.setdefault(("protocollo", r["atto"], str(r["protocollo"])), voce_c)
     return risultato
+
+
+def comunicazione_di(per_atto_: dict, riga: dict) -> dict | None:
+    """La comunicazione di una riga dello stato complessivo: per codice, atto, protocollo e data; altrimenti per protocollo."""
+    return per_atto_.get(chiave_atto(riga)) or (per_atto_.get(("protocollo", riga["atto"], str(riga["protocollo"]))) if riga.get("protocollo") else None)
 
 
 def conteggi(righe: list[dict]) -> dict:
