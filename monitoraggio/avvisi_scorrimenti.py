@@ -4,18 +4,22 @@ Dopo l'aggiornamento notturno: uno scorrimento presente sia nel file della segre
 fa partire un'email agli RdP del bando con il link al documento su URP, in copia la segreteria. Ogni scorrimento si
 avvisa una volta sola; alla prima esecuzione quelli già presenti si registrano come «esistente», senza email.
 Gli invii seguono le impostazioni email (prova / ufficiali). Nessuna fonte viene modificata.
+Solo gli RdP interni all'ufficio ricevono l'avviso (elenco nelle Impostazioni, scelta dell'utente del 2026-11-17): tra gli RdP
+ci sono anche persone esterne. Con l'elenco vuoto non parte nessuna email.
 """
 import json
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from . import atti, comunicazioni, config, db, impostazioni, posta
 
 log = logging.getLogger(__name__)
 INIZIATO = "avviso_scorrimenti_iniziato"
 COPIA = "avviso_scorrimenti_cc"
+INTERNI = "avviso_scorrimenti_interni"
 MAX_TENTATIVI = 5
+GIORNI_RECUPERO = 30  # chi entra nell'elenco dopo riceve solo gli scorrimenti recenti, non quelli di mesi fa
 
 
 def _adesso() -> str:
@@ -26,18 +30,34 @@ def copia_segreteria() -> list[str]:
     return posta.lista_indirizzi(impostazioni._leggi(COPIA))
 
 
-def salva_copia(testo: str | None, autore: str | None) -> list[str]:
-    indirizzi = posta.lista_indirizzi(testo)
+def interni() -> list[str]:
+    """Le persone dell'ufficio: solo loro, se sono RdP del bando, ricevono l'avviso."""
+    return posta.lista_indirizzi(impostazioni._leggi(INTERNI))
+
+
+def _controlla(testo: str | None) -> list[str]:
+    indirizzi = posta.lista_indirizzi((testo or "").replace("\n", ","))
     sbagliati = posta.indirizzi_non_validi(indirizzi)
     if sbagliati:
         raise ValueError("Indirizzi non validi: " + ", ".join(sbagliati))
+    return indirizzi
+
+
+def salva(dati: dict, autore: str | None) -> None:
+    """`copia`: la segreteria in copia; `interni`: le persone dell'ufficio. Solo i campi presenti."""
+    valori = {chiave: _controlla(dati[campo]) for campo, chiave in (("copia", COPIA), ("interni", INTERNI)) if campo in dati}
     conn = db.connetti()
     db.inizializza(conn)
     try:
-        impostazioni._scrivi(conn, COPIA, ", ".join(indirizzi), autore)
+        for chiave, indirizzi in valori.items():
+            impostazioni._scrivi(conn, chiave, ", ".join(indirizzi), autore)
     finally:
         conn.close()
-    return indirizzi
+
+
+def salva_copia(testo: str | None, autore: str | None) -> list[str]:
+    salva({"copia": testo}, autore)
+    return copia_segreteria()
 
 
 def scorrimenti_trovati(conn) -> list[dict]:
@@ -52,8 +72,8 @@ def scorrimenti_trovati(conn) -> list[dict]:
     return trovati
 
 
-def _destinatari(r: dict) -> list[str]:
-    """Gli RdP della riga; se il codice non ha RdP propri sono quelli di tutti i codici del bando: si scrive a tutti."""
+def _rdp(r: dict) -> list[str]:
+    """Gli RdP della riga; se il codice non ha RdP propri sono quelli di tutti i codici del bando."""
     return list(dict.fromkeys(e for e in ((p.get("email") or "").strip().lower() for p in r.get("rdp") or []) if e))
 
 
@@ -97,15 +117,23 @@ def esegui() -> tuple[str, str]:
             return "ok", f"Prima esecuzione: {len(trovati)} scorrimenti già presenti registrati senza email"
         if not posta.configurata():
             return "avviso", "Invio email non configurato"
+        ufficio = set(interni())
+        if not ufficio:
+            return "avviso", "Nessuna email inviata: l'elenco delle persone dell'ufficio è vuoto"
         copia = copia_segreteria()
+        recente = (datetime.now(timezone.utc) - timedelta(days=GIORNI_RECUPERO)).strftime("%Y-%m-%dT%H:%M:%SZ")
         inviati = errori = senza = 0
         for r in trovati:
             chiave = (comunicazioni.chiave(r), r.get("protocollo") or "", r.get("data") or "")
             prima = gia.get(chiave)
-            if prima and (prima["esito"] != "errore" or prima["tentativi"] >= MAX_TENTATIVI):
+            if prima and (prima["esito"] not in ("errore", "senza_destinatari") or prima["tentativi"] >= MAX_TENTATIVI
+                          or (prima["esito"] == "senza_destinatari" and prima["rilevato_il"] < recente)):
                 continue
-            destinatari = _destinatari(r)
-            esito, testo = "senza_destinatari", "Nessuna email RdP per il bando"
+            tutti = _rdp(r)
+            destinatari = [e for e in tutti if e in ufficio]
+            if not destinatari and prima and prima["esito"] == "senza_destinatari":
+                continue  # resta com'era: se un RdP entra nell'elenco entro 30 giorni riceve l'avviso
+            esito, testo = "senza_destinatari", ("Nessuno degli RdP fa parte dell'ufficio" if tutti else "Nessuna email RdP per il bando")
             if destinatari:
                 oggetto, corpo = messaggio(r)
                 try:
@@ -121,7 +149,7 @@ def esegui() -> tuple[str, str]:
                          "cc = excluded.cc, esito = excluded.esito, messaggio = excluded.messaggio, tentativi = avviso_scorrimento.tentativi + 1, quando = excluded.quando",
                          (*chiave[:1], r.get("bando_id"), *chiave[1:], (r["fonti"].get("urp") or {}).get("url"), json.dumps(destinatari),
                           json.dumps(copia), esito, testo, ora, ora))
-        dettaglio = f"{inviati} avvisi inviati" + (f", {senza} senza RdP" if senza else "") + (f", {errori} non inviati" if errori else "")
+        dettaglio = f"{inviati} avvisi inviati" + (f", {senza} senza RdP dell'ufficio" if senza else "") + (f", {errori} non inviati" if errori else "")
         return ("errore" if errori and not inviati else "avviso" if errori or senza else "ok"), dettaglio
     except Exception as e:  # l'avviso non deve mai bloccare gli aggiornamenti
         log.exception("Avviso scorrimenti non riuscito")
@@ -141,4 +169,4 @@ def elenco(limite: int = 50) -> list[dict]:
 
 
 def stato() -> dict:
-    return {"copia": copia_segreteria(), "iniziato_il": impostazioni._leggi(INIZIATO), "avvisi": elenco()}
+    return {"copia": copia_segreteria(), "interni": interni(), "iniziato_il": impostazioni._leggi(INIZIATO), "avvisi": elenco()}

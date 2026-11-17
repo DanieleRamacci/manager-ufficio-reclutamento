@@ -121,6 +121,7 @@ Dopo ogni aggiornamento notturno, quando uno scorrimento/utilizzo di graduatoria
 3. **Given** uno scorrimento presente solo in una delle due fonti, **When** finisce l'aggiornamento, **Then** non parte nessuna email; parte quando compare anche nell'altra.
 4. **Given** l'avviso appena attivato, **When** gira il primo aggiornamento, **Then** gli scorrimenti già presenti vengono registrati come "già esistenti" senza email: si avvisano solo quelli nuovi.
 5. **Given** un bando senza email RdP, **When** si trova lo scorrimento, **Then** non parte nessuna email e l'avviso resta registrato "senza destinatari", visibile all'amministratore.
+9. **Given** un bando con un RdP interno e uno esterno all'ufficio, **When** parte l'avviso, **Then** lo riceve solo l'RdP interno; se nessun RdP è interno l'avviso resta registrato "nessun RdP dell'ufficio".
 6. **Given** le email in modalità di prova, **When** parte un avviso, **Then** arriva solo all'indirizzo di prova con i destinatari reali nel testo, come le altre email.
 7. **Given** un invio non riuscito, **When** si apre l'elenco degli avvisi, **Then** l'avviso risulta "non inviato" con il motivo e viene ritentato all'aggiornamento successivo.
 8. **Given** l'avviso disattivato nelle Impostazioni, **When** finisce l'aggiornamento, **Then** non parte nessuna email.
@@ -181,7 +182,7 @@ Dopo ogni aggiornamento notturno, quando uno scorrimento/utilizzo di graduatoria
 **Avviso scorrimenti**
 
 - **FR-025**: Alla fine di ogni aggiornamento pianificato il sistema MUST individuare gli scorrimenti/utilizzi presenti sia nel file della segreteria sia su URP, nelle tipologie del monitoraggio, non ancora avvisati.
-- **FR-026**: Per ciascuno MUST inviare un'email agli RdP del bando (o del codice) con bando, data, protocollo, link al documento URP e la richiesta di verificare lo scorrimento e, se serve, di richiedere il documento a chi se n'è occupato; in copia l'indirizzo della segreteria delle Impostazioni e la copia fissa dell'ufficio.
+- **FR-026**: Per ciascuno MUST inviare un'email ai soli RdP del bando (o del codice) che fanno parte dell'ufficio, secondo l'elenco delle persone dell'ufficio nelle Impostazioni (gli RdP esterni non ricevono nulla; con l'elenco vuoto non parte nessuna email; chi entra nell'elenco dopo riceve solo gli scorrimenti rilevati negli ultimi 30 giorni), con bando, data, protocollo, link al documento URP e la richiesta di verificare lo scorrimento e, se serve, di richiedere il documento a chi se n'è occupato; in copia l'indirizzo della segreteria delle Impostazioni e la copia fissa dell'ufficio.
 - **FR-027**: Ogni scorrimento MUST essere avvisato al più una volta; l'esito (inviato, in prova, senza destinatari, non inviato, già esistente) MUST restare registrato con data.
 - **FR-028**: L'avviso MUST essere disattivato finché un amministratore non lo attiva; alla prima attivazione gli scorrimenti già presenti MUST essere registrati senza email.
 - **FR-029**: Gli invii MUST seguire le impostazioni email esistenti (prova / ufficiali); un errore di invio MUST NOT bloccare l'aggiornamento.

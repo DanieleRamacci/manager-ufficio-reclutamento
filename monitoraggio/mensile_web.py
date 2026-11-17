@@ -120,7 +120,8 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
     @solo_admin
     def api_avvisi_scorrimenti_salva():
         try:
-            avvisi_scorrimenti.salva_copia(str((request.get_json(silent=True) or {}).get("copia") or ""), utente_corrente())
+            dati = request.get_json(silent=True) or {}
+            avvisi_scorrimenti.salva({k: str(dati.get(k) or "") for k in ("copia", "interni") if k in dati}, utente_corrente())
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
         return jsonify(avvisi_scorrimenti.stato())

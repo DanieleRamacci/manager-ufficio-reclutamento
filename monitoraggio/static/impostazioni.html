@@ -77,10 +77,12 @@
         </form>
         <p class="muted small" id="note-aggiornamenti"></p>
         <h3>Avviso scorrimenti ai referenti</h3>
-        <p class="muted small" style="margin-top:0">Con l'attività «Avviso scorrimenti ai referenti» attiva, dopo l'aggiornamento notturno gli RdP ricevono un'email per ogni nuovo scorrimento presente sia su URP sia nel file della segreteria, con il link al documento URP. Ogni scorrimento si avvisa una sola volta; alla prima esecuzione quelli già presenti vengono solo registrati. Gli invii seguono le impostazioni Email (prova / ufficiali).</p>
-        <form id="modulo-scorrimenti" class="riga">
-          <label>In copia (segreteria) <input type="text" id="scorrimenti-cc" autocomplete="off" size="40" placeholder="una o più email separate da virgola"></label>
-          <button type="submit">Salva</button><span class="muted small" id="esito-scorrimenti" aria-live="polite"></span>
+        <p class="muted small" style="margin-top:0">Con l'attività «Avviso scorrimenti ai referenti» attiva, dopo l'aggiornamento notturno gli RdP <b>che fanno parte dell'ufficio</b> ricevono un'email per ogni nuovo scorrimento presente sia su URP sia nel file della segreteria, con il link al documento URP. Ogni scorrimento si avvisa una sola volta; alla prima esecuzione quelli già presenti vengono solo registrati. Gli invii seguono le impostazioni Email (prova / ufficiali).</p>
+        <form id="modulo-scorrimenti">
+          <label class="campo-largo">Persone dell'ufficio che ricevono l'avviso, se sono RdP del bando <textarea id="scorrimenti-interni" style="min-height:70px" placeholder="una email per riga, o separate da virgola"></textarea></label>
+          <p class="muted small" style="margin:4px 0 0">Gli RdP esterni all'ufficio non ricevono nulla. Con l'elenco vuoto non parte nessuna email. Chi viene aggiunto dopo riceve solo gli scorrimenti degli ultimi 30 giorni.</p>
+          <div class="riga" style="margin-top:10px;align-items:center"><label>In copia (segreteria) <input type="text" id="scorrimenti-cc" autocomplete="off" size="40" placeholder="una o più email separate da virgola"></label>
+          <button type="submit">Salva</button><span class="muted small" id="esito-scorrimenti" aria-live="polite"></span></div>
         </form>
         <div class="errore" id="errore-scorrimenti" role="alert" hidden style="margin-top:8px"></div>
         <div class="scroll" style="margin-top:8px"><table id="avvisi-scorrimenti" style="min-width:760px"></table></div>
@@ -261,9 +263,10 @@
   };
 
   // --- avviso scorrimenti (spec 009)
-  const ESITI_AVVISO = { inviato: ["p-ok", "inviato"], prova: ["p-blu", "in prova"], senza_destinatari: ["p-warn", "senza RdP"], errore: ["p-ko", "non inviato"] };
+  const ESITI_AVVISO = { inviato: ["p-ok", "inviato"], prova: ["p-blu", "in prova"], senza_destinatari: ["p-warn", "nessun RdP dell'ufficio"], errore: ["p-ko", "non inviato"] };
   function mostraScorrimenti(d) {
     if (document.activeElement?.id !== "scorrimenti-cc") $("scorrimenti-cc").value = d.copia.join(", ");
+    if (document.activeElement?.id !== "scorrimenti-interni") $("scorrimenti-interni").value = d.interni.join("\n");
     $("avvisi-scorrimenti").innerHTML = `<thead><tr><th>Data</th><th>Bando</th><th>Scorrimento</th><th>Destinatari</th><th>Esito</th></tr></thead><tbody>` + (d.avvisi.map(a => `<tr>
       <td style="white-space:nowrap">${ora(a.quando)}</td><td>${esc(a.chiave)}</td>
       <td class="small">${esc(dataIt(a.data))}${a.protocollo ? ` · prot. ${esc(a.protocollo)}` : ""}${a.url_urp ? ` · <a href="${esc(a.url_urp)}" target="_blank" rel="noopener noreferrer">URP ↗</a>` : ""}</td>
@@ -273,7 +276,7 @@
   }
   $("modulo-scorrimenti").onsubmit = async (e) => {
     e.preventDefault();
-    try { errore("errore-scorrimenti"); mostraScorrimenti(await chiama("/api/impostazioni/avvisi-scorrimenti", json("PUT", { copia: $("scorrimenti-cc").value }))); $("esito-scorrimenti").textContent = "Salvato."; }
+    try { errore("errore-scorrimenti"); mostraScorrimenti(await chiama("/api/impostazioni/avvisi-scorrimenti", json("PUT", { copia: $("scorrimenti-cc").value, interni: $("scorrimenti-interni").value }))); $("esito-scorrimenti").textContent = "Salvato."; }
     catch (err) { errore("errore-scorrimenti", err.message); }
   };
   chiama("/api/impostazioni/avvisi-scorrimenti").then(mostraScorrimenti).catch(e => errore("errore-scorrimenti", e.message));
