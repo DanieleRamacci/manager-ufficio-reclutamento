@@ -106,6 +106,8 @@ def test_elenco_dell_ufficio_rifiuta_indirizzi_non_validi(db):
         av.salva({"interni": "anna@cnr.it\nnon valida"}, "admin")
     av.salva({"interni": "Anna@CNR.it\nbruno@cnr.it, anna@cnr.it"}, "admin")
     assert av.interni() == ["anna@cnr.it", "bruno@cnr.it"]
+    av.salva({"interni": "carla.rossi@cnr.it gino.verdi@cnr.it\tanna@cnr.it\r\nbruno@cnr.it;"}, "admin")  # incollati con spazi
+    assert av.interni() == ["carla.rossi@cnr.it", "gino.verdi@cnr.it", "anna@cnr.it", "bruno@cnr.it"]
     with pytest.raises(ValueError):
         av.salva_copia("non-una-email", "admin")
 

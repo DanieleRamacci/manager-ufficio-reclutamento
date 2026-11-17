@@ -38,7 +38,7 @@ def interni() -> list[str]:
 
 
 def _controlla(testo: str | None) -> list[str]:
-    indirizzi = posta.lista_indirizzi((testo or "").replace("\n", ","))
+    indirizzi = posta.lista_indirizzi(re.sub(r"\s+", ",", testo or ""))  # spazi, a capo e tabulazioni valgono come separatori
     sbagliati = posta.indirizzi_non_validi(indirizzi)
     if sbagliati:
         raise ValueError("Indirizzi non validi: " + ", ".join(sbagliati))
