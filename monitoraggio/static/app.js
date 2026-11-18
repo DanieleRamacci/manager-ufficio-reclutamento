@@ -185,6 +185,26 @@ window.App = (() => {
     };
   }
 
+  // Tabella dei totali del monitoraggio (spec 011): per voce quanti atti risultano a noi e quanti sono nei file caricati.
+  function tabellaTotali(tot) {
+    const pers = (n, c) => c.senza_persone || !n ? "" : ` <span class="muted small">(${n} ${n === 1 ? "persona" : "persone"})</span>`;
+    const confronto = (c) => !c.nei_file_da || c.categoria === "Bandi pubblicati";
+    const coppia = (v, c) => `${v.attesi}${confronto(c) ? ` <span class="muted small">· nei file</span> ${v.nei_file}` : ""}`;
+    const righe = tot.categorie.map(c => {
+      const t = c.totale, mancano = confronto(c) ? t.attesi - t.nei_file : null;
+      return `<tr><td><b>${esc(c.categoria)}</b>${c.nei_file_da ? `<div class="muted small">${esc(c.nei_file_da)}</div>` : ""}</td>
+        <td style="text-align:center"><b>${t.attesi}</b>${pers(t.persone_attese, c)}</td>
+        <td style="text-align:center">${confronto(c) ? `<b>${t.nei_file}</b>${pers(t.persone_nei_file, c)}` : `<span class="muted2">–</span>`}</td>
+        <td style="text-align:center">${mancano === null ? `<span class="muted2">–</span>` : mancano > 0 ? `<b style="color:var(--ko)">${mancano}</b>` : mancano < 0 ? `<b style="color:var(--warn)">${-mancano} in più</b>` : `<span style="color:var(--ok)">0</span>`}</td>
+        <td class="small">${coppia(c.concorsi, c)}</td><td class="small">${coppia(c.mobilita, c)}</td>
+        <td class="small">${c.per_gruppo.map(g => `${esc(g.nome)}: ${coppia(g, c)}`).join("<br>")}</td></tr>`;
+    }).join("");
+    const tip = Object.entries(tot.scorrimenti_per_tipologia || {}).map(([k, n]) => `${esc(k)} ${n}`).join(" · ");
+    return `<div class="scroll"><table><thead><tr><th>Voce</th><th style="text-align:center">Risultano a noi</th><th style="text-align:center">Nei file caricati</th>
+      <th style="text-align:center">Mancano nei file</th><th>Concorsi</th><th>Mobilità</th><th>Per profilo</th></tr></thead><tbody>${righe}</tbody></table></div>
+      ${tip ? `<p class="small" style="margin:6px 0 0">Scorrimenti per tipologia indicata nel file: ${tip}</p>` : ""}`;
+  }
+
   // Di cosa è fatto il totale della scheda «Tutti»: i subentri sono già tra gli scorrimenti, le rettifiche non hanno una scheda.
   function scomposizioneAtti(righe) {
     const n = (f) => righe.filter(f).length, plurale = (k, uno, molti) => `${k} ${k === 1 ? uno : molti}`;
@@ -218,5 +238,5 @@ window.App = (() => {
       azionabile: !["in_attesa", "in_regola"].includes(c.stato), inviata: ["inviata", "inviata_a_mano"].includes(c.stato) };
   }
 
-  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, json, toast, partiComunicazione, scomposizioneAtti, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati, contieneTesto, pannelloCandidati, testataArea, dividiPerSede, sediDellaRiga, elencoRilievi };
+  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, json, toast, partiComunicazione, scomposizioneAtti, tabellaTotali, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati, contieneTesto, pannelloCandidati, testataArea, dividiPerSede, sediDellaRiga, elencoRilievi };
 })();

@@ -588,11 +588,6 @@
       };
       const carica = (nome, accetta, url) => `<div class="scelta"><b>${NOMI_FILE[nome]}</b><div style="margin:6px 0">${statoFile(nome)}</div>
         ${chiuso ? "" : `<form class="riga carica-file" data-url="${url}" style="align-items:center"><input type="file" accept="${accetta}" required aria-label="${NOMI_FILE[nome]}"><button type="submit">Carica e verifica</button></form>`}</div>`;
-      const pers = (n, c) => c.senza_persone || !n ? "" : ` <span class="muted small">(${n} ${n === 1 ? "persona" : "persone"})</span>`;
-      const cella = (v, c) => `<td style="text-align:right">${v.attesi}${pers(v.persone_attese, c)}</td><td style="text-align:right">${c.nei_file_da && c.categoria !== "Bandi pubblicati" ? `<span class="muted2">–</span>` : `<b class="${v.nei_file < v.attesi ? "rosso" : ""}">${v.nei_file}</b>${pers(v.persone_nei_file, c)}`}</td>`;
-      const totali = r.totali.categorie.map(c => `<tr><td><b>${esc(c.categoria)}</b>${c.nei_file_da ? `<div class="muted small">${esc(c.nei_file_da)}</div>` : ""}</td>${cella(c.concorsi, c)}${cella(c.mobilita, c)}${cella(c.totale, c)}
-        <td class="small">${c.per_gruppo.map(g => `${esc(g.nome)}: ${g.attesi}${pers(g.persone_attese, c)}${c.nei_file_da && c.categoria !== "Bandi pubblicati" ? "" : ` · nei file ${g.nei_file}${pers(g.persone_nei_file, c)}`}`).join("<br>")}</td></tr>`).join("");
-      const tip = Object.entries(r.totali.scorrimenti_per_tipologia || {}).map(([k, n]) => `${esc(k)} ${n}`).join(" · ");
       const voci = r.da_verificare.map((v, i) => `<tr class="difforme"><td class="small">${v.file === "scorrimenti" ? "Scorrimenti" : "Graduatorie"}</td><td>${esc(v.codice || "")}</td>
           <td class="mono small">${esc(v.protocollo || "")}</td><td>${esc(dataIt(v.data))}</td><td class="small">${esc(v.gruppo || "")}</td>
           <td><ul class="rilievi">${v.problemi.map(p => `<li>${esc(p)}</li>`).join("")}</ul></td>
@@ -604,9 +599,7 @@
         <section><h2>File del mese</h2><p class="muted small">Carica l'estrazione delle graduatorie scaricata da Selezioni Online (export «Punteggi», .xls) e il file scorrimenti compilato. Il controllo parte da ciò che risulta nel monitoraggio: ogni graduatoria e ogni scorrimento deve esserci, anche quando manca un intero foglio o gruppo di concorsi; ciò che è nel file e non nel monitoraggio è segnalato. I nominativi si vedono solo qui.</p>
           <div class="griglia2">${carica("graduatorie", ".xls,.xlsx", `/api/monitoraggi/${m.mese}/estrazione-graduatorie`)}${carica("scorrimenti", ".xlsx", `/api/monitoraggi/${m.mese}/scorrimenti-compilato`)}</div></section>
         <section><h2>Totali del monitoraggio</h2><p class="muted small">Per ogni voce: quanti atti risultano nel monitoraggio e quanti ce ne sono nei file caricati; tra parentesi le persone (uno scorrimento o una graduatoria può riguardarne molte: le persone «che risultano» vengono dal file della segreteria). È la tabella che vedono coordinatori e persone dell'ufficio.</p>
-          <div class="scroll"><table><thead><tr><th rowspan="2">Voce</th><th colspan="2">Concorsi</th><th colspan="2">Mobilità</th><th colspan="2">Totale</th><th rowspan="2">Per profilo</th></tr>
-          <tr><th>risultano</th><th>nei file</th><th>risultano</th><th>nei file</th><th>risultano</th><th>nei file</th></tr></thead><tbody>${totali}</tbody></table></div>
-          ${tip ? `<p class="small" style="margin:6px 0 0">Scorrimenti per tipologia indicata nel file: ${tip}</p>` : ""}</section>
+          ${App.tabellaTotali(r.totali)}</section>
         <section><h2>Cosa non torna <span class="muted">(${r.da_verificare.length})</span></h2>
           ${r.da_verificare.length ? `<div class="scroll"><table style="min-width:1100px"><thead><tr><th>File</th><th>Bando</th><th>Prot.</th><th>Data</th><th>Gruppo</th><th>Cosa non torna</th><th>RdP</th><th></th></tr></thead><tbody>${voci}</tbody></table></div>`
             : `<p class="small" style="color:var(--ok)">${r.file.scorrimenti.caricato || r.file.graduatorie.caricato ? "Tutto allineato nei file caricati." : "Carica i file per vedere cosa non torna."}</p>`}</section>
