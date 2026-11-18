@@ -11,7 +11,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, redirect, request, send_from_directory
 
-from . import atti, comunicazioni, config, difformita, mensile, portale, profili, punteggi, utenti
+from . import atti, comunicazioni, config, difformita, mensile, portale, profili, punteggi, revisione, utenti
 
 _STATIC = Path(__file__).resolve().parent / "static"
 PAGINE_SITO = "/monitoraggio/consulta"
@@ -170,6 +170,10 @@ def monitoraggio(conn, v: Visitatore, mese: str) -> dict | None:
     esclusi = {r["chiave"]: json.loads(r["esclusi"])
                for r in conn.execute("SELECT chiave, esclusi FROM comunicazione_indirizzi WHERE mese = ?", (mese,))}
     tutte = comunicazioni.righe_mese(conn, m)
+    # spec 011: i link ai file del mese su OneDrive e, dopo la revisione, i totali (senza dati personali)
+    base["file_link"] = revisione.link_file(m)
+    if m.get("revisione_il"):
+        base["revisione"] = {"il": m["revisione_il"], "totali": revisione.totali(conn, m, tutte)}
     difformita.registro_per_righe(conn, mese, tutte)
     fatte = _segnalazioni(conn, mese, v.email) if v.area else {}
     aperto = m["stato"] == "aperto" and not base["in_attesa"]

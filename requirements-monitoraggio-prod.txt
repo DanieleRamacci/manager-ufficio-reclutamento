@@ -8,3 +8,4 @@ pdfminer.six>=20221105
 pikepdf>=9,<11
 python-dotenv>=1.0
 requests==2.32.3
+xlrd==2.0.1  # export «Punteggi» .xls di Selezioni Online (spec 011)

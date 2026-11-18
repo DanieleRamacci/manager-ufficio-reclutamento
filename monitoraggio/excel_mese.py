@@ -156,3 +156,16 @@ def excel_graduatorie(conn, dal: str, al: str) -> bytes:
     _compila(wb["Graduatorie mobilità"], punteggi.INTESTAZIONI_EXCEL,
              [r for s in graduatorie if mobilita(s) for r in _righe_graduatoria(s)])
     return _salva(wb)
+
+
+def excel_graduatorie_da_estrazione(conn, dal: str, al: str, concorsi: list, mobilita_righe: list) -> bytes:
+    """Spec 011: il file graduatorie con i nominativi dell'estrazione di Selezioni Online, già ordinati per gruppo e punteggio."""
+    wb = openpyxl.load_workbook(MODELLI / MODELLO_GRADUATORIE)
+    bandi = _bandi(conn, dal, al)
+    mobilita = lambda s: s["tipologia"] in TIPOLOGIE_MOBILITA  # noqa: E731
+    _compila(wb["Bandi pubblicati"], INTESTAZIONI_BANDI, [_riga_bando(s) for s in bandi if not mobilita(s)])
+    _compila(wb["Mobilità pubblicate"], INTESTAZIONI_BANDI, [_riga_bando(s) for s in bandi if mobilita(s)])
+    _compila(wb["Graduatorie pubblicate"], punteggi.INTESTAZIONI_EXCEL, concorsi)
+    _compila(wb["Graduatorie mobilità"], punteggi.INTESTAZIONI_EXCEL, mobilita_righe)
+    return _salva(wb)
+

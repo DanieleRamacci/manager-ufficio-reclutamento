@@ -121,7 +121,7 @@
         ["subentro", "Subentri", conta(r => r.sottotipo === "subentro"), contaD(r => r.sottotipo === "subentro")],
         ["correzioni", "Correzioni", null, 0], ["comunicazioni", "Comunicazioni", null, 0],
         ...(m.segnalazioni.totali || m.posta.portale_referenti ? [["segnalazioni", "Segnalazioni", m.segnalazioni.totali, m.segnalazioni.aperte]] : []),
-        ["preparazione", "File ed email", null, 0], ["versioni", chiuso ? "Dati salvati" : "Versioni", m.fotografia.versioni.length, 0]];
+        ["riepilogo", "Riepilogo e revisione", null, 0], ["preparazione", "File ed email", null, 0], ["versioni", chiuso ? "Dati salvati" : "Versioni", m.fotografia.versioni.length, 0]];
       $("contenuto").innerHTML = `
         <div class="small"><a href="/monitoraggio/mensili">← Monitoraggi</a> <span class="muted">/ <span class="mono">${esc(m.id)}</span></span></div>
         ${avvisoAttesa(m.fonti_in_attesa)}
@@ -166,6 +166,7 @@
       if (s === "comunicazioni") return schedaComunicazioni();
       if (s === "segnalazioni") return schedaSegnalazioni();
       if (s === "preparazione") return schedaPreparazione();
+      if (s === "riepilogo") return schedaRiepilogo();
       schedaVersioni();
     }
 
@@ -538,10 +539,8 @@
           <p class="muted small">Scorrimenti: vuoto, lo compilano i colleghi. Graduatorie: già compilato con i dati di ${esc(m.etichetta_dati)} da Selezioni Online e con i dati personali dei candidati, se la verifica è stata eseguita. Caricali su OneDrive nella cartella dell'anno e del mese, poi incolla qui sotto i due link.</p>
           ${m.graduatorie_senza_elenco ? `<div class="avviso">${m.graduatorie_senza_elenco} graduatorie senza elenco dei candidati: lancia prima la verifica dei punteggi.</div>` : ""}
           <details><summary class="small">File graduatorie vuoto</summary><p class="small"><a id="scarica-graduatorie-vuoto" href="/api/monitoraggi/${m.mese}/excel/graduatorie">Scarica il modello con le sole intestazioni</a></p></details></section>
-        <section class="solo-admin"><h2>Verifica del file scorrimenti compilato</h2>
-          <p class="muted small">Carica il file scorrimenti compilato dai colleghi: il sistema controlla che ci siano gli scorrimenti del mese e che i subentri siano indicati come tali. Si leggono solo bando, protocolli e tipologia: i nominativi no, e il file non viene conservato.</p>
-          <form id="carica-scorrimenti" class="riga" style="align-items:center"><input type="file" id="file-scorrimenti" accept=".xlsx" required${chiuso ? " disabled" : ""}><button type="submit"${chiuso ? " disabled" : ""}>Carica e verifica</button></form>
-          <div id="esito-scorrimenti" style="margin-top:10px"></div></section>
+        <section class="solo-admin"><h2>Verifica dei file compilati</h2>
+          <p class="muted small">Il file scorrimenti compilato e l'estrazione delle graduatorie da Selezioni Online si caricano e si verificano nella scheda <a href="#" id="vai-riepilogo">Riepilogo e revisione</a>.</p></section>
         <section class="solo-admin"><h2>Email di richiesta di compilazione</h2>
           <div class="griglia2"><label class="campo-largo">Link del file scorrimenti <input id="link-scorrimenti" type="url" value="${esc(m.link_scorrimenti)}" placeholder="https://"></label><label class="campo-largo">Link del file graduatorie <input id="link-graduatorie" type="url" value="${esc(m.link_graduatorie)}" placeholder="https://"></label></div>
           <div class="riga" style="margin-top:8px"><button type="button" id="salva-link"${chiuso ? " disabled" : ""}>Salva i link</button></div>
@@ -561,30 +560,111 @@
       azione("salva-mese", () => aggiorna({ oggetto: $("modello-oggetto").value, testo: $("modello-testo").value }));
       azione("salva-generale", async () => { await chiama("/api/impostazioni/email", corpoJson("PUT", { oggetto: $("modello-oggetto").value, testo: $("modello-testo").value })); await aggiorna({ oggetto: "", testo: "" }); });
       azione("ripristina", () => aggiorna({ oggetto: "", testo: "" }));
-      const esitoScorrimenti = (d) => {
-        if (!d.caricato) { $("esito-scorrimenti").innerHTML = `<span class="muted small">Nessun file caricato per questo monitoraggio.</span>`; return; }
-        const attesi = d.atti.filter(a => a.subentro_atteso);
-        $("esito-scorrimenti").innerHTML = `<p class="small">File «${esc(d.caricato.nome_file)}» caricato da ${esc(d.caricato.caricato_da || "")} il ${ora(d.caricato.caricato_il)}.
-          ${d.atti.filter(a => a.trovato).length} scorrimenti del mese su ${d.atti.length} trovati nel file${attesi.length ? ` · subentri indicati: ${attesi.filter(a => a.subentro_indicato).length} su ${attesi.length}` : ""}.</p>
-          <div class="scroll"><table style="min-width:760px"><thead><tr><th>Bando</th><th>Prot.</th><th>Data</th><th>Nel file</th><th>Tipologia nel file</th><th>Subentro</th></tr></thead><tbody>
-          ${d.atti.map(a => `<tr><td>${esc(a.codice || a.numero_bando)}</td><td class="mono small">${esc(a.protocollo || "")}</td><td>${esc(dataIt(a.data))}</td>
-            <td>${a.trovato ? `<span class="pillola p-ok">sì</span> <span class="muted small">${esc(a.righe_file.join("; "))}</span>` : `<span class="pillola p-ko">non trovato</span>`}</td><td class="small">${esc(a.tipologia)}</td>
-            <td>${!a.subentro_atteso ? `<span class="muted2">–</span>` : a.subentro_indicato ? `<span class="pillola p-ok">indicato</span>` : `<span class="pillola p-ko">da indicare</span>`}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">Nessuno scorrimento in questo monitoraggio.</td></tr>`}</tbody></table></div>
-          ${d.solo_nel_file.length ? `<details style="margin-top:8px"><summary class="small">${d.solo_nel_file.length} righe del file senza uno scorrimento del mese</summary><ul class="small">${d.solo_nel_file.map(v => `<li>${esc(v.foglio)}, riga ${v.riga}: ${esc(v.bando)}${v.protocolli.length ? ` (prot. ${esc(v.protocolli.join(", "))})` : ""}</li>`).join("")}</ul></details>` : ""}`;
-      };
-      chiama(`/api/monitoraggi/${m.mese}/scorrimenti-compilato`).then(esitoScorrimenti).catch(() => {});
-      if ($("carica-scorrimenti")) $("carica-scorrimenti").onsubmit = async (ev) => {
-        ev.preventDefault();
-        const dati = new FormData(); dati.append("file", $("file-scorrimenti").files[0]);
-        try { esitoScorrimenti(await chiama(`/api/monitoraggi/${m.mese}/scorrimenti-compilato`, { method: "POST", body: dati })); toast("File verificato"); stato.atti = await chiama(`/api/monitoraggi/${m.mese}/atti`); }
-        catch (err) { toast(err.message); }
-      };
+      if ($("vai-riepilogo")) $("vai-riepilogo").onclick = (e) => { e.preventDefault(); stato.scheda = "riepilogo"; disegna(); };
       azione("copia", async () => { await copia(`Oggetto: ${e.oggetto}\n\n${e.corpo}`, "Testo copiato"); });
       azione("invia", async () => {
         if (!confirm(`Inviare l'email?\n\n${p.prova ? `In prova, solo a ${p.prova}` : `INVIO REALE a: ${e.destinatari.join(", ")}`}`)) return;
         const r = await chiama(`/api/monitoraggi/${m.mese}/email-compilazione/invia`, { method: "POST" });
         stato.m = await chiama(`/api/monitoraggi/${m.mese}`); schedaPreparazione(); toast(r.prova ? "Inviata in prova" : "Inviata");
       });
+    }
+
+    // --- riepilogo e revisione (spec 011): i due file del mese, i totali, ciò che non torna, la revisione
+    const NOMI_FILE = { scorrimenti: "File scorrimenti", graduatorie: "Estrazione graduatorie da Selezioni Online" };
+    async function schedaRiepilogo() {
+      const m = stato.m, chiuso = m.stato === "chiuso";
+      $("corpo-scheda").innerHTML = `<section><p class="muted">Caricamento…</p></section>`;
+      let r;
+      try { r = await chiama(`/api/monitoraggi/${m.mese}/riepilogo`); } catch (err) { $("corpo-scheda").innerHTML = `<section><div class="errore">${esc(err.message)}</div></section>`; return; }
+      const statoFile = (nome) => {
+        const f = r.file[nome];
+        if (!f.caricato) return `<span class="pillola p-na">non caricato</span>`;
+        const mancanti = (f.mancanti || []).map(g => `<div class="etichetta" style="margin-top:4px">manca del tutto il gruppo ${esc(g.gruppo)} (${esc(g.nome)}): ${g.scorrimenti ?? g.graduatorie} atti</div>`).join("");
+        return `${f.allineato ? `<span class="pillola p-ok">allineato</span>` : `<span class="pillola p-ko">${f.da_verificare} da verificare</span>`}
+          <div class="muted small">«${esc(f.caricato.nome_file)}» caricato da ${esc(f.caricato.caricato_da || "")} il ${ora(f.caricato.caricato_il)}${f.fuori_periodo ? ` · ${f.fuori_periodo} graduatorie di altri mesi non considerate` : ""}</div>${mancanti}`;
+      };
+      const carica = (nome, accetta, url) => `<div class="scelta"><b>${NOMI_FILE[nome]}</b><div style="margin:6px 0">${statoFile(nome)}</div>
+        ${chiuso ? "" : `<form class="riga carica-file" data-url="${url}" style="align-items:center"><input type="file" accept="${accetta}" required aria-label="${NOMI_FILE[nome]}"><button type="submit">Carica e verifica</button></form>`}</div>`;
+      const cella = (v, c) => `<td style="text-align:right">${v.attesi}</td><td style="text-align:right">${c.nei_file_da && c.categoria !== "Bandi pubblicati" ? `<span class="muted2">–</span>` : `<b class="${v.nei_file < v.attesi ? "rosso" : ""}">${v.nei_file}</b>`}</td>`;
+      const totali = r.totali.categorie.map(c => `<tr><td><b>${esc(c.categoria)}</b>${c.nei_file_da ? `<div class="muted small">${esc(c.nei_file_da)}</div>` : ""}</td>${cella(c.concorsi, c)}${cella(c.mobilita, c)}${cella(c.totale, c)}
+        <td class="small">${c.per_gruppo.map(g => `${esc(g.nome)}: ${g.attesi}${c.nei_file_da && c.categoria !== "Bandi pubblicati" ? "" : ` · nei file ${g.nei_file}`}`).join("<br>")}</td></tr>`).join("");
+      const tip = Object.entries(r.totali.scorrimenti_per_tipologia || {}).map(([k, n]) => `${esc(k)} ${n}`).join(" · ");
+      const voci = r.da_verificare.map((v, i) => `<tr class="difforme"><td class="small">${v.file === "scorrimenti" ? "Scorrimenti" : "Graduatorie"}</td><td>${esc(v.codice || "")}</td>
+          <td class="mono small">${esc(v.protocollo || "")}</td><td>${esc(dataIt(v.data))}</td><td class="small">${esc(v.gruppo || "")}</td>
+          <td><ul class="rilievi">${v.problemi.map(p => `<li>${esc(p)}</li>`).join("")}</ul></td>
+          <td class="small">${v.rdp.map(p => esc([p.nome, p.cognome].filter(Boolean).join(" ") || p.email)).join("<br>")}</td>
+          <td>${v.richiesta ? `<div class="small"><span class="pillola ${v.richiesta.esito === "inviata" ? "p-ok" : "p-blu"}">${v.richiesta.esito === "inviata" ? "richiesta inviata" : "inviata in prova"}</span><div class="muted">${ora(v.richiesta.quando)}</div></div>` : ""}
+            ${v.chiave && !chiuso ? `<button type="button" class="piccolo solo-admin" data-chiedi="${i}">Chiedi verifica</button>` : ""}</td></tr>`).join("");
+      const rev = r.revisione.il;
+      $("corpo-scheda").innerHTML = `
+        <section><h2>File del mese</h2><p class="muted small">Carica l'estrazione delle graduatorie scaricata da Selezioni Online (export «Punteggi», .xls) e il file scorrimenti compilato. Il controllo parte da ciò che risulta nel monitoraggio: ogni graduatoria e ogni scorrimento deve esserci, anche quando manca un intero foglio o gruppo di concorsi; ciò che è nel file e non nel monitoraggio è segnalato. I nominativi si vedono solo qui.</p>
+          <div class="griglia2">${carica("graduatorie", ".xls,.xlsx", `/api/monitoraggi/${m.mese}/estrazione-graduatorie`)}${carica("scorrimenti", ".xlsx", `/api/monitoraggi/${m.mese}/scorrimenti-compilato`)}</div></section>
+        <section><h2>Totali del monitoraggio</h2><p class="muted small">Per ogni voce: quanti atti risultano nel monitoraggio e quanti ce ne sono nei file caricati. È la tabella che vedono coordinatori e persone dell'ufficio.</p>
+          <div class="scroll"><table><thead><tr><th rowspan="2">Voce</th><th colspan="2">Concorsi</th><th colspan="2">Mobilità</th><th colspan="2">Totale</th><th rowspan="2">Per profilo</th></tr>
+          <tr><th>risultano</th><th>nei file</th><th>risultano</th><th>nei file</th><th>risultano</th><th>nei file</th></tr></thead><tbody>${totali}</tbody></table></div>
+          ${tip ? `<p class="small" style="margin:6px 0 0">Scorrimenti per tipologia indicata nel file: ${tip}</p>` : ""}</section>
+        <section><h2>Cosa non torna <span class="muted">(${r.da_verificare.length})</span></h2>
+          ${r.da_verificare.length ? `<div class="scroll"><table style="min-width:1100px"><thead><tr><th>File</th><th>Bando</th><th>Prot.</th><th>Data</th><th>Gruppo</th><th>Cosa non torna</th><th>RdP</th><th></th></tr></thead><tbody>${voci}</tbody></table></div>`
+            : `<p class="small" style="color:var(--ok)">${r.file.scorrimenti.caricato || r.file.graduatorie.caricato ? "Tutto allineato nei file caricati." : "Carica i file per vedere cosa non torna."}</p>`}</section>
+        <section><h2>I file che verranno mandati</h2>
+          <div class="riga">${[["graduatorie", "File graduatorie (dall'estrazione)"], ["scorrimenti", "File scorrimenti caricato"]].map(([k, t]) => r.file[k].caricato
+            ? `<span><button type="button" data-vedi="${k}">Vedi ${t.toLowerCase()}</button> <a class="pulsante primario" href="/api/monitoraggi/${m.mese}/file-mese/${k}">Scarica</a></span>`
+            : `<span class="muted small">${t}: non ancora caricato</span>`).join(" ")}</div>
+          <p class="muted small">Link su OneDrive: ${r.link.scorrimenti ? `<a href="${esc(r.link.scorrimenti)}" target="_blank" rel="noopener">scorrimenti ↗</a>` : "scorrimenti non impostato"} · ${r.link.graduatorie ? `<a href="${esc(r.link.graduatorie)}" target="_blank" rel="noopener">graduatorie ↗</a>` : "graduatorie non impostato"} (si impostano in «File ed email»; compaiono anche nell'area referenti).</p></section>
+        <section class="solo-admin"><h2>Revisione ${rev ? `<span class="pillola p-blu">in revisione dal ${ora(rev)}</span>` : ""}</h2>
+          <p class="muted small">Si può mandare in revisione anche se non tutto è allineato: coordinatori e persone dell'ufficio ricevono questo testo, il link alla pagina del monitoraggio e la tabella dei totali (senza nominativi). Il monitoraggio resta modificabile e si chiude come sempre.</p>
+          <textarea id="testo-revisione" style="min-height:110px"${chiuso ? " disabled" : ""}>${esc(r.testo)}</textarea>
+          <div class="riga" style="margin-top:8px;align-items:center"><button type="button" id="salva-testo-revisione"${chiuso ? " disabled" : ""}>Salva il testo</button>
+            <button type="button" id="copia-testo-revisione">Copia il testo</button>
+            <button class="primario" type="button" id="manda-revisione"${chiuso ? " disabled" : ""}>${rev ? "Rimanda in revisione" : "Manda in revisione"}</button>
+            ${m.posta.prova ? `<span class="muted small">Email in prova: vanno a ${esc(m.posta.prova)}</span>` : ""}</div></section>`;
+      document.querySelectorAll("form.carica-file").forEach(f => f.onsubmit = async (e) => {
+        e.preventDefault();
+        const dati = new FormData(); dati.append("file", f.querySelector("input").files[0]);
+        f.querySelector("button").disabled = true;
+        try { await chiama(f.dataset.url, { method: "POST", body: dati }); toast("File verificato"); stato.atti = await chiama(`/api/monitoraggi/${m.mese}/atti`); schedaRiepilogo(); }
+        catch (err) { toast(err.message); f.querySelector("button").disabled = false; }
+      });
+      document.querySelectorAll("[data-chiedi]").forEach(b => b.onclick = () => chiediVerifica(r.da_verificare[Number(b.dataset.chiedi)]));
+      document.querySelectorAll("[data-vedi]").forEach(b => b.onclick = () => vediFile(b.dataset.vedi));
+      const salva = () => chiama(`/api/monitoraggi/${m.mese}/riepilogo/testo`, corpoJson("PUT", { testo: $("testo-revisione").value }));
+      $("salva-testo-revisione").onclick = async () => { try { await salva(); toast("Testo salvato"); } catch (err) { toast(err.message); } };
+      $("copia-testo-revisione").onclick = () => copia($("testo-revisione").value, "Testo copiato");
+      $("manda-revisione").onclick = async () => {
+        if (!confirm(`${m.posta.prova ? `In prova, solo a ${m.posta.prova}.` : "INVIO REALE a coordinatori e persone dell'ufficio."}\n\nMandare il monitoraggio in revisione?`)) return;
+        try { await salva(); const x = await chiama(`/api/monitoraggi/${m.mese}/revisione`, { method: "POST" }); toast(x.prova ? "Inviata in prova" : `Inviata a ${x.destinatari.length} persone`); schedaRiepilogo(); }
+        catch (err) { toast(err.message); }
+      };
+    }
+    async function chiediVerifica(v) {
+      const m = stato.m, url = `/api/monitoraggi/${m.mese}/verifica-file/${v.file}/richiesta`;
+      let d;
+      try { d = await chiama(`${url}?chiave=${encodeURIComponent(v.chiave)}`); } catch (err) { return toast(err.message); }
+      const o = apriFinestra(`<header><b>Chiedi verifica · bando ${esc(v.chiave)}</b></header><div class="corpo">
+        <div class="small"><b>A:</b> ${esc(d.destinatari.join(", ")) || `<span class="etichetta">nessuna email RdP</span>`}</div>
+        ${d.link ? "" : `<div class="avviso small">Il link del file su OneDrive non è impostato: aggiungilo in «File ed email».</div>`}
+        <label class="campo-largo">Oggetto <input id="rv-oggetto" value="${esc(d.oggetto)}"></label>
+        <textarea id="rv-corpo" style="margin-top:8px;min-height:260px" aria-label="Testo">${esc(d.corpo)}</textarea>
+        <p class="muted small">Il testo può contenere nominativi: toglili se non devono essere nell'email.</p>
+        ${d.storico.length ? `<div class="small">Già chiesto: ${d.storico.map(s => `${ora(s.quando)} (${esc(s.esito)})`).join(", ")}</div>` : ""}</div>
+        <footer><button type="button" id="rv-no">Annulla</button><button class="primario" type="button" id="rv-si"${d.destinatari.length && d.posta.configurata ? "" : " disabled"}>${d.posta.prova ? `Invia in prova a ${esc(d.posta.prova)}` : "Invia"}</button></footer>`);
+      o.querySelector("#rv-no").onclick = chiudiFinestra;
+      o.querySelector("#rv-si").onclick = async () => {
+        if (!d.posta.prova && !confirm(`INVIO REALE a:\n${d.destinatari.join(", ")}\n\nProcedere?`)) return;
+        try { const x = await chiama(url, corpoJson("POST", { chiave: v.chiave, oggetto: o.querySelector("#rv-oggetto").value, corpo: o.querySelector("#rv-corpo").value }));
+          chiudiFinestra(); toast(x.prova ? "Inviata in prova" : "Richiesta inviata"); schedaRiepilogo(); }
+        catch (err) { toast(err.message); }
+      };
+    }
+    async function vediFile(file) {
+      const m = stato.m;
+      let d;
+      try { d = await chiama(`/api/monitoraggi/${m.mese}/file-mese/${file}/anteprima`); } catch (err) { return toast(err.message); }
+      const o = apriFinestra(`<header><b>${file === "graduatorie" ? "File graduatorie (dall'estrazione)" : "File scorrimenti caricato"}</b> <span class="muted small">${d.righe.length} righe</span></header>
+        <div class="corpo"><div class="scroll" style="max-height:60vh"><table><thead><tr>${d.colonne.map(([, t]) => `<th>${esc(t)}</th>`).join("")}</tr></thead>
+        <tbody>${d.righe.map(x => `<tr>${d.colonne.map(([k]) => `<td class="small">${esc(x[k] ?? "")}</td>`).join("")}</tr>`).join("") || `<tr><td class="muted">Nessuna riga.</td></tr>`}</tbody></table></div></div>
+        <footer><a class="pulsante primario" href="/api/monitoraggi/${m.mese}/file-mese/${file}">Scarica</a><button type="button" id="vf-chiudi">Chiudi</button></footer>`);
+      o.querySelector("#vf-chiudi").onclick = chiudiFinestra;
     }
 
     // --- versioni salvate

@@ -11,3 +11,4 @@ openpyxl==3.1.5
 PyJWT>=2.8
 Flask-Session==0.5.0
 playwright==1.48.0   # solo prova locale: finestra di login di Selezioni Online (spec 004)
+xlrd==2.0.1  # export «Punteggi» .xls di Selezioni Online (spec 011)

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, redirect, request, send_file, send_from_directory, session
 
-from . import atti, attivita, avvisi_scorrimenti, comunicazioni, config, db, difformita, excel_mese, impostazioni, mensile, portale, posta, profili, punteggi, referenti, scorrimenti_compilato, sol_sessione, utenti
+from . import atti, attivita, avvisi_scorrimenti, comunicazioni, config, db, difformita, estrazione_sol, excel_mese, impostazioni, mensile, portale, posta, profili, punteggi, referenti, revisione, scorrimenti_compilato, sol_sessione, utenti
 
 STATIC = Path(__file__).resolve().parent / "static"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -777,7 +777,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
     @protezione
     @solo_admin
     def api_scorrimenti_compilato(mese: str):
-        """Il file scorrimenti compilato dai colleghi: si leggono bando, protocolli e tipologia, mai i nominativi."""
+        """Il file scorrimenti compilato dai colleghi (spec 011): si confronta con il monitoraggio, anche per persona."""
         conn = _conn()
         try:
             m = _trova(conn, mese)
@@ -791,15 +791,182 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
                 if len(contenuto) > 15 * 1024 * 1024:
                     return jsonify({"error": "File troppo grande (massimo 15 MB)"}), 413
                 try:
-                    voci = scorrimenti_compilato.leggi(contenuto)
+                    letto = scorrimenti_compilato.leggi_file(contenuto)
                 except scorrimenti_compilato.FileNonValido as e:
                     return jsonify({"error": str(e)}), 400
-                scorrimenti_compilato.salva(conn, mese, file.filename, voci, utente_corrente())
+                scorrimenti_compilato.salva(conn, mese, file.filename, letto["voci"], utente_corrente(), letto["fogli"], contenuto)
             caricato = scorrimenti_compilato.caricato(conn, mese)
             if not caricato:
                 return jsonify({"caricato": None})
-            esito = scorrimenti_compilato.confronta(comunicazioni.righe_mese(conn, m), caricato["voci"])
+            esito = revisione.verifica_scorrimenti(conn, m)
             return jsonify({"caricato": {k: caricato[k] for k in ("nome_file", "caricato_da", "caricato_il")}, **esito})
+        finally:
+            conn.close()
+
+    # --- spec 011: estrazione delle graduatorie da Selezioni Online, riepilogo e revisione
+    def _file_caricato(estensioni: tuple[str, ...], messaggio: str):
+        file = request.files.get("file")
+        if not file or not file.filename.lower().endswith(estensioni):
+            return None, (jsonify({"error": messaggio}), 400)
+        contenuto = file.read(15 * 1024 * 1024 + 1)
+        if len(contenuto) > 15 * 1024 * 1024:
+            return None, (jsonify({"error": "File troppo grande (massimo 15 MB)"}), 413)
+        return (file.filename, contenuto), None
+
+    @bp.route("/api/monitoraggi/<mese>/estrazione-graduatorie", methods=["GET", "POST"])
+    @protezione
+    @solo_admin
+    def api_estrazione_graduatorie(mese: str):
+        """L'export «Punteggi» di Selezioni Online: si confronta con le graduatorie del monitoraggio, anche per persona."""
+        conn = _conn()
+        try:
+            m = _trova(conn, mese)
+            if not m:
+                return jsonify({"error": "Monitoraggio non trovato"}), 404
+            if request.method == "POST":
+                mensile.verifica_aperto(conn, mese)
+                letto, errore = _file_caricato((".xls", ".xlsx"), "Serve l'export «Punteggi» di Selezioni Online (.xls o .xlsx)")
+                if errore:
+                    return errore
+                try:
+                    righe = estrazione_sol.leggi(letto[1])
+                except estrazione_sol.FileNonValido as e:
+                    return jsonify({"error": str(e)}), 400
+                estrazione_sol.salva(conn, mese, letto[0], righe, utente_corrente())
+            return jsonify(revisione.verifica_graduatorie(conn, m))
+        except mensile.MeseChiuso as e:
+            return jsonify({"error": str(e)}), 409
+        finally:
+            conn.close()
+
+    @bp.get("/api/monitoraggi/<mese>/riepilogo")
+    @protezione
+    @solo_admin
+    def api_riepilogo(mese: str):
+        conn = _conn()
+        try:
+            m = _trova(conn, mese)
+            if not m:
+                return jsonify({"error": "Monitoraggio non trovato"}), 404
+            risposta = jsonify(revisione.riepilogo(conn, mensile.leggi(conn, mese)))
+            risposta.headers["Cache-Control"] = "no-store"  # può contenere nominativi
+            return risposta
+        finally:
+            conn.close()
+
+    @bp.put("/api/monitoraggi/<mese>/riepilogo/testo")
+    @protezione
+    @solo_admin
+    def api_riepilogo_testo(mese: str):
+        conn = _conn()
+        try:
+            if not _trova(conn, mese):
+                return jsonify({"error": "Monitoraggio non trovato"}), 404
+            revisione.salva_testo(conn, mese, str((request.get_json(silent=True) or {}).get("testo") or ""))
+            return jsonify({"ok": True})
+        finally:
+            conn.close()
+
+    @bp.route("/api/monitoraggi/<mese>/verifica-file/<file>/richiesta", methods=["GET", "POST"])
+    @protezione
+    @solo_admin
+    def api_richiesta_verifica(mese: str, file: str):
+        """«Chiedi verifica»: email agli RdP del bando con ciò che non torna nel file e il link per aggiornarlo."""
+        if file not in ("scorrimenti", "graduatorie"):
+            return jsonify({"error": "File non valido"}), 404
+        conn = _conn()
+        try:
+            m = mensile.leggi(conn, mese) if _trova(conn, mese) else None
+            if not m:
+                return jsonify({"error": "Monitoraggio non trovato"}), 404
+            if request.method == "GET":
+                anteprima = revisione.richiesta(conn, m, file, request.args.get("chiave") or "")
+                return jsonify(anteprima) if anteprima else (jsonify({"error": "Bando non trovato in questo monitoraggio"}), 404)
+            corpo = request.get_json(silent=True) or {}
+            try:
+                return jsonify(revisione.invia_richiesta(conn, m, file, str(corpo.get("chiave") or ""), str(corpo.get("oggetto") or "").strip(),
+                                                         str(corpo.get("corpo") or ""), utente_corrente()))
+            except (ValueError, posta.PostaErrore) as e:
+                return jsonify({"error": str(e)}), 400
+        finally:
+            conn.close()
+
+    @bp.post("/api/monitoraggi/<mese>/revisione")
+    @protezione
+    @solo_admin
+    def api_manda_in_revisione(mese: str):
+        conn = _conn()
+        try:
+            if not _trova(conn, mese):
+                return jsonify({"error": "Monitoraggio non trovato"}), 404
+            return jsonify(revisione.manda_in_revisione(conn, mensile.leggi(conn, mese), utente_corrente()))
+        except mensile.MeseChiuso as e:
+            return jsonify({"error": str(e)}), 409
+        except (ValueError, posta.PostaErrore) as e:
+            return jsonify({"error": str(e)}), 400
+        finally:
+            conn.close()
+
+    @bp.get("/api/monitoraggi/<mese>/file-mese/<file>")
+    @protezione
+    @solo_admin
+    def api_file_del_mese(mese: str, file: str):
+        """I due file del monitoraggio: il file scorrimenti caricato e il file graduatorie compilato dall'estrazione SOL."""
+        conn = _conn()
+        try:
+            m = _trova(conn, mese)
+            if not m:
+                return jsonify({"error": "Monitoraggio non trovato"}), 404
+            if file == "scorrimenti":
+                trovato = scorrimenti_compilato.contenuto_file(conn, mese)
+                if not trovato:
+                    return jsonify({"error": "File scorrimenti non ancora caricato"}), 404
+                nome, contenuto = trovato
+            elif file == "graduatorie":
+                estrazione = estrazione_sol.caricata(conn, mese)
+                if not estrazione:
+                    return jsonify({"error": "Estrazione da Selezioni Online non ancora caricata"}), 404
+                dal, al = mensile.periodo_dati(m)
+                mobilita = {r.get("numero_bando") for r in comunicazioni.righe_mese(conn, m) if r.get("tipologia") in revisione.MOBILITA}
+                contenuto = excel_mese.excel_graduatorie_da_estrazione(conn, dal, al, *estrazione_sol.righe_excel(estrazione["righe"], dal, al, mobilita))
+                nome = excel_mese.nome_graduatorie(m["mese_dati"])
+            else:
+                return jsonify({"error": "File non trovato"}), 404
+        finally:
+            conn.close()
+        risposta = send_file(io.BytesIO(contenuto), mimetype=XLSX, as_attachment=request.args.get("vedi") != "1", download_name=nome)
+        risposta.headers["Cache-Control"] = "no-store"  # dati personali dei candidati
+        return risposta
+
+    @bp.get("/api/monitoraggi/<mese>/file-mese/<file>/anteprima")
+    @protezione
+    @solo_admin
+    def api_anteprima_file(mese: str, file: str):
+        """Il contenuto dei file da vedere nella pagina, prima di scaricarli (solo amministratori: contiene nominativi)."""
+        conn = _conn()
+        try:
+            m = _trova(conn, mese)
+            if not m:
+                return jsonify({"error": "Monitoraggio non trovato"}), 404
+            if file == "scorrimenti":
+                c = scorrimenti_compilato.caricato(conn, mese)
+                righe = [{"foglio": v["foglio"], "riga": v["riga"], "bando": v["bando"], "protocolli": ", ".join(v["protocolli"]),
+                          "tipologia": v["tipologia"], "nominativi": "; ".join(v.get("nominativi") or [])} for v in (c["voci"] if c else [])]
+                colonne = [["foglio", "Foglio"], ["riga", "Riga"], ["bando", "Bando"], ["protocolli", "Protocolli"], ["tipologia", "Tipologia"], ["nominativi", "Nominativi"]]
+            elif file == "graduatorie":
+                e = estrazione_sol.caricata(conn, mese)
+                dal, al = mensile.periodo_dati(m)
+                concorsi, mob = estrazione_sol.righe_excel(e["righe"], dal, al, set()) if e else ([], [])
+                from .punteggi import INTESTAZIONI_EXCEL
+                indici = {h: INTESTAZIONI_EXCEL.index(h) for h in ("Codice bando", "Profilo/Livello", "Cognome", "Nome", "Totale Punteggi", "Graduatoria", "Esito",
+                                                                    "Numero Protocollo Graduatoria")}
+                righe = [{h: v[i] for h, i in indici.items()} for v, _ in concorsi + mob]
+                colonne = [[h, h] for h in indici]
+            else:
+                return jsonify({"error": "File non trovato"}), 404
+            risposta = jsonify({"colonne": colonne, "righe": righe})
+            risposta.headers["Cache-Control"] = "no-store"
+            return risposta
         finally:
             conn.close()
 

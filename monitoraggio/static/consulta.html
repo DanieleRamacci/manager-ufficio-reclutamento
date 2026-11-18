@@ -182,6 +182,22 @@
     const [classe, testo] = COMUNICAZIONE[c.stato] || ["p-blu", `${String(c.stato || "").replace(/_/g, " ")}`];
     return `<td><span class="pillola ${classe}">${esc(testo)}</span>${c.quando ? `<div class="muted small">il ${esc(ora(c.quando))}</div>` : ""}</td>`;
   }
+  // spec 011: link ai file del mese su OneDrive e, dopo la revisione, i totali di ciò che risulta e di ciò che c'è nei file
+  function bloccoFileERevisione() {
+    const l = dati.file_link, r = dati.revisione;
+    const link = (url, nome) => url ? `<a class="pulsante piccolo" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${nome} ↗</a>` : `<span class="muted small">${nome}: non ancora disponibile</span>`;
+    const file = l && dati.stato !== "chiuso" ? `<div class="riga" style="margin-top:10px;align-items:center"><b class="small">File del monitoraggio su OneDrive:</b> ${link(l.scorrimenti, "File scorrimenti")} ${link(l.graduatorie, "File graduatorie")}</div>` : "";
+    if (!r) return file;
+    const cella = (v, c) => `<td style="text-align:right">${v.attesi}</td><td style="text-align:right">${c.nei_file_da && c.categoria !== "Bandi pubblicati" ? `<span class="muted2 small">–</span>` : v.nei_file}</td>`;
+    const righe = r.totali.categorie.map(c => `<tr><td><b>${esc(c.categoria)}</b>${c.nei_file_da ? `<div class="muted small">${esc(c.nei_file_da)}</div>` : ""}</td>${cella(c.concorsi, c)}${cella(c.mobilita, c)}${cella(c.totale, c)}
+        <td class="small">${c.per_gruppo.map(g => `${esc(g.nome)}: ${g.attesi}${c.nei_file_da && c.categoria !== "Bandi pubblicati" ? "" : ` (nei file ${g.nei_file})`}`).join("<br>")}</td></tr>`).join("");
+    const tip = Object.entries(r.totali.scorrimenti_per_tipologia || {}).map(([k, n]) => `${esc(k)} ${n}`).join(" · ");
+    return `${file}<div class="card" style="margin-top:12px;padding:12px"><h2 style="margin:0 0 4px">Monitoraggio in revisione</h2>
+      <p class="muted small" style="margin:0 0 8px">Dal ${esc(ora(r.il))}. Per ogni voce: quanti atti risultano a noi e quanti ce ne sono nei file del monitoraggio. Segnalateci eventuali correzioni.</p>
+      <div class="scroll"><table><thead><tr><th rowspan="2">Voce</th><th colspan="2">Concorsi</th><th colspan="2">Mobilità</th><th colspan="2">Totale</th><th rowspan="2">Per profilo</th></tr>
+      <tr><th style="text-align:right">risultano</th><th style="text-align:right">nei file</th><th style="text-align:right">risultano</th><th style="text-align:right">nei file</th><th style="text-align:right">risultano</th><th style="text-align:right">nei file</th></tr></thead><tbody>${righe}</tbody></table></div>
+      ${tip ? `<p class="small" style="margin:6px 0 0">Scorrimenti per tipologia: ${tip}</p>` : ""}</div>`;
+  }
   function disegnaMese() {
     const v = dati.visitatore;
     const chiuso = dati.stato === "chiuso";
@@ -195,6 +211,7 @@
         <div class="riga"><label class="muted">Mese <select id="mese-monitoraggio">${elencoMesi.map(m => `<option value="${esc(m.mese)}"${m.mese === dati.mese ? " selected" : ""}>${esc(m.titolo)}</option>`).join("")}</select></label><a href="${BASE}/monitoraggi">Tutti i monitoraggi</a></div></div>
       ${chiuso ? `<p class="muted small">Dati salvati alla chiusura del monitoraggio.</p>` : `<p class="muted small" style="margin:4px 0 0">Dati aggiornati a: ${dati.aggiornamenti.map(f => `${esc(f.nome)} ${esc(ora(f.aggiornata_il) || "nessun dato")}`).join(" · ")}. Una correzione fatta ora compare dopo il prossimo aggiornamento.</p>`}
       ${dati.in_attesa.length ? `<div class="avviso" style="margin-top:8px">Aggiornamento in corso (${dati.in_attesa.map(esc).join(", ")}): le difformità saranno visibili quando sarà concluso.</div>` : ""}
+      ${bloccoFileERevisione()}
       <div class="schede" role="tablist" aria-label="Tipi di atto">${schede.map(([k, t, n, d]) => `<button type="button" role="tab" data-mese-scheda="${k}" aria-selected="${filtri.schedaMese === k}">${t} (${n})${d ? ` <span class="numero-ko">${d}</span>` : ""}</button>`).join("")}</div></section>
       <section>${barraFiltri(v)}<div id="tabella"></div></section>`;
     const tabella = () => {

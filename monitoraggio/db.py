@@ -6,7 +6,7 @@ import sqlite3
 from . import config
 from .normalizza import AGGIUNTA_TIPOLOGIE, ANCORA_SCORRIMENTI, codice_sede, nota_sottotipo
 
-SCHEMA_VERSION = 29
+SCHEMA_VERSION = 30
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -285,7 +285,32 @@ CREATE TABLE IF NOT EXISTS scorrimenti_compilato (
     nome_file TEXT,
     caricato_da TEXT,
     caricato_il TEXT NOT NULL,
-    voci TEXT NOT NULL
+    voci TEXT NOT NULL,
+    fogli TEXT,
+    contenuto BLOB
+);
+
+-- spec 011: export «Punteggi» di Selezioni Online caricato per il monitoraggio (dati personali: solo amministratori)
+CREATE TABLE IF NOT EXISTS estrazione_graduatorie (
+    mese TEXT PRIMARY KEY,
+    nome_file TEXT,
+    caricato_da TEXT,
+    caricato_il TEXT NOT NULL,
+    righe TEXT NOT NULL
+);
+
+-- spec 011: richieste di verifica dei file agli RdP di un bando
+CREATE TABLE IF NOT EXISTS richiesta_verifica (
+    id INTEGER PRIMARY KEY,
+    mese TEXT NOT NULL,
+    file TEXT NOT NULL CHECK (file IN ('scorrimenti', 'graduatorie')),
+    chiave TEXT NOT NULL,
+    destinatari TEXT NOT NULL DEFAULT '[]',
+    oggetto TEXT,
+    esito TEXT NOT NULL,
+    messaggio TEXT,
+    utente TEXT,
+    quando TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS profilo_coordinato (
@@ -646,6 +671,14 @@ def inizializza(conn: sqlite3.Connection) -> None:
     for colonna in ("cc", "message_id"):  # versioni 17 e 21
         if colonna not in colonne_comunicazione:
             conn.execute(f"ALTER TABLE comunicazione ADD COLUMN {colonna} TEXT")
+    colonne_compilato = {r[1] for r in conn.execute("PRAGMA table_info(scorrimenti_compilato)")}
+    for colonna, tipo in (("fogli", "TEXT"), ("contenuto", "BLOB")):  # versione 30
+        if colonna not in colonne_compilato:
+            conn.execute(f"ALTER TABLE scorrimenti_compilato ADD COLUMN {colonna} {tipo}")
+    colonne_mese_30 = {r[1] for r in conn.execute("PRAGMA table_info(monitoraggio_mese)")}
+    for colonna in ("revisione_il", "revisione_da", "testo_revisione"):  # versione 30
+        if colonna not in colonne_mese_30:
+            conn.execute(f"ALTER TABLE monitoraggio_mese ADD COLUMN {colonna} TEXT")
     if "rilievi" not in {r[1] for r in conn.execute("PRAGMA table_info(avviso_scorrimento)")}:  # versione 29
         conn.execute("ALTER TABLE avviso_scorrimento ADD COLUMN rilievi TEXT NOT NULL DEFAULT '[]'")
     colonne_segnalazione = {r[1] for r in conn.execute("PRAGMA table_info(segnalazione)")}
