@@ -146,6 +146,12 @@ def confronta(righe: list[dict], voci: list[dict], fogli: list[str] | None = Non
     usati: set[int] = set()
     gruppi_file = {verifica_file.gruppo_di_foglio(f) for f in (fogli if fogli is not None else {v["foglio"] for v in voci})}
     atti, mancano_fogli = [], {}
+    altrove_file: dict[str, list] = {}  # dove compare ogni persona nel file, per dire «è sotto un altro bando»
+    for b in blocchi:
+        for n in b["nominativi"]:
+            altrove_file.setdefault(verifica_file.nome_chiave(n), []).append(
+                ((b["numero_bando"], tuple(b["protocolli"])), f"{b['bando']}" + (f" (prot. {', '.join(b['protocolli'])})" if b["protocolli"] else "")))
+    altrove_seg = verifica_file.dove_in_segreteria(persone)
     for r in righe:
         if r["atto"] != "scorrimento":
             continue
@@ -186,7 +192,8 @@ def confronta(righe: list[dict], voci: list[dict], fogli: list[str] | None = Non
                 tipi_seg = {verifica_file_tipo(p) for p in seg or [] if verifica_file_tipo(p)}
                 if tipo_file and tipi_seg and tipo_file not in tipi_seg:
                     problemi.append(f"tipologia «{tipo_file}» nel file, «{', '.join(sorted(tipi_seg))}» nel file della segreteria")
-                problemi += verifica_file.confronta_persone(nel_file, seg)
+                problemi += verifica_file.confronta_persone(nel_file, seg, altrove_file=altrove_file, altrove_segreteria=altrove_seg,
+                                                            qui=verifica_file.qui_per(r.get("numero_bando"), _protocolli_riga(r)))
             dichiarate = sum(blocchi[i]["posizioni"] or 0 for i in trovati) if any(blocchi[i]["posizioni"] is not None for i in trovati) else None
             if dichiarate is not None and nel_file and dichiarate != len(nel_file):
                 problemi.append(f"{dichiarate} posizioni dichiarate, {len(nel_file)} nominativi")

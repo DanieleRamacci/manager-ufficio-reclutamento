@@ -146,6 +146,12 @@ def confronta(righe: list[dict], righe_estrazione: list[dict], dal: str, al: str
     usati: set[tuple] = set()
     gruppi_estrazione = {verifica_file.gruppo_di_profilo(v["profilo"]) for v in righe_estrazione}
     atti, mancano_gruppi = [], {}
+    altrove_file: dict[str, list] = {}  # dove compare ogni persona nell'estrazione, per dire «è sotto un altro bando»
+    for v in righe_estrazione:
+        if v["protocollo_graduatoria"]:
+            altrove_file.setdefault(verifica_file.nome_chiave(v["nominativo"]), []).append(
+                ((v["numero_bando"], v["protocollo_graduatoria"]), f"{v['codice_bando']} (prot. {v['protocollo_graduatoria']})"))
+    altrove_seg = verifica_file.dove_in_segreteria(persone)
     for r in righe:
         if r["atto"] != "graduatoria":
             continue
@@ -162,7 +168,9 @@ def confronta(righe: list[dict], righe_estrazione: list[dict], dal: str, al: str
         elif persone is not None:
             seg = [p for prot in _protocolli_riga(r) for p in persone.get((r.get("numero_bando"), prot), [])] or None
             problemi += verifica_file.confronta_persone([{"nominativo": c["nominativo"], "posizione": c["posizione"], "punteggio": c["punteggio"]}
-                                                         for c in candidati], seg, con_punteggi=True)
+                                                         for c in candidati], seg, con_punteggi=True, altrove_file=altrove_file,
+                                                        altrove_segreteria=altrove_seg,
+                                                        qui=verifica_file.qui_per(r.get("numero_bando"), _protocolli_riga(r)))
         atti.append({"chiave": r.get("chiave"), "codice": r.get("codice"), "numero_bando": r.get("numero_bando"), "protocollo": r.get("protocollo"),
                      "data": r.get("data"), "tipologia_bando": r.get("tipologia"), "gruppo": gruppo, "trovato": bool(trovate),
                      "candidati": len(candidati), "problemi": problemi,

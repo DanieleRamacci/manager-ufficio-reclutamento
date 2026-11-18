@@ -85,3 +85,23 @@ def test_file_graduatorie_ordinato_per_gruppo_e_punteggio():
     cognome = INTESTAZIONI_EXCEL.index("Cognome")
     assert [v[cognome] for v, _ in concorsi] == ["Rossi", "Bianchi", "Cter"]  # prima i RIC, per punteggio; poi i CTER
     assert [v[cognome] for v, _ in mobilita] == ["Mobile"]
+
+
+def test_nominativi_apostrofi_refusi_e_persone_sotto_un_altro_bando():
+    """Dai file reali di ottobre: DELL'ORSO/DELL’ORSO è la stessa persona; MATTIA/MATTAI è un refuso; la graduatoria di un altro
+    bando copiata sotto questo nel file della segreteria si segnala in una riga sola."""
+    assert vf.nome_chiave("DELL'ORSO ISABELLA") == vf.nome_chiave("Dell’Orso Isabella") == vf.nome_chiave("ISABELLA DELL ORSO")
+    assert vf.gruppo_di_foglio("PT") == vf.gruppo_di_foglio("DT") == "DT" and vf.gruppo_di_foglio("CTER 6") == "CTER"
+    estrazione = es.leggi(_file([
+        _candidato("367.562 RIC ISSMC", "Ricercatore III livello", "Boscherini", "80", "1", protocollo="0445338"),
+        _candidato("367.483 RIC IEIIT PD", "Ricercatore III livello", "Altro", "70", "1", protocollo="0448313"),
+        _candidato("367.483 RIC IEIIT PD", "Ricercatore III livello", "Ancora", "69", "2", protocollo="0448313"),
+    ]))
+    persona = lambda n, pos: {"nominativo": n, "chiave": vf.nome_chiave(n), "posizione": pos, "punteggio": None}  # noqa: E731
+    persone = {("367.562", "445338"): [persona("Boscherini Inventatp", 1), persona("Altro Inventato", 1), persona("Ancora Inventato", 2)]}
+    righe = [{"atto": "graduatoria", "chiave": "367.562 RIC", "numero_bando": "367.562", "protocollo": "445338", "data": "2026-10-20",
+              "fonti": {}, "bando_id": 1, "rdp": []}]
+    problemi = es.confronta(righe, estrazione, "2026-10-01", "2026-10-31", persone, PROFILI)["atti"][0]["problemi"]
+    assert problemi == ["nome scritto diverso: «Boscherini Inventato» nel file, «Boscherini Inventatp» nel file della segreteria",
+                        "2 persone del file della segreteria per questo bando sono nel file sotto «367.483 RIC IEIIT PD (prot. 448313)»: "
+                        "bando o protocollo da verificare in uno dei due file (Altro Inventato, Ancora Inventato)"]

@@ -3,6 +3,7 @@
 I nominativi servono al confronto per persona (scelta dell'utente del 2026-11-18): si leggono, si mostrano solo agli
 amministratori e non vanno mai nei log.
 """
+import difflib
 import json
 import re
 import unicodedata
@@ -10,6 +11,7 @@ import unicodedata
 from . import profili, segreteria
 
 # gruppi di concorsi, come i fogli del file scorrimenti; l'ordine è quello dei fogli e del file graduatorie
+# DT: tutti i livelli dei tecnologi (fogli DT, PT, TEC); RIC: tutti i livelli dei ricercatori
 GRUPPI = {"RIC": "Ricercatore", "DT": "Tecnologo", "CTER": "Collaboratore tecnico enti di ricerca",
           "FUNZ": "Funzionario di amministrazione", "COLL.AMM": "Collaboratore di amministrazione",
           "OTP": "Operatore tecnico", "OP.AMM": "Operatore di amministrazione"}
@@ -25,7 +27,7 @@ def gruppo_di_foglio(nome: str | None) -> str:
     """«CTER 6» -> CTER, «COLL.AMM» -> COLL.AMM, «FUNZ 5» -> FUNZ, «Ricercatori» -> RIC."""
     t = re.sub(r"[^A-Z]", "", unicodedata.normalize("NFKD", nome or "").upper())
     for prefisso, gruppo in (("COLLAMM", "COLL.AMM"), ("OPAMM", "OP.AMM"), ("OAMM", "OP.AMM"), ("CTER", "CTER"), ("FUNZ", "FUNZ"),
-                             ("OTP", "OTP"), ("RIC", "RIC"), ("DT", "DT"), ("TECN", "DT")):
+                             ("OTP", "OTP"), ("RIC", "RIC"), ("PR", "RIC"), ("DR", "RIC"), ("DT", "DT"), ("PT", "DT"), ("TEC", "DT")):
         if t.startswith(prefisso):
             return gruppo
     return ALTRO
@@ -50,8 +52,9 @@ def gruppo_della_riga(riga: dict, profili_bandi: tuple[dict, dict]) -> str:
 
 def nome_chiave(testo) -> str:
     """Nominativo confrontabile: senza accenti, maiuscole, punteggiatura e ordine tra nome e cognome."""
-    t = unicodedata.normalize("NFKD", str(testo or "")).encode("ascii", "ignore").decode().lower()
-    return " ".join(sorted(re.findall(r"[a-z]+", t)))
+    t = "".join(c for c in unicodedata.normalize("NFKD", str(testo or "")) if not unicodedata.combining(c))
+    # apostrofi dritti e tipografici (DELL'ORSO / DELL’ORSO) e ogni altro segno valgono come spazio
+    return " ".join(sorted(re.findall(r"[a-z]+", re.sub(r"[^A-Za-z]+", " ", t).lower())))
 
 
 def dividi_nominativi(testo) -> list[str]:
@@ -97,19 +100,45 @@ def punteggio_numero(v) -> float | None:
     return float(m.group().replace(",", ".")) if m else None
 
 
-def confronta_persone(nel_file: list[dict], in_segreteria: list[dict] | None, con_punteggi: bool = False) -> list[str]:
-    """Differenze per persona tra il file e la segreteria. `nel_file`: {nominativo, posizione?, punteggio?}."""
+SIMILI = 0.85  # sopra questa somiglianza due nominativi sono la stessa persona scritta in modo diverso
+
+
+def _altrove(chiave: str, altrove: dict | None, qui) -> list[str]:
+    """Dove si trova la persona fuori dal bando che si sta controllando (etichette), se lo si sa."""
+    return list(dict.fromkeys(etichetta for posto, etichetta in (altrove or {}).get(chiave, []) if not qui(posto)))
+
+
+def confronta_persone(nel_file: list[dict], in_segreteria: list[dict] | None, con_punteggi: bool = False,
+                      altrove_file: dict | None = None, altrove_segreteria: dict | None = None, qui=lambda posto: False) -> list[str]:
+    """Differenze per persona tra il file e la segreteria. `nel_file`: {nominativo, posizione?, punteggio?}.
+    `altrove_*`: per nominativo, dove compare nel resto del file o della segreteria ([(posto, etichetta)]); `qui(posto)` dice se
+    il posto è il bando che si sta controllando. Chi manca ma è sotto un altro bando si segnala una volta sola, per bando."""
     if in_segreteria is None:
         return []
     problemi = []
     seg = {p["chiave"]: p for p in in_segreteria}
     fil = {nome_chiave(p["nominativo"]): p for p in nel_file}
-    for k, p in fil.items():
-        if k not in seg:
-            problemi.append(f"{p['nominativo']}: nel file ma non nel file della segreteria")
-    for k, p in seg.items():
-        if k not in fil:
-            problemi.append(f"{p['nominativo']}: nel file della segreteria ma non nel file")
+    solo_file = [k for k in fil if k not in seg]
+    solo_seg = [k for k in seg if k not in fil]
+    for k in list(solo_file):  # refusi: la stessa persona scritta in modo diverso nei due file
+        simile = max(solo_seg, key=lambda s: difflib.SequenceMatcher(None, k, s).ratio(), default=None)
+        if simile and difflib.SequenceMatcher(None, k, simile).ratio() >= SIMILI:
+            problemi.append(f"nome scritto diverso: «{fil[k]['nominativo']}» nel file, «{seg[simile]['nominativo']}» nel file della segreteria")
+            solo_file.remove(k)
+            solo_seg.remove(simile)
+    for lista, mappa, altrove, testo_altrove, testo_solo in (
+            (solo_seg, seg, altrove_file, "del file della segreteria per questo bando sono nel file sotto", "nel file della segreteria ma non nel file"),
+            (solo_file, fil, altrove_segreteria, "del file per questo bando sono nel file della segreteria sotto", "nel file ma non nel file della segreteria")):
+        per_posto: dict[str, list[str]] = {}
+        for k in lista:
+            posti = _altrove(k, altrove, qui)
+            if posti:
+                per_posto.setdefault(posti[0], []).append(mappa[k]["nominativo"])
+            else:
+                problemi.append(f"{mappa[k]['nominativo']}: {testo_solo}")
+        for posto, nomi in per_posto.items():
+            chi = "1 persona" if len(nomi) == 1 else f"{len(nomi)} persone"
+            problemi.append(f"{chi} {testo_altrove} «{posto}»: bando o protocollo da verificare in uno dei due file ({', '.join(nomi)})")
     if con_punteggi:
         for k, p in fil.items():
             s = seg.get(k)
@@ -121,6 +150,23 @@ def confronta_persone(nel_file: list[dict], in_segreteria: list[dict] | None, co
             if a is not None and b is not None and abs(a - b) > 0.001:
                 problemi.append(f"{p['nominativo']}: punteggio {p['punteggio']} nel file, {s['punteggio']} nella segreteria")
     return problemi
+
+
+def qui_per(numero: str | None, protocolli: set[str]):
+    """Il controllo «è il bando che si sta verificando?» per un posto (numero, protocollo o tupla di protocolli)."""
+    def qui(posto) -> bool:
+        prot = posto[1]
+        return posto[0] == numero and bool((set(prot) if isinstance(prot, (tuple, list)) else {prot}) & protocolli)
+    return qui
+
+
+def dove_in_segreteria(persone: dict | None) -> dict[str, list]:
+    """Per nominativo, i (bando, protocollo) della segreteria in cui compare: [((numero, protocollo), etichetta)]."""
+    dove: dict[str, list] = {}
+    for (numero, prot), lista in (persone or {}).items():
+        for p in lista:
+            dove.setdefault(p["chiave"], []).append(((numero, prot), f"{numero} (prot. {prot})" if prot else str(numero)))
+    return dove
 
 
 def _intero(v):
