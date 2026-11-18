@@ -17,7 +17,7 @@ def test_estrazione_riepilogo_richiesta_e_revisione(ambiente, db, monkeypatch): 
     admin, mese, _ = _mese_con_rdp(ambiente, db)
     r = admin.get(f"/api/monitoraggi/{mese}/riepilogo").get_json()
     graduatorie = next(c for c in r["totali"]["categorie"] if c["categoria"] == "Bandi con graduatoria")
-    assert graduatorie["totale"] == {"attesi": 1, "nei_file": 0} and graduatorie["nei_file_da"].startswith("estrazione")
+    assert (graduatorie["totale"]["attesi"], graduatorie["totale"]["nei_file"]) == (1, 0) and graduatorie["nei_file_da"].startswith("estrazione")
     assert r["file"]["graduatorie"]["caricato"] is None
     # estrazione senza la graduatoria del monitoraggio: risulta mancante, con «Chiedi verifica» agli RdP del bando
     assert _carica_estrazione(admin, mese, [_candidato("367.999 RIC", "Ricercatore III livello", "Neri", "70", "1",
@@ -36,7 +36,8 @@ def test_estrazione_riepilogo_richiesta_e_revisione(ambiente, db, monkeypatch): 
     _carica_estrazione(admin, mese, [_candidato("367.479 CTER", "Collaboratore tecnico enti di ricerca VI livello", "Rossi", "80", "1",
                                                 protocollo="0001001", data="12/04/2026")])
     r = admin.get(f"/api/monitoraggi/{mese}/riepilogo").get_json()
-    assert next(c for c in r["totali"]["categorie"] if c["categoria"] == "Bandi con graduatoria")["totale"] == {"attesi": 1, "nei_file": 1}
+    tot = next(c for c in r["totali"]["categorie"] if c["categoria"] == "Bandi con graduatoria")["totale"]
+    assert (tot["attesi"], tot["nei_file"], tot["persone_nei_file"]) == (1, 1, 1)  # una graduatoria, una persona nell'estrazione
     assert r["file"]["graduatorie"]["allineato"] is True
     f = admin.get(f"/api/monitoraggi/{mese}/file-mese/graduatorie")
     assert f.status_code == 200 and f.headers["Cache-Control"] == "no-store"
@@ -49,7 +50,7 @@ def test_estrazione_riepilogo_richiesta_e_revisione(ambiente, db, monkeypatch): 
     esito = admin.post(f"/api/monitoraggi/{mese}/revisione").get_json()
     assert esito["ok"] and esito["destinatari"] == ["collega@cnr.it"]
     testo = inviati[-1].get_content()
-    assert "Testo di prova della revisione." in testo and f"/referenti/monitoraggi/{mese}" in testo and "Bandi con graduatoria: 1 · nei file 1" in testo
+    assert "Testo di prova della revisione." in testo and f"/referenti/monitoraggi/{mese}" in testo and "Bandi con graduatoria: 1 · nei file 1 (1 persona)" in testo
     assert "Rossi" not in testo
     assert admin.get(f"/api/monitoraggi/{mese}/riepilogo").get_json()["revisione"]["il"]
     # in consultazione: i link ai file e i totali, senza l'elenco e senza nominativi

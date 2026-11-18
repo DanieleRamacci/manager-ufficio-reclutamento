@@ -188,9 +188,10 @@
     const link = (url, nome) => url ? `<a class="pulsante piccolo" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${nome} ↗</a>` : `<span class="muted small">${nome}: non ancora disponibile</span>`;
     const file = l && dati.stato !== "chiuso" ? `<div class="riga" style="margin-top:10px;align-items:center"><b class="small">File del monitoraggio su OneDrive:</b> ${link(l.scorrimenti, "File scorrimenti")} ${link(l.graduatorie, "File graduatorie")}</div>` : "";
     if (!r) return file;
-    const cella = (v, c) => `<td style="text-align:right">${v.attesi}</td><td style="text-align:right">${c.nei_file_da && c.categoria !== "Bandi pubblicati" ? `<span class="muted2 small">–</span>` : v.nei_file}</td>`;
+    const pers = (n, c) => c.senza_persone || !n ? "" : ` <span class="muted small">(${n} ${n === 1 ? "persona" : "persone"})</span>`;
+    const cella = (v, c) => `<td style="text-align:right">${v.attesi}${pers(v.persone_attese, c)}</td><td style="text-align:right">${c.nei_file_da && c.categoria !== "Bandi pubblicati" ? `<span class="muted2 small">–</span>` : `${v.nei_file}${pers(v.persone_nei_file, c)}`}</td>`;
     const righe = r.totali.categorie.map(c => `<tr><td><b>${esc(c.categoria)}</b>${c.nei_file_da ? `<div class="muted small">${esc(c.nei_file_da)}</div>` : ""}</td>${cella(c.concorsi, c)}${cella(c.mobilita, c)}${cella(c.totale, c)}
-        <td class="small">${c.per_gruppo.map(g => `${esc(g.nome)}: ${g.attesi}${c.nei_file_da && c.categoria !== "Bandi pubblicati" ? "" : ` (nei file ${g.nei_file})`}`).join("<br>")}</td></tr>`).join("");
+        <td class="small">${c.per_gruppo.map(g => `${esc(g.nome)}: ${g.attesi}${pers(g.persone_attese, c)}${c.nei_file_da && c.categoria !== "Bandi pubblicati" ? "" : ` · nei file ${g.nei_file}${pers(g.persone_nei_file, c)}`}`).join("<br>")}</td></tr>`).join("");
     const tip = Object.entries(r.totali.scorrimenti_per_tipologia || {}).map(([k, n]) => `${esc(k)} ${n}`).join(" · ");
     return `${file}<div class="card" style="margin-top:12px;padding:12px"><h2 style="margin:0 0 4px">Monitoraggio in revisione</h2>
       <p class="muted small" style="margin:0 0 8px">Dal ${esc(ora(r.il))}. Per ogni voce: quanti atti risultano a noi e quanti ce ne sono nei file del monitoraggio. Segnalateci eventuali correzioni.</p>

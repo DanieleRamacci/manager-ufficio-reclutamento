@@ -52,7 +52,8 @@ def _mobilita(r: dict) -> bool:
 
 
 def _vuoto() -> dict:
-    return {"attesi": 0, "nei_file": 0}
+    # persone: quante persone negli atti (file della segreteria) e quante nei file caricati; uno scorrimento può averne molte
+    return {"attesi": 0, "nei_file": 0, "persone_attese": 0, "persone_nei_file": 0}
 
 
 def totali(conn, m: dict, righe: list[dict] | None = None, scorrimenti: dict | None = None, graduatorie: dict | None = None) -> dict:
@@ -62,19 +63,19 @@ def totali(conn, m: dict, righe: list[dict] | None = None, scorrimenti: dict | N
     graduatorie = verifica_graduatorie(conn, m, righe) if graduatorie is None else graduatorie
     pb = verifica_file.profili_per_bando(conn)
     trovati_s = {(a["chiave"], a["protocollo"], a["data"]): a for a in scorrimenti.get("atti", []) if a["trovato"]}
-    trovate_g = {a["chiave"] for a in graduatorie.get("atti", []) if a["trovato"]}
+    trovate_g = {a["chiave"]: a for a in graduatorie.get("atti", []) if a["trovato"]}
     tabella = {k: {"categoria": nome, "concorsi": _vuoto(), "mobilita": _vuoto(), "totale": _vuoto(), "per_gruppo": {}} for k, nome in CATEGORIE}
     tabella["bandi"]["nei_file_da"] = "dal sistema (Selezioni Online)"
     tabella["rettifiche"]["nei_file_da"] = "non sono nei file del monitoraggio"
 
-    def conta(categoria: str, r: dict, nel_file: bool) -> None:
+    def conta(categoria: str, r: dict, nel_file: bool, persone_file: int = 0) -> None:
         voce, gruppo = tabella[categoria], verifica_file.gruppo_della_riga(r, pb)
-        for parte in ("mobilita" if _mobilita(r) else "concorsi", "totale"):
-            voce[parte]["attesi"] += 1
-            voce[parte]["nei_file"] += int(nel_file)
         g = voce["per_gruppo"].setdefault(gruppo, _vuoto())
-        g["attesi"] += 1
-        g["nei_file"] += int(nel_file)
+        for parte in (voce["mobilita" if _mobilita(r) else "concorsi"], voce["totale"], g):
+            parte["attesi"] += 1
+            parte["nei_file"] += int(nel_file)
+            parte["persone_attese"] += r.get("persone") or 0
+            parte["persone_nei_file"] += persone_file
 
     gia_g = set()
     tipologie = Counter()
@@ -84,15 +85,16 @@ def totali(conn, m: dict, righe: list[dict] | None = None, scorrimenti: dict | N
             conta("bandi", r, True)  # i bandi pubblicati del file graduatorie vengono dal sistema
         elif r["atto"] == "graduatoria" and r.get("chiave") not in gia_g:
             gia_g.add(r.get("chiave"))
-            conta("graduatorie", r, r.get("chiave") in trovate_g)
+            ag = trovate_g.get(r.get("chiave"))
+            conta("graduatorie", r, bool(ag), ag["candidati"] if ag else 0)
         elif r["atto"] == "rettifica":
             conta("rettifiche", r, False)
         elif r["atto"] == "scorrimento":
             a = trovati_s.get(chiave)
-            conta("scorrimenti", r, bool(a))
+            conta("scorrimenti", r, bool(a), a["nominativi"] if a else 0)
             subentro = r.get("sottotipo") == "subentro" or r.get("subentro_atteso")
             if subentro:
-                conta("subentri", r, bool(a and a["subentro_indicato"]))
+                conta("subentri", r, bool(a and a["subentro_indicato"]), a["nominativi"] if a and a["subentro_indicato"] else 0)
             tipologie[(scorrimenti_compilato.tipo_di(a["tipologia"]) or "non indicata") if a else "non nel file"] += 1
     for voce in tabella.values():
         voce["per_gruppo"] = [{"gruppo": g, "nome": verifica_file.GRUPPI.get(g, "Altri profili"), **v}
@@ -102,6 +104,8 @@ def totali(conn, m: dict, righe: list[dict] | None = None, scorrimenti: dict | N
             tabella[k]["nei_file_da"] = "file scorrimenti non caricato"
     if not graduatorie.get("caricato"):
         tabella["graduatorie"]["nei_file_da"] = "estrazione da Selezioni Online non caricata"
+    for k in ("bandi", "rettifiche"):
+        tabella[k]["senza_persone"] = True
     return {"categorie": [tabella[k] for k, _ in CATEGORIE], "scorrimenti_per_tipologia": dict(tipologie)}
 
 
@@ -218,8 +222,10 @@ def tabella_testo(tot: dict) -> str:
     """I totali in testo semplice per l'email: categoria, concorsi, mobilità, per gruppo."""
     righe = []
     for c in tot["categorie"]:
-        nei = lambda v, c=c: "" if c.get("nei_file_da") and c["categoria"] != "Bandi pubblicati" else f" · nei file {v['nei_file']}"  # noqa: E731
-        righe.append(f"{c['categoria']}: {c['totale']['attesi']}{nei(c['totale'])} (concorsi {c['concorsi']['attesi']}, mobilità {c['mobilita']['attesi']})")
+        pers = lambda n, c=c: "" if c.get("senza_persone") or not n else f" ({n} {'persona' if n == 1 else 'persone'})"  # noqa: E731
+        nei = lambda v, c=c: "" if c.get("nei_file_da") and c["categoria"] != "Bandi pubblicati" else f" · nei file {v['nei_file']}{pers(v['persone_nei_file'])}"  # noqa: E731
+        righe.append(f"{c['categoria']}: {c['totale']['attesi']}{pers(c['totale']['persone_attese'])}{nei(c['totale'])} "
+                     f"(concorsi {c['concorsi']['attesi']}, mobilità {c['mobilita']['attesi']})")
         for g in c["per_gruppo"]:
             righe.append(f"   – {g['nome']}: {g['attesi']}{nei(g)}")
     if tot["scorrimenti_per_tipologia"]:
