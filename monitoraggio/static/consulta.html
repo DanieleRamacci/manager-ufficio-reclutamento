@@ -206,7 +206,8 @@
       ["graduatoria", "Graduatorie pubbliche", conta(r => r.atto === "graduatoria"), contaD(r => r.atto === "graduatoria")],
       ["scorrimento", "Scorrimenti", conta(r => r.atto === "scorrimento"), contaD(r => r.atto === "scorrimento")],
       ["subentro", "di cui subentri", conta(r => r.sottotipo === "subentro"), contaD(r => r.sottotipo === "subentro")],
-      ["rettifica", "Rettifiche di graduatoria", conta(r => r.atto === "rettifica"), contaD(r => r.atto === "rettifica")]];
+      ["rettifica", "Rettifiche di graduatoria", conta(r => r.atto === "rettifica"), contaD(r => r.atto === "rettifica")],
+      ...(conta(r => !["bando", "graduatoria", "scorrimento", "rettifica"].includes(r.atto)) ? [["altro", "Altri atti", conta(r => !["bando", "graduatoria", "scorrimento", "rettifica"].includes(r.atto)), contaD(r => !["bando", "graduatoria", "scorrimento", "rettifica"].includes(r.atto))]] : [])];
     const elencoMesi = dati.monitoraggi || [];
     $("contenuto").innerHTML = `<section><div class="tra"><div><h1>Monitoraggio di ${esc(dati.titolo)} <span class="pillola ${chiuso ? "p-na" : "p-blu"}">${chiuso ? "chiuso" : "in corso"}</span></h1>${presentazione(v)}</div>
         <div class="riga"><label class="muted">Mese <select id="mese-monitoraggio">${elencoMesi.map(m => `<option value="${esc(m.mese)}"${m.mese === dati.mese ? " selected" : ""}>${esc(m.titolo)}</option>`).join("")}</select></label><a href="${BASE}/monitoraggi">Tutti i monitoraggi</a></div></div>
@@ -220,6 +221,7 @@
       if (filtri.schedaMese === "tutti") base = dati.righe;
       else if (filtri.schedaMese === "difformita") base = base.filter(r => r.difforme);
       else if (filtri.schedaMese === "subentro") base = base.filter(r => r.sottotipo === "subentro");
+      else if (filtri.schedaMese === "altro") base = base.filter(r => !["bando", "graduatoria", "scorrimento", "rettifica"].includes(r.atto));
       else base = base.filter(r => r.atto === filtri.schedaMese);
       const righe = filtrate(base);
       $("tabella").innerHTML = `${filtri.schedaMese === "tutti" ? `<p class="small" style="margin:0 0 6px">${esc(App.scomposizioneAtti(dati.righe))}</p>` : ""}<div class="muted small" style="margin-bottom:6px">${righe.length} atti su ${base.length} · ${base.filter(r => r.difforme).length} con difformità</div><div class="scroll"><table style="min-width:1250px"><thead><tr>
