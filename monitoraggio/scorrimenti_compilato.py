@@ -138,10 +138,23 @@ def _dove(b: dict) -> str:
     return f"{b['foglio']}, riga {righe[0]}" if len(righe) == 1 else f"{b['foglio']}, righe {righe[0]}–{righe[-1]}"
 
 
+TIPOLOGIE = {"scorrimento": "Scorrimenti", "subentro": "Subentri", "cessazione": "Cessazione dopo i 6 mesi", "non indicata": "Tipologia non indicata"}
+
+
+def _tipologia_attesa(r: dict, seg: list[dict] | None) -> str:
+    """La tipologia che risulta a noi: dal file della segreteria, altrimenti dal subentro atteso."""
+    tipi = {verifica_file_tipo(p) for p in seg or [] if verifica_file_tipo(p)}
+    if len(tipi) == 1:
+        return tipi.pop()
+    return "subentro" if r.get("sottotipo") == "subentro" or r.get("subentro_atteso") else "scorrimento"
+
+
 def confronta(righe: list[dict], voci: list[dict], fogli: list[str] | None = None, persone: dict | None = None,
-              profili_bandi: tuple[dict, dict] | None = None) -> dict:
+              profili_bandi: tuple[dict, dict] | None = None, sol: dict | None = None) -> dict:
     """Ogni scorrimento del monitoraggio con il suo blocco del file, e ogni blocco del file senza uno scorrimento.
-    `fogli`: i fogli del file (per dire quale gruppo manca); `persone`: i nominativi della segreteria per (bando, protocollo)."""
+    `fogli`: i fogli del file (per dire quale gruppo manca); `persone`: i nominativi della segreteria per (bando, protocollo);
+    `sol`: gli assunti da scorrimento su Selezioni Online per protocollo (estrazione «Punteggi»), che danno i nomi veri.
+    Ogni voce ha `gravi` (mancanze) e `minori` (nomi scritti diversi, foglio, bando scritto male, dati SOL non aggiornati)."""
     blocchi = _blocchi(voci)
     usati: set[int] = set()
     gruppi_file = {verifica_file.gruppo_di_foglio(f) for f in (fogli if fogli is not None else {v["foglio"] for v in voci})}
@@ -156,58 +169,81 @@ def confronta(righe: list[dict], voci: list[dict], fogli: list[str] | None = Non
         if r["atto"] != "scorrimento":
             continue
         gruppo = verifica_file.gruppo_della_riga(r, profili_bandi) if profili_bandi else None
+        prot = _protocolli_riga(r)
         stessi = [i for i, b in enumerate(blocchi) if b["numero_bando"] and b["numero_bando"] == r.get("numero_bando")]
-        per_protocollo = [i for i in stessi if _protocolli_riga(r) & set(blocchi[i]["protocolli"])]
+        per_protocollo = [i for i in stessi if prot & set(blocchi[i]["protocolli"])]
         # un blocco senza protocollo vale per un solo scorrimento: quelli in più dello stesso bando risultano mancanti
         senza_protocollo = [i for i in stessi if not blocchi[i]["protocolli"] and i not in usati][:1]
         trovati = per_protocollo or senza_protocollo
-        problemi = []
+        gravi, minori = [], []
         if not trovati:  # bando scritto male nel file («36.434» per «367.434»): vale il protocollo, e lo si segnala
-            trovati = [i for i, b in enumerate(blocchi) if i not in usati and _protocolli_riga(r) & set(b["protocolli"])]
+            trovati = [i for i, b in enumerate(blocchi) if i not in usati and prot & set(b["protocolli"])]
             if trovati:
-                problemi.append(f"nel file il bando è scritto «{blocchi[trovati[0]]['bando']}»")
+                minori.append(f"nel file il bando è scritto «{blocchi[trovati[0]]['bando']}»")
         usati.update(trovati)
         tipologia = "; ".join(dict.fromkeys(t for i in trovati for t in blocchi[i]["tipologie"]))
         subentro_indicato = any(blocchi[i]["subentro"] for i in trovati)
+        seg = [p for pr in prot for p in (persone or {}).get((r.get("numero_bando"), pr), [])] or None
+        attesa = _tipologia_attesa(r, seg)
+        nel_file = [{"nominativo": n} for i in trovati for n in blocchi[i]["nominativi"]]
+        sol_persone = [p for pr in prot for p in (sol or {}).get(pr, [])]
         if not trovati:
-            problemi.append("manca nel file")
+            gravi.append("manca nel file scorrimenti")
             if gruppo and gruppo != verifica_file.ALTRO and gruppo not in gruppi_file:
-                problemi.append(f"nel file manca il foglio {gruppo}")
+                gravi.append(f"nel file manca il foglio {gruppo}")
                 mancano_fogli[gruppo] = mancano_fogli.get(gruppo, 0) + 1
         else:
             if not tipologia:
-                problemi.append("tipologia non indicata")
+                gravi.append("tipologia non indicata")
             if not any(blocchi[i]["protocolli"] for i in trovati):
-                problemi.append("protocollo del provvedimento non indicato")
-            if r.get("subentro_atteso") and not subentro_indicato:
-                problemi.append("subentro non indicato")
+                gravi.append("protocollo del provvedimento non indicato")
+            if attesa == "subentro" and not subentro_indicato:
+                gravi.append("subentro non indicato")
+            tipo_file = tipo_di(tipologia)
+            if tipo_file and seg and tipo_file != attesa:
+                gravi.append(f"tipologia «{tipo_file}» nel file, «{attesa}» nel file della segreteria")
             fogli_trovati = {verifica_file.gruppo_di_foglio(blocchi[i]["foglio"]) for i in trovati}
             if gruppo and gruppo != verifica_file.ALTRO and gruppo not in fogli_trovati:
-                problemi.append(f"nel foglio {', '.join(blocchi[i]['foglio'] for i in trovati)} invece che nel foglio {gruppo}")
-            nel_file = [{"nominativo": n} for i in trovati for n in blocchi[i]["nominativi"]]
-            seg = None
-            if persone is not None:
-                seg = [p for prot in _protocolli_riga(r) for p in persone.get((r.get("numero_bando"), prot), [])] or None
-                tipo_file = tipo_di(tipologia)
-                tipi_seg = {verifica_file_tipo(p) for p in seg or [] if verifica_file_tipo(p)}
-                if tipo_file and tipi_seg and tipo_file not in tipi_seg:
-                    problemi.append(f"tipologia «{tipo_file}» nel file, «{', '.join(sorted(tipi_seg))}» nel file della segreteria")
-                problemi += verifica_file.confronta_persone(nel_file, seg, altrove_file=altrove_file, altrove_segreteria=altrove_seg,
-                                                            qui=verifica_file.qui_per(r.get("numero_bando"), _protocolli_riga(r)))
+                minori.append(f"nel foglio {', '.join(blocchi[i]['foglio'] for i in trovati)} invece che nel foglio {gruppo}")
+            qui = verifica_file.qui_per(r.get("numero_bando"), prot)
+            if sol_persone:  # i nomi veri sono su Selezioni Online
+                esito = verifica_file.confronta_persone(sol_persone, nel_file, "su Selezioni Online", "nel file scorrimenti", qui=qui)
+            else:
+                esito = verifica_file.confronta_persone(nel_file, seg, "nel file scorrimenti", "nel file della segreteria",
+                                                        altrove_prima=altrove_file, altrove_seconda=altrove_seg, qui=qui)
+                if sol is not None and prot:
+                    minori.append("su Selezioni Online lo scorrimento non è ancora indicato (esito S con questo protocollo)")
+            gravi += esito["gravi"]
+            minori += esito["minori"]
             dichiarate = sum(blocchi[i]["posizioni"] or 0 for i in trovati) if any(blocchi[i]["posizioni"] is not None for i in trovati) else None
             if dichiarate is not None and nel_file and dichiarate != len(nel_file):
-                problemi.append(f"{dichiarate} posizioni dichiarate, {len(nel_file)} nominativi")
+                minori.append(f"{dichiarate} posizioni dichiarate, {len(nel_file)} nominativi")
         atti.append({"chiave": r.get("chiave"), "codice": r.get("codice"), "numero_bando": r.get("numero_bando"), "protocollo": r.get("protocollo"),
                      "data": r.get("data"), "tipologia_bando": r.get("tipologia"), "gruppo": gruppo, "trovato": bool(trovati),
                      "righe_file": [_dove(blocchi[i]) for i in trovati], "tipologia": tipologia,
-                     "subentro_atteso": bool(r.get("subentro_atteso")), "subentro_indicato": subentro_indicato,
-                     "nominativi": len([n for i in trovati for n in blocchi[i]["nominativi"]]), "problemi": problemi,
+                     "tipo": (tipo_di(tipologia) if trovati else None) or (attesa if not trovati else "non indicata"), "tipo_atteso": attesa,
+                     "subentro_atteso": attesa == "subentro", "subentro_indicato": subentro_indicato,
+                     "nominativi": len(nel_file), "persone_segreteria": len(seg or []), "persone_sol": len(sol_persone),
+                     "gravi": gravi, "minori": minori, "problemi": gravi,
                      "rdp": [{k: p.get(k) for k in ("nome", "cognome", "email")} for p in r.get("rdp") or []]})
-    solo_file = [{"foglio": b["foglio"], "riga": b["righe"][0], "righe": _dove(b), "bando": b["bando"], "protocolli": b["protocolli"],
-                  "nominativi": len(b["nominativi"])} for i, b in enumerate(blocchi) if i not in usati]
+    solo_file = [{"foglio": b["foglio"], "riga": b["righe"][0], "righe": _dove(b), "bando": b["bando"], "numero_bando": b["numero_bando"],
+                  "protocolli": b["protocolli"], "nominativi": len(b["nominativi"]), "tipo": tipo_di("; ".join(b["tipologie"])) or "non indicata"}
+                 for i, b in enumerate(blocchi) if i not in usati]
+    # per bando: il file indica più scorrimenti o subentri di quelli che risultano dalla segreteria e da URP
+    conteggi = []
+    for numero in sorted({b["numero_bando"] for b in blocchi if b["numero_bando"]}):
+        nel_file_b = [b for b in blocchi if b["numero_bando"] == numero]
+        rif = [r for r in righe if r["atto"] == "scorrimento" and r.get("numero_bando") == numero
+               and any(((r.get("fonti") or {}).get(f) or {}).get("stato") == "presente" for f in ("segreteria", "urp"))]
+        sub_file = sum(1 for b in nel_file_b if tipo_di("; ".join(b["tipologie"])) == "subentro" or b["subentro"])
+        sub_rif = sum(1 for a in atti if a["numero_bando"] == numero and a["tipo_atteso"] == "subentro" and a["chiave"] in {x.get("chiave") for x in rif})
+        if len(nel_file_b) > len(rif) or sub_file > sub_rif:
+            conteggi.append({"numero_bando": numero, "scorrimenti_file": len(nel_file_b), "scorrimenti_rif": len(rif),
+                             "subentri_file": sub_file, "subentri_rif": sub_rif})
     return {"atti": atti, "solo_nel_file": solo_file, "fogli": sorted(gruppi_file - {verifica_file.ALTRO}),
             "fogli_mancanti": [{"gruppo": g, "nome": verifica_file.GRUPPI.get(g, g), "scorrimenti": n} for g, n in mancano_fogli.items()],
-            "allineato": not solo_file and all(not a["problemi"] for a in atti)}
+            "conteggi_bando": conteggi, "con_sol": sol is not None,
+            "allineato": not solo_file and not conteggi and all(not a["gravi"] for a in atti)}
 
 
 def verifica_file_tipo(persona: dict) -> str | None:

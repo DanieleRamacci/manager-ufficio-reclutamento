@@ -182,6 +182,14 @@ Nell'area referenti e coordinatori, per ogni monitoraggio in corso o in revision
 - **SC-003**: Il riepilogo del mese si apre con tutti i totali senza calcoli a mano.
 - **SC-004**: Mandare in revisione richiede un solo passaggio e l'email arriva a tutti i coordinatori e alle persone dell'ufficio.
 
+## Precisazioni dell'utente del 2026-11-18
+
+- I nomi veri sono quelli dell'estrazione «Punteggi» di Selezioni Online; da lì vengono anche gli assunti da scorrimento (esito S con protocollo di assunzione idoneo), che possono mancare se su SOL non è stato aggiornato (resta rosso nel monitoraggio).
+- Gli errori minori (nomi scritti in modo diverso, posizioni e punteggi diversi, foglio o bando scritto male, dati SOL non aggiornati) stanno a parte; le differenze di punteggio per ora contano poco, quelle di protocollo vanno bene e non si segnalano.
+- Gli scorrimenti si mostrano divisi per tipologia, con le righe rosse se mancano nel file, quelle presenti e il totale; si segnala un bando per cui il file indica più scorrimenti o subentri di quelli che risultano dal file della segreteria e da URP.
+- Una graduatoria che risulta nel file della segreteria (o nel monitoraggio) e manca nell'estrazione SOL è rossa.
+- C'è anche l'estrazione delle graduatorie di mobilità (stesso export, caricato a parte): si verifica come le altre e va nel foglio «Graduatorie mobilità» del file da scaricare.
+
 ## Assumptions
 
 - Il file della segreteria è il riferimento per il confronto per persona (scelta dell'utente), insieme a URP per la presenza dell'atto.

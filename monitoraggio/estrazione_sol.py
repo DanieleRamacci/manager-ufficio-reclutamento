@@ -106,16 +106,24 @@ def leggi(contenuto: bytes) -> list[dict]:
     return lette
 
 
-def salva(conn, mese: str, nome_file: str | None, righe: list[dict], utente: str | None) -> None:
-    conn.execute("INSERT INTO estrazione_graduatorie (mese, nome_file, caricato_da, caricato_il, righe) VALUES (?, ?, ?, ?, ?) "
+TABELLE = {"concorsi": "estrazione_graduatorie", "mobilita": "estrazione_mobilita"}  # due export distinti: concorsi e mobilità
+
+
+def salva(conn, mese: str, nome_file: str | None, righe: list[dict], utente: str | None, tipo: str = "concorsi") -> None:
+    conn.execute(f"INSERT INTO {TABELLE[tipo]} (mese, nome_file, caricato_da, caricato_il, righe) VALUES (?, ?, ?, ?, ?) "
                  "ON CONFLICT(mese) DO UPDATE SET nome_file = excluded.nome_file, caricato_da = excluded.caricato_da, "
                  "caricato_il = excluded.caricato_il, righe = excluded.righe",
                  (mese, nome_file, utente, datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), json.dumps(righe, ensure_ascii=False, default=str)))
 
 
-def caricata(conn, mese: str) -> dict | None:
-    r = conn.execute("SELECT * FROM estrazione_graduatorie WHERE mese = ?", (mese,)).fetchone()
+def caricata(conn, mese: str, tipo: str = "concorsi") -> dict | None:
+    r = conn.execute(f"SELECT * FROM {TABELLE[tipo]} WHERE mese = ?", (mese,)).fetchone()
     return {**dict(r), "righe": json.loads(r["righe"])} if r else None
+
+
+def tutte(conn, mese: str) -> list[dict]:
+    """Le righe delle due estrazioni insieme (concorsi e mobilità): servono a confrontare tutte le graduatorie del mese."""
+    return [v for tipo in TABELLE for v in ((caricata(conn, mese, tipo) or {}).get("righe") or [])]
 
 
 def _protocolli_riga(riga: dict) -> set[str]:
@@ -137,19 +145,28 @@ def graduatorie(righe_estrazione: list[dict]) -> dict[tuple, dict]:
     return gruppi
 
 
+NOMI_FONTI = {"sol": "Selezioni Online", "urp": "URP", "segreteria": "file della segreteria"}
+
+
+def _dove_risulta(r: dict) -> str:
+    fonti = [NOMI_FONTI[f] for f in ("segreteria", "urp", "sol") if ((r.get("fonti") or {}).get(f) or {}).get("stato") == "presente"]
+    return f" (risulta: {', '.join(fonti)})" if fonti else ""
+
+
 def confronta(righe: list[dict], righe_estrazione: list[dict], dal: str, al: str, persone: dict | None = None,
               profili_bandi: tuple[dict, dict] | None = None) -> dict:
     """Ogni graduatoria del monitoraggio con quella dell'estrazione, e ogni graduatoria dell'estrazione del periodo senza
-    una graduatoria del monitoraggio. Le graduatorie dell'estrazione con data fuori dal periodo si contano a parte."""
+    una graduatoria del monitoraggio. Le graduatorie dell'estrazione con data fuori dal periodo si contano a parte.
+    I nomi veri sono quelli di Selezioni Online (scelta dell'utente del 2026-11-18): la segreteria si confronta con l'estrazione."""
     gruppi = graduatorie(righe_estrazione)
     nel_periodo = {k: g for k, g in gruppi.items() if not g["data"] or dal <= g["data"] <= al}
     usati: set[tuple] = set()
     gruppi_estrazione = {verifica_file.gruppo_di_profilo(v["profilo"]) for v in righe_estrazione}
     atti, mancano_gruppi = [], {}
-    altrove_file: dict[str, list] = {}  # dove compare ogni persona nell'estrazione, per dire «è sotto un altro bando»
+    altrove_sol: dict[str, list] = {}  # dove compare ogni persona nell'estrazione, per dire «è sotto un altro bando»
     for v in righe_estrazione:
         if v["protocollo_graduatoria"]:
-            altrove_file.setdefault(verifica_file.nome_chiave(v["nominativo"]), []).append(
+            altrove_sol.setdefault(verifica_file.nome_chiave(v["nominativo"]), []).append(
                 ((v["numero_bando"], v["protocollo_graduatoria"]), f"{v['codice_bando']} (prot. {v['protocollo_graduatoria']})"))
     altrove_seg = verifica_file.dove_in_segreteria(persone)
     for r in righe:
@@ -158,22 +175,24 @@ def confronta(righe: list[dict], righe_estrazione: list[dict], dal: str, al: str
         gruppo = verifica_file.gruppo_della_riga(r, profili_bandi) if profili_bandi else None
         trovate = [k for k in gruppi if k[0] == r.get("numero_bando") and k[1] in _protocolli_riga(r)]
         usati.update(trovate)
-        problemi = []
+        gravi, minori = [], []
         candidati = [c for k in trovate for c in gruppi[k]["candidati"]]
+        seg = [p for prot in _protocolli_riga(r) for p in (persone or {}).get((r.get("numero_bando"), prot), [])] or None
         if not trovate:
-            problemi.append("manca nell'estrazione")
+            gravi.append(f"manca nell'estrazione da Selezioni Online{_dove_risulta(r)}")
             if gruppo and gruppo != verifica_file.ALTRO and gruppo not in gruppi_estrazione:
-                problemi.append(f"nell'estrazione non c'è nessuna graduatoria {gruppo}")
+                gravi.append(f"nell'estrazione non c'è nessuna graduatoria {gruppo}")
                 mancano_gruppi[gruppo] = mancano_gruppi.get(gruppo, 0) + 1
         elif persone is not None:
-            seg = [p for prot in _protocolli_riga(r) for p in persone.get((r.get("numero_bando"), prot), [])] or None
-            problemi += verifica_file.confronta_persone([{"nominativo": c["nominativo"], "posizione": c["posizione"], "punteggio": c["punteggio"]}
-                                                         for c in candidati], seg, con_punteggi=True, altrove_file=altrove_file,
-                                                        altrove_segreteria=altrove_seg,
-                                                        qui=verifica_file.qui_per(r.get("numero_bando"), _protocolli_riga(r)))
+            esito = verifica_file.confronta_persone(
+                [{"nominativo": c["nominativo"], "posizione": c["posizione"], "punteggio": c["punteggio"]} for c in candidati], seg,
+                "su Selezioni Online", "nel file della segreteria", con_punteggi=True, altrove_prima=altrove_sol, altrove_seconda=altrove_seg,
+                qui=verifica_file.qui_per(r.get("numero_bando"), _protocolli_riga(r)))
+            gravi += esito["gravi"]
+            minori += esito["minori"]
         atti.append({"chiave": r.get("chiave"), "codice": r.get("codice"), "numero_bando": r.get("numero_bando"), "protocollo": r.get("protocollo"),
                      "data": r.get("data"), "tipologia_bando": r.get("tipologia"), "gruppo": gruppo, "trovato": bool(trovate),
-                     "candidati": len(candidati), "problemi": problemi,
+                     "candidati": len(candidati), "persone_segreteria": len(seg or []), "gravi": gravi, "minori": minori, "problemi": gravi,
                      "rdp": [{k: p.get(k) for k in ("nome", "cognome", "email")} for p in r.get("rdp") or []]})
     solo = [{"bando": ", ".join(g["codici"]), "numero_bando": g["numero_bando"], "protocollo": g["protocollo"], "data": g["data"],
              "candidati": len(g["candidati"]), "righe": f"righe {min(c['riga'] for c in g['candidati'])}–{max(c['riga'] for c in g['candidati'])}"}
@@ -182,7 +201,17 @@ def confronta(righe: list[dict], righe_estrazione: list[dict], dal: str, al: str
             "gruppi": sorted(gruppi_estrazione - {verifica_file.ALTRO}),
             "gruppi_mancanti": [{"gruppo": g, "nome": verifica_file.GRUPPI.get(g, g), "graduatorie": n} for g, n in mancano_gruppi.items()],
             "senza_graduatoria": len([v for v in righe_estrazione if not v["protocollo_graduatoria"]]),
-            "allineato": not solo and all(not a["problemi"] for a in atti)}
+            "allineato": not solo and all(not a["gravi"] for a in atti)}
+
+
+def scorrimenti_sol(righe_estrazione: list[dict]) -> dict[str, list[dict]]:
+    """Gli assunti da scorrimento su Selezioni Online (esito S con protocollo di assunzione idoneo), per protocollo."""
+    per: dict[str, list[dict]] = {}
+    for v in righe_estrazione:
+        if v["protocollo_assunzione"]:
+            per.setdefault(v["protocollo_assunzione"], []).append({"nominativo": v["nominativo"], "codice_bando": v["codice_bando"],
+                                                                   "numero_bando": v["numero_bando"], "data": v["data_assunzione"]})
+    return per
 
 
 def righe_excel(righe_estrazione: list[dict], dal: str, al: str, mobilita: set[str]) -> tuple[list, list]:

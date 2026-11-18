@@ -6,7 +6,7 @@ import sqlite3
 from . import config
 from .normalizza import AGGIUNTA_TIPOLOGIE, ANCORA_SCORRIMENTI, codice_sede, nota_sottotipo
 
-SCHEMA_VERSION = 30
+SCHEMA_VERSION = 31
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -292,6 +292,15 @@ CREATE TABLE IF NOT EXISTS scorrimenti_compilato (
 
 -- spec 011: export «Punteggi» di Selezioni Online caricato per il monitoraggio (dati personali: solo amministratori)
 CREATE TABLE IF NOT EXISTS estrazione_graduatorie (
+    mese TEXT PRIMARY KEY,
+    nome_file TEXT,
+    caricato_da TEXT,
+    caricato_il TEXT NOT NULL,
+    righe TEXT NOT NULL
+);
+
+-- spec 011: export «Punteggi» di Selezioni Online delle graduatorie di mobilità (stesso formato, salvato a parte)
+CREATE TABLE IF NOT EXISTS estrazione_mobilita (
     mese TEXT PRIMARY KEY,
     nome_file TEXT,
     caricato_da TEXT,

@@ -108,48 +108,49 @@ def _altrove(chiave: str, altrove: dict | None, qui) -> list[str]:
     return list(dict.fromkeys(etichetta for posto, etichetta in (altrove or {}).get(chiave, []) if not qui(posto)))
 
 
-def confronta_persone(nel_file: list[dict], in_segreteria: list[dict] | None, con_punteggi: bool = False,
-                      altrove_file: dict | None = None, altrove_segreteria: dict | None = None, qui=lambda posto: False) -> list[str]:
-    """Differenze per persona tra il file e la segreteria. `nel_file`: {nominativo, posizione?, punteggio?}.
-    `altrove_*`: per nominativo, dove compare nel resto del file o della segreteria ([(posto, etichetta)]); `qui(posto)` dice se
-    il posto è il bando che si sta controllando. Chi manca ma è sotto un altro bando si segnala una volta sola, per bando."""
-    if in_segreteria is None:
-        return []
-    problemi = []
-    seg = {p["chiave"]: p for p in in_segreteria}
-    fil = {nome_chiave(p["nominativo"]): p for p in nel_file}
-    solo_file = [k for k in fil if k not in seg]
-    solo_seg = [k for k in seg if k not in fil]
-    for k in list(solo_file):  # refusi: la stessa persona scritta in modo diverso nei due file
-        simile = max(solo_seg, key=lambda s: difflib.SequenceMatcher(None, k, s).ratio(), default=None)
+def confronta_persone(prima: list[dict], seconda: list[dict] | None, nome_prima: str, nome_seconda: str, con_punteggi: bool = False,
+                      altrove_prima: dict | None = None, altrove_seconda: dict | None = None, qui=lambda posto: False) -> dict:
+    """Differenze per persona tra due fonti (es. «su SOL» e «nel file della segreteria»); la prima dà i nomi veri.
+    Ritorna {"gravi": [...], "minori": [...]}: chi manca è grave; nomi scritti diversi, posizioni e punteggi sono minori.
+    `altrove_*`: per nominativo, dove compare nel resto della fonte ([(posto, etichetta)]); `qui(posto)` dice se il posto è il
+    bando che si sta controllando: chi manca ma è sotto un altro bando si segnala una volta sola, per bando."""
+    esito = {"gravi": [], "minori": []}
+    if seconda is None:
+        return esito
+    pa = {nome_chiave(p["nominativo"]): p for p in prima}
+    pb = {(p.get("chiave") or nome_chiave(p["nominativo"])): p for p in seconda}
+    solo_a = [k for k in pa if k not in pb]
+    solo_b = [k for k in pb if k not in pa]
+    for k in list(solo_a):  # refusi: la stessa persona scritta in modo diverso; vale il nome della prima fonte
+        simile = max(solo_b, key=lambda s: difflib.SequenceMatcher(None, k, s).ratio(), default=None)
         if simile and difflib.SequenceMatcher(None, k, simile).ratio() >= SIMILI:
-            problemi.append(f"nome scritto diverso: «{fil[k]['nominativo']}» nel file, «{seg[simile]['nominativo']}» nel file della segreteria")
-            solo_file.remove(k)
-            solo_seg.remove(simile)
-    for lista, mappa, altrove, testo_altrove, testo_solo in (
-            (solo_seg, seg, altrove_file, "del file della segreteria per questo bando sono nel file sotto", "nel file della segreteria ma non nel file"),
-            (solo_file, fil, altrove_segreteria, "del file per questo bando sono nel file della segreteria sotto", "nel file ma non nel file della segreteria")):
+            esito["minori"].append(f"nome scritto diverso: «{pa[k]['nominativo']}» {nome_prima}, «{pb[simile]['nominativo']}» {nome_seconda}")
+            solo_a.remove(k)
+            solo_b.remove(simile)
+    for lista, mappa, altrove, presente, assente in ((solo_b, pb, altrove_prima, nome_seconda, nome_prima),
+                                                       (solo_a, pa, altrove_seconda, nome_prima, nome_seconda)):
         per_posto: dict[str, list[str]] = {}
         for k in lista:
             posti = _altrove(k, altrove, qui)
             if posti:
                 per_posto.setdefault(posti[0], []).append(mappa[k]["nominativo"])
             else:
-                problemi.append(f"{mappa[k]['nominativo']}: {testo_solo}")
+                esito["gravi"].append(f"{mappa[k]['nominativo']}: {presente} ma non {assente}")
         for posto, nomi in per_posto.items():
             chi = "1 persona" if len(nomi) == 1 else f"{len(nomi)} persone"
-            problemi.append(f"{chi} {testo_altrove} «{posto}»: bando o protocollo da verificare in uno dei due file ({', '.join(nomi)})")
+            esito["gravi"].append(f"{chi} {presente} per questo bando {'è' if len(nomi) == 1 else 'sono'} {assente} sotto «{posto}»: "
+                                  f"bando o protocollo da verificare ({', '.join(nomi)})")
     if con_punteggi:
-        for k, p in fil.items():
-            s = seg.get(k)
-            if not s:
+        for k, a in pa.items():
+            b = pb.get(k)
+            if not b:
                 continue
-            if s.get("posizione") not in (None, "") and p.get("posizione") not in (None, "") and str(_intero(s["posizione"])) != str(_intero(p["posizione"])):
-                problemi.append(f"{p['nominativo']}: posizione {_intero(p['posizione'])} nel file, {_intero(s['posizione'])} nella segreteria")
-            a, b = punteggio_numero(p.get("punteggio")), punteggio_numero(s.get("punteggio"))
-            if a is not None and b is not None and abs(a - b) > 0.001:
-                problemi.append(f"{p['nominativo']}: punteggio {p['punteggio']} nel file, {s['punteggio']} nella segreteria")
-    return problemi
+            if b.get("posizione") not in (None, "") and a.get("posizione") not in (None, "") and str(_intero(b["posizione"])) != str(_intero(a["posizione"])):
+                esito["minori"].append(f"{a['nominativo']}: posizione {_intero(a['posizione'])} {nome_prima}, {_intero(b['posizione'])} {nome_seconda}")
+            x, y = punteggio_numero(a.get("punteggio")), punteggio_numero(b.get("punteggio"))
+            if x is not None and y is not None and abs(x - y) > 0.001:
+                esito["minori"].append(f"{a['nominativo']}: punteggio {a['punteggio']} {nome_prima}, {b['punteggio']} {nome_seconda}")
+    return esito
 
 
 def qui_per(numero: str | None, protocolli: set[str]):

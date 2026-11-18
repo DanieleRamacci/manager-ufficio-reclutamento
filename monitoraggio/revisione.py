@@ -30,19 +30,22 @@ def verifica_scorrimenti(conn, m: dict, righe: list[dict] | None = None) -> dict
     if not file:
         return {"caricato": None}
     righe = comunicazioni.righe_mese(conn, m) if righe is None else righe
+    estratte = estrazione_sol.tutte(conn, m["mese"])  # i nomi veri degli assunti da scorrimento sono su Selezioni Online
     esito = scorrimenti_compilato.confronta(righe, file["voci"], file["fogli"], verifica_file.persone_segreteria(conn, "scorrimento"),
-                                            verifica_file.profili_per_bando(conn))
+                                            verifica_file.profili_per_bando(conn), estrazione_sol.scorrimenti_sol(estratte) if estratte else None)
     return {"caricato": {k: file[k] for k in ("nome_file", "caricato_da", "caricato_il")}, **esito}
 
 
 def verifica_graduatorie(conn, m: dict, righe: list[dict] | None = None) -> dict:
-    estrazione = estrazione_sol.caricata(conn, m["mese"])
-    if not estrazione:
-        return {"caricato": None}
+    """Le due estrazioni da Selezioni Online (concorsi e mobilità) insieme, contro tutte le graduatorie del monitoraggio."""
+    caricate = {tipo: estrazione_sol.caricata(conn, m["mese"], tipo) for tipo in estrazione_sol.TABELLE}
+    info = {tipo: {k: e[k] for k in ("nome_file", "caricato_da", "caricato_il")} if e else None for tipo, e in caricate.items()}
+    if not any(caricate.values()):
+        return {"caricato": None, "caricati": info}
     righe = comunicazioni.righe_mese(conn, m) if righe is None else righe
-    esito = estrazione_sol.confronta(righe, estrazione["righe"], *mensile.periodo_dati(m), verifica_file.persone_segreteria(conn, "graduatoria"),
-                                     verifica_file.profili_per_bando(conn))
-    return {"caricato": {k: estrazione[k] for k in ("nome_file", "caricato_da", "caricato_il")}, **esito}
+    esito = estrazione_sol.confronta(righe, [v for e in caricate.values() if e for v in e["righe"]], *mensile.periodo_dati(m),
+                                     verifica_file.persone_segreteria(conn, "graduatoria"), verifica_file.profili_per_bando(conn))
+    return {"caricato": info["concorsi"] or info["mobilita"], "caricati": info, **esito}
 
 
 # ------------------------------------------------------------------ totali
@@ -110,19 +113,67 @@ def totali(conn, m: dict, righe: list[dict] | None = None, scorrimenti: dict | N
 
 
 def da_verificare(scorrimenti: dict, graduatorie: dict) -> list[dict]:
-    """L'elenco unico di ciò che non torna, per file e bando (solo per gli amministratori: può contenere nominativi)."""
+    """L'elenco di ciò che non torna (gravi), per file e bando (solo per gli amministratori: può contenere nominativi)."""
     voci = []
     for file, esito in (("scorrimenti", scorrimenti), ("graduatorie", graduatorie)):
         if not esito.get("caricato"):
             continue
         for a in esito.get("atti", []):
-            if a["problemi"]:
+            if a.get("gravi"):
                 voci.append({"file": file, "chiave": a["chiave"], "codice": a.get("codice") or a.get("numero_bando"), "protocollo": a.get("protocollo"),
-                             "data": a.get("data"), "gruppo": a.get("gruppo"), "problemi": a["problemi"], "rdp": a.get("rdp") or []})
+                             "data": a.get("data"), "gruppo": a.get("gruppo"), "problemi": a["gravi"], "rdp": a.get("rdp") or []})
         for s in esito.get("solo_nel_file", []):
             voci.append({"file": file, "chiave": None, "codice": s["bando"], "protocollo": ", ".join(s.get("protocolli") or [s.get("protocollo") or ""]).strip(", "),
                          "data": s.get("data"), "gruppo": None, "problemi": [f"nel file ({s.get('righe') or ''}) ma non nel monitoraggio: da verificare"], "rdp": []})
+        for c in esito.get("conteggi_bando", []):
+            voci.append({"file": file, "chiave": None, "codice": c["numero_bando"], "protocollo": "", "data": None, "gruppo": None, "rdp": [],
+                         "problemi": [f"il file indica {c['scorrimenti_file']} scorrimenti (di cui {c['subentri_file']} subentri), dalla segreteria e da URP "
+                                      f"ne risultano {c['scorrimenti_rif']} (di cui {c['subentri_rif']} subentri)"]})
     return voci
+
+
+def errori_minori(scorrimenti: dict, graduatorie: dict) -> list[dict]:
+    """Nomi scritti diversi, posizioni e punteggi, foglio, bando scritto male, dati SOL non aggiornati: a parte."""
+    return [{"file": file, "chiave": a["chiave"], "codice": a.get("codice") or a.get("numero_bando"), "protocollo": a.get("protocollo"),
+             "data": a.get("data"), "minori": a["minori"]}
+            for file, esito in (("scorrimenti", scorrimenti), ("graduatorie", graduatorie)) if esito.get("caricato")
+            for a in esito.get("atti", []) if a.get("minori")]
+
+
+def _elenco_per_tipologia(s: dict, fatte: dict) -> list[dict]:
+    """Gli scorrimenti divisi per tipologia: quelli che ci sono, quelli che mancano (rossi), quelli solo nel file (arancioni)."""
+    gruppi = {k: {"tipo": k, "nome": n, "righe": []} for k, n in scorrimenti_compilato.TIPOLOGIE.items()}
+    for a in s.get("atti", []):
+        stato = "manca" if not a["trovato"] else "da_verificare" if a["gravi"] else "ok"
+        gruppi[a["tipo"] if a["tipo"] in gruppi else "non indicata"]["righe"].append(
+            {"stato": stato, "chiave": a["chiave"], "codice": a.get("codice") or a.get("numero_bando"), "protocollo": a.get("protocollo"),
+             "data": a.get("data"), "gruppo": a.get("gruppo"), "righe_file": a["righe_file"], "nominativi": a["nominativi"],
+             "persone_segreteria": a["persone_segreteria"], "persone_sol": a["persone_sol"], "gravi": a["gravi"], "minori": a["minori"],
+             "rdp": a.get("rdp") or [], "richiesta": fatte.get(("scorrimenti", a["chiave"]))})
+    for b in s.get("solo_nel_file", []):
+        gruppi[b["tipo"] if b["tipo"] in gruppi else "non indicata"]["righe"].append(
+            {"stato": "solo_file", "chiave": None, "codice": b["bando"], "protocollo": ", ".join(b["protocolli"]), "data": None, "gruppo": None,
+             "righe_file": [b["righe"]], "nominativi": b["nominativi"], "persone_segreteria": 0, "persone_sol": 0,
+             "gravi": ["nel file ma non nel monitoraggio: da verificare"], "minori": [], "rdp": [], "richiesta": None})
+    ordine = {"manca": 0, "da_verificare": 1, "solo_file": 2, "ok": 3}
+    for g in gruppi.values():
+        g["righe"].sort(key=lambda x: (ordine[x["stato"]], x["codice"] or ""))
+        g["conteggi"] = {k: sum(1 for x in g["righe"] if x["stato"] == k) for k in ordine}
+        g["conteggi"]["totale"] = len(g["righe"])
+    return [g for g in gruppi.values() if g["righe"]]
+
+
+def _elenco_graduatorie(g: dict, fatte: dict) -> list[dict]:
+    righe = [{"stato": "manca" if not a["trovato"] else "da_verificare" if a["gravi"] else "ok", "chiave": a["chiave"],
+              "codice": a.get("codice") or a.get("numero_bando"), "protocollo": a.get("protocollo"), "data": a.get("data"), "gruppo": a.get("gruppo"),
+              "candidati": a["candidati"], "persone_segreteria": a["persone_segreteria"], "gravi": a["gravi"], "minori": a["minori"],
+              "rdp": a.get("rdp") or [], "richiesta": fatte.get(("graduatorie", a["chiave"]))} for a in g.get("atti", [])]
+    righe += [{"stato": "solo_file", "chiave": None, "codice": s["bando"], "protocollo": s["protocollo"], "data": s["data"], "gruppo": None,
+               "candidati": s["candidati"], "persone_segreteria": 0, "gravi": ["su Selezioni Online ma non nel monitoraggio: da verificare"],
+               "minori": [], "rdp": [], "richiesta": None} for s in g.get("solo_nel_file", [])]
+    ordine = {"manca": 0, "da_verificare": 1, "solo_file": 2, "ok": 3}
+    righe.sort(key=lambda x: (ordine[x["stato"]], x["codice"] or ""))
+    return righe
 
 
 # ------------------------------------------------------------------ richiesta di verifica agli RdP
@@ -190,7 +241,7 @@ def riepilogo(conn, m: dict, con_dettagli: bool = True) -> dict:
     s, g = verifica_scorrimenti(conn, m, righe), verifica_graduatorie(conn, m, righe)
     base = {"mese": m["mese"], "titolo": comunicazioni.titolo_mese(m["mese_dati"]), "totali": totali(conn, m, righe, s, g),
             "revisione": {"il": m.get("revisione_il"), "da": m.get("revisione_da")},
-            "file": {nome: {"caricato": e.get("caricato"), "allineato": e.get("allineato") if e.get("caricato") else None}
+            "file": {nome: {"caricato": e.get("caricato"), "caricati": e.get("caricati"), "allineato": e.get("allineato") if e.get("caricato") else None}
                      for nome, e in (("scorrimenti", s), ("graduatorie", g))}}
     if not con_dettagli:
         return base
@@ -202,7 +253,10 @@ def riepilogo(conn, m: dict, con_dettagli: bool = True) -> dict:
         base["file"][nome].update({"da_verificare": len([v for v in voci if v["file"] == nome]),
                                    "mancanti": e.get("fogli_mancanti") or e.get("gruppi_mancanti") or [],
                                    "fuori_periodo": e.get("fuori_periodo")})
-    return {**base, "da_verificare": voci, "testo": m.get("testo_revisione") or testo_predefinito(m),
+    return {**base, "da_verificare": voci, "minori": errori_minori(s, g),
+            "scorrimenti_per_tipologia": _elenco_per_tipologia(s, fatte) if s.get("caricato") else [],
+            "graduatorie": _elenco_graduatorie(g, fatte) if g.get("caricato") else [],
+            "conteggi_bando": s.get("conteggi_bando") or [], "testo": m.get("testo_revisione") or testo_predefinito(m),
             "testo_personalizzato": bool(m.get("testo_revisione")),
             "link": {"scorrimenti": m.get("link_scorrimenti") or "", "graduatorie": m.get("link_graduatorie") or ""}}
 

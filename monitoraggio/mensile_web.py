@@ -813,11 +813,21 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             return None, (jsonify({"error": "File troppo grande (massimo 15 MB)"}), 413)
         return (file.filename, contenuto), None
 
+    def _numeri_mobilita(conn, m: dict) -> set:
+        """I bandi che vanno nel foglio delle graduatorie di mobilità: mobilità e comandi del monitoraggio e quelli dell'export di mobilità."""
+        mob = estrazione_sol.caricata(conn, m["mese"], "mobilita")
+        return ({r.get("numero_bando") for r in comunicazioni.righe_mese(conn, m) if r.get("tipologia") in revisione.MOBILITA}
+                | {v["numero_bando"] for v in (mob["righe"] if mob else [])})
+
     @bp.route("/api/monitoraggi/<mese>/estrazione-graduatorie", methods=["GET", "POST"])
     @protezione
     @solo_admin
     def api_estrazione_graduatorie(mese: str):
-        """L'export «Punteggi» di Selezioni Online: si confronta con le graduatorie del monitoraggio, anche per persona."""
+        """L'export «Punteggi» di Selezioni Online: si confronta con le graduatorie del monitoraggio, anche per persona.
+        `?tipo=mobilita`: l'export delle graduatorie di mobilità, salvato a parte e confrontato insieme a quello dei concorsi."""
+        tipo = request.args.get("tipo") or "concorsi"
+        if tipo not in estrazione_sol.TABELLE:
+            return jsonify({"error": "Tipo di estrazione non valido"}), 400
         conn = _conn()
         try:
             m = _trova(conn, mese)
@@ -832,7 +842,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
                     righe = estrazione_sol.leggi(letto[1])
                 except estrazione_sol.FileNonValido as e:
                     return jsonify({"error": str(e)}), 400
-                estrazione_sol.salva(conn, mese, letto[0], righe, utente_corrente())
+                estrazione_sol.salva(conn, mese, letto[0], righe, utente_corrente(), tipo)
             return jsonify(revisione.verifica_graduatorie(conn, m))
         except mensile.MeseChiuso as e:
             return jsonify({"error": str(e)}), 409
@@ -923,12 +933,11 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
                     return jsonify({"error": "File scorrimenti non ancora caricato"}), 404
                 nome, contenuto = trovato
             elif file == "graduatorie":
-                estrazione = estrazione_sol.caricata(conn, mese)
-                if not estrazione:
+                estratte = estrazione_sol.tutte(conn, mese)
+                if not estratte:
                     return jsonify({"error": "Estrazione da Selezioni Online non ancora caricata"}), 404
                 dal, al = mensile.periodo_dati(m)
-                mobilita = {r.get("numero_bando") for r in comunicazioni.righe_mese(conn, m) if r.get("tipologia") in revisione.MOBILITA}
-                contenuto = excel_mese.excel_graduatorie_da_estrazione(conn, dal, al, *estrazione_sol.righe_excel(estrazione["righe"], dal, al, mobilita))
+                contenuto = excel_mese.excel_graduatorie_da_estrazione(conn, dal, al, *estrazione_sol.righe_excel(estratte, dal, al, _numeri_mobilita(conn, m)))
                 nome = excel_mese.nome_graduatorie(m["mese_dati"])
             else:
                 return jsonify({"error": "File non trovato"}), 404
@@ -954,9 +963,8 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
                           "tipologia": v["tipologia"], "nominativi": "; ".join(v.get("nominativi") or [])} for v in (c["voci"] if c else [])]
                 colonne = [["foglio", "Foglio"], ["riga", "Riga"], ["bando", "Bando"], ["protocolli", "Protocolli"], ["tipologia", "Tipologia"], ["nominativi", "Nominativi"]]
             elif file == "graduatorie":
-                e = estrazione_sol.caricata(conn, mese)
                 dal, al = mensile.periodo_dati(m)
-                concorsi, mob = estrazione_sol.righe_excel(e["righe"], dal, al, set()) if e else ([], [])
+                concorsi, mob = estrazione_sol.righe_excel(estrazione_sol.tutte(conn, mese), dal, al, _numeri_mobilita(conn, m))
                 from .punteggi import INTESTAZIONI_EXCEL
                 indici = {h: INTESTAZIONI_EXCEL.index(h) for h in ("Codice bando", "Profilo/Livello", "Cognome", "Nome", "Totale Punteggi", "Graduatoria", "Esito",
                                                                     "Numero Protocollo Graduatoria")}

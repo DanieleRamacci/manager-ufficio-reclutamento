@@ -579,30 +579,50 @@
       $("corpo-scheda").innerHTML = `<section><p class="muted">Caricamento…</p></section>`;
       let r;
       try { r = await chiama(`/api/monitoraggi/${m.mese}/riepilogo`); } catch (err) { $("corpo-scheda").innerHTML = `<section><div class="errore">${esc(err.message)}</div></section>`; return; }
-      const statoFile = (nome) => {
-        const f = r.file[nome];
-        if (!f.caricato) return `<span class="pillola p-na">non caricato</span>`;
-        const mancanti = (f.mancanti || []).map(g => `<div class="etichetta" style="margin-top:4px">manca del tutto il gruppo ${esc(g.gruppo)} (${esc(g.nome)}): ${g.scorrimenti ?? g.graduatorie} atti</div>`).join("");
-        return `${f.allineato ? `<span class="pillola p-ok">allineato</span>` : `<span class="pillola p-ko">${f.da_verificare} da verificare</span>`}
-          <div class="muted small">«${esc(f.caricato.nome_file)}» caricato da ${esc(f.caricato.caricato_da || "")} il ${ora(f.caricato.caricato_il)}${f.fuori_periodo ? ` · ${f.fuori_periodo} graduatorie di altri mesi non considerate` : ""}</div>${mancanti}`;
+      const info = (c) => c ? `<div class="muted small">«${esc(c.nome_file)}» caricato da ${esc(c.caricato_da || "")} il ${ora(c.caricato_il)}</div>` : "";
+      const esito = (f) => !f.caricato ? `<span class="pillola p-na">non caricato</span>` : f.allineato ? `<span class="pillola p-ok">allineato</span>` : `<span class="pillola p-ko">${f.da_verificare} da verificare</span>`;
+      const mancanti = (f) => (f.mancanti || []).map(g => `<div class="etichetta" style="margin-top:4px">manca del tutto il gruppo ${esc(g.gruppo)} (${esc(g.nome)}): ${g.scorrimenti ?? g.graduatorie} atti</div>`).join("");
+      const modulo = (url, accetta, nome) => chiuso ? "" : `<form class="riga carica-file" data-url="${url}" style="align-items:center;margin-top:6px"><input type="file" accept="${accetta}" required aria-label="${nome}"><button type="submit">Carica e verifica</button></form>`;
+      const g = r.file.graduatorie, s = r.file.scorrimenti, cg = g.caricati || {};
+      const schede = `<div class="scelta"><b>Graduatorie da Selezioni Online</b><div style="margin:6px 0">${esito(g)}${g.fuori_periodo ? ` <span class="muted small">· ${g.fuori_periodo} graduatorie di altri mesi non considerate</span>` : ""}</div>${mancanti(g)}
+          <div class="small" style="margin-top:8px"><b>Concorsi</b> (export «Punteggi»)</div>${info(cg.concorsi) || `<div class="muted small">non caricata</div>`}${modulo(`/api/monitoraggi/${m.mese}/estrazione-graduatorie`, ".xls,.xlsx", "Estrazione graduatorie dei concorsi")}
+          <div class="small" style="margin-top:8px"><b>Mobilità</b> (export «Punteggi» delle mobilità)</div>${info(cg.mobilita) || `<div class="muted small">non caricata</div>`}${modulo(`/api/monitoraggi/${m.mese}/estrazione-graduatorie?tipo=mobilita`, ".xls,.xlsx", "Estrazione graduatorie di mobilità")}</div>
+        <div class="scelta"><b>File scorrimenti</b> (modello compilato)<div style="margin:6px 0">${esito(s)}</div>${mancanti(s)}${info(s.caricato)}${modulo(`/api/monitoraggi/${m.mese}/scorrimenti-compilato`, ".xlsx", "File scorrimenti compilato")}</div>`;
+      // ogni riga: rossa se manca, arancione se è solo nel file; «Chiedi verifica» agli RdP del bando
+      const richieste = [];
+      const STATI = { manca: ["p-ko", "manca"], da_verificare: ["p-warn", "da verificare"], solo_file: ["p-warn", "solo nel file"], ok: ["p-ok", "c'è"] };
+      const sfondo = { manca: "background:var(--ko-bg)", solo_file: "background:var(--warn-bg)" };
+      const riga = (x, file, persone) => {
+        let azione = "";
+        if (x.chiave && !chiuso && x.stato !== "ok") { richieste.push({ file, chiave: x.chiave }); azione = `<button type="button" class="piccolo solo-admin" data-chiedi="${richieste.length - 1}">Chiedi verifica</button>`; }
+        return `<tr style="${sfondo[x.stato] || ""}"><td><span class="pillola ${STATI[x.stato][0]}">${STATI[x.stato][1]}</span></td><td>${esc(x.codice || "")}</td>
+          <td class="mono small">${esc(x.protocollo || "")}</td><td>${esc(dataIt(x.data))}</td><td class="small">${esc(x.gruppo || "")}</td><td class="small">${persone(x)}</td>
+          <td>${x.gravi.length ? `<ul class="rilievi">${x.gravi.map(p => `<li>${esc(p)}</li>`).join("")}</ul>` : ""}</td>
+          <td class="small">${x.rdp.map(p => esc([p.nome, p.cognome].filter(Boolean).join(" ") || p.email)).join("<br>")}</td>
+          <td>${x.richiesta ? `<div class="small"><span class="pillola ${x.richiesta.esito === "inviata" ? "p-ok" : "p-blu"}">${x.richiesta.esito === "inviata" ? "richiesta inviata" : "inviata in prova"}</span><div class="muted">${ora(x.richiesta.quando)}</div></div>` : ""}${azione}</td></tr>`;
       };
-      const carica = (nome, accetta, url) => `<div class="scelta"><b>${NOMI_FILE[nome]}</b><div style="margin:6px 0">${statoFile(nome)}</div>
-        ${chiuso ? "" : `<form class="riga carica-file" data-url="${url}" style="align-items:center"><input type="file" accept="${accetta}" required aria-label="${NOMI_FILE[nome]}"><button type="submit">Carica e verifica</button></form>`}</div>`;
-      const voci = r.da_verificare.map((v, i) => `<tr class="difforme"><td class="small">${v.file === "scorrimenti" ? "Scorrimenti" : "Graduatorie"}</td><td>${esc(v.codice || "")}</td>
-          <td class="mono small">${esc(v.protocollo || "")}</td><td>${esc(dataIt(v.data))}</td><td class="small">${esc(v.gruppo || "")}</td>
-          <td><ul class="rilievi">${v.problemi.map(p => `<li>${esc(p)}</li>`).join("")}</ul></td>
-          <td class="small">${v.rdp.map(p => esc([p.nome, p.cognome].filter(Boolean).join(" ") || p.email)).join("<br>")}</td>
-          <td>${v.richiesta ? `<div class="small"><span class="pillola ${v.richiesta.esito === "inviata" ? "p-ok" : "p-blu"}">${v.richiesta.esito === "inviata" ? "richiesta inviata" : "inviata in prova"}</span><div class="muted">${ora(v.richiesta.quando)}</div></div>` : ""}
-            ${v.chiave && !chiuso ? `<button type="button" class="piccolo solo-admin" data-chiedi="${i}">Chiedi verifica</button>` : ""}</td></tr>`).join("");
+      const testa = `<thead><tr><th>Stato</th><th>Bando</th><th>Prot.</th><th>Data</th><th>Gruppo</th><th>Persone</th><th>Cosa non torna</th><th>RdP</th><th></th></tr></thead>`;
+      const conteggio = (c) => `<span class="small">c'è ${c.ok + c.da_verificare} · <b style="color:var(--ko)">mancano ${c.manca}</b> · solo nel file ${c.solo_file} · <b>totale ${c.totale}</b>${c.da_verificare ? ` <span class="muted">(${c.da_verificare} con dati da verificare)</span>` : ""}</span>`;
+      const personeS = (x) => [x.nominativi ? `nel file ${x.nominativi}` : "", x.persone_segreteria ? `segreteria ${x.persone_segreteria}` : "", x.persone_sol ? `SOL ${x.persone_sol}` : ""].filter(Boolean).join(" · ");
+      const personeG = (x) => [x.candidati ? `SOL ${x.candidati}` : "", x.persone_segreteria ? `segreteria ${x.persone_segreteria}` : ""].filter(Boolean).join(" · ");
+      const sezioneScorrimenti = !s.caricato ? `<p class="muted small">Carica il file scorrimenti compilato.</p>` : r.scorrimenti_per_tipologia.map(gr =>
+        `<h3 style="margin:14px 0 4px">${esc(gr.nome)} ${conteggio(gr.conteggi)}</h3><div class="scroll"><table style="min-width:1100px">${testa}<tbody>${gr.righe.map(x => riga(x, "scorrimenti", personeS)).join("")}</tbody></table></div>`).join("")
+        + (r.conteggi_bando.length ? `<h3 style="margin:14px 0 4px">Bandi con più scorrimenti nel file di quanti risultano dalla segreteria e da URP</h3><div class="scroll"><table><thead><tr><th>Bando</th><th>Nel file</th><th>Segreteria e URP</th></tr></thead><tbody>
+          ${r.conteggi_bando.map(c => `<tr style="background:var(--warn-bg)"><td>${esc(c.numero_bando)}</td><td>${c.scorrimenti_file} scorrimenti, di cui ${c.subentri_file} subentri</td><td>${c.scorrimenti_rif} scorrimenti, di cui ${c.subentri_rif} subentri</td></tr>`).join("")}</tbody></table></div>` : "");
+      const gc = r.graduatorie.reduce((c, x) => ({ ...c, [x.stato]: (c[x.stato] || 0) + 1, totale: c.totale + 1 }), { ok: 0, da_verificare: 0, manca: 0, solo_file: 0, totale: 0 });
+      const sezioneGraduatorie = !g.caricato ? `<p class="muted small">Carica l'estrazione delle graduatorie da Selezioni Online.</p>`
+        : `<p>${conteggio(gc)}</p><div class="scroll"><table style="min-width:1100px">${testa}<tbody>${r.graduatorie.map(x => riga(x, "graduatorie", personeG)).join("")}</tbody></table></div>`;
+      const minori = r.minori.length ? `<details style="margin-top:6px"><summary><b>Errori minori</b> <span class="muted">(${r.minori.reduce((n, x) => n + x.minori.length, 0)} su ${r.minori.length} atti)</span> — nomi scritti diversi (vale il nome di Selezioni Online), posizioni e punteggi, foglio o bando scritto male, dati non ancora aggiornati su SOL</summary>
+          <div class="scroll"><table><thead><tr><th>File</th><th>Bando</th><th>Prot.</th><th>Errori minori</th></tr></thead><tbody>${r.minori.map(x => `<tr><td class="small">${x.file === "scorrimenti" ? "Scorrimenti" : "Graduatorie"}</td><td>${esc(x.codice || "")}</td><td class="mono small">${esc(x.protocollo || "")}</td>
+          <td><ul class="rilievi">${x.minori.map(p => `<li>${esc(p)}</li>`).join("")}</ul></td></tr>`).join("")}</tbody></table></div></details>` : "";
       const rev = r.revisione.il;
       $("corpo-scheda").innerHTML = `
-        <section><h2>File del mese</h2><p class="muted small">Carica l'estrazione delle graduatorie scaricata da Selezioni Online (export «Punteggi», .xls) e il file scorrimenti compilato. Il controllo parte da ciò che risulta nel monitoraggio: ogni graduatoria e ogni scorrimento deve esserci, anche quando manca un intero foglio o gruppo di concorsi; ciò che è nel file e non nel monitoraggio è segnalato. I nominativi si vedono solo qui.</p>
-          <div class="griglia2">${carica("graduatorie", ".xls,.xlsx", `/api/monitoraggi/${m.mese}/estrazione-graduatorie`)}${carica("scorrimenti", ".xlsx", `/api/monitoraggi/${m.mese}/scorrimenti-compilato`)}</div></section>
-        <section><h2>Totali del monitoraggio</h2><p class="muted small">Per ogni voce: quanti atti risultano nel monitoraggio e quanti ce ne sono nei file caricati; tra parentesi le persone (uno scorrimento o una graduatoria può riguardarne molte: le persone «che risultano» vengono dal file della segreteria). È la tabella che vedono coordinatori e persone dell'ufficio.</p>
+        <section><h2>File del mese</h2><p class="muted small">Carica le estrazioni delle graduatorie da Selezioni Online (export «Punteggi», .xls: concorsi e mobilità) e il file scorrimenti compilato. Il controllo parte da ciò che risulta nel monitoraggio (file della segreteria, URP, Selezioni Online): ogni graduatoria e ogni scorrimento deve esserci, anche quando manca un intero foglio o gruppo di concorsi. I nomi veri sono quelli di Selezioni Online. I nominativi si vedono solo qui.</p>
+          <div class="griglia2">${schede}</div></section>
+        <section><h2>Totali del monitoraggio</h2><p class="muted small">Per ogni voce: quanti atti risultano nel monitoraggio e quanti ce ne sono nei file caricati; tra parentesi le persone. È la tabella che vedono coordinatori e persone dell'ufficio.</p>
           ${App.tabellaTotali(r.totali)}</section>
-        <section><h2>Cosa non torna <span class="muted">(${r.da_verificare.length})</span></h2>
-          ${r.da_verificare.length ? `<div class="scroll"><table style="min-width:1100px"><thead><tr><th>File</th><th>Bando</th><th>Prot.</th><th>Data</th><th>Gruppo</th><th>Cosa non torna</th><th>RdP</th><th></th></tr></thead><tbody>${voci}</tbody></table></div>`
-            : `<p class="small" style="color:var(--ok)">${r.file.scorrimenti.caricato || r.file.graduatorie.caricato ? "Tutto allineato nei file caricati." : "Carica i file per vedere cosa non torna."}</p>`}</section>
+        <section><h2>Scorrimenti</h2><p class="muted small">Divisi per tipologia. In rosso quelli che risultano a noi e mancano nel file scorrimenti; in arancione quelli che ci sono solo nel file.</p>${sezioneScorrimenti}</section>
+        <section><h2>Graduatorie</h2><p class="muted small">In rosso quelle che risultano a noi (file della segreteria, URP, Selezioni Online) e mancano nell'estrazione da Selezioni Online; in arancione quelle dell'estrazione che non sono nel monitoraggio.</p>${sezioneGraduatorie}${minori}</section>
         <section><h2>I file che verranno mandati</h2>
           <div class="riga">${[["graduatorie", "File graduatorie (dall'estrazione)"], ["scorrimenti", "File scorrimenti caricato"]].map(([k, t]) => r.file[k].caricato
             ? `<span><button type="button" data-vedi="${k}">Vedi ${t.toLowerCase()}</button> <a class="pulsante primario" href="/api/monitoraggi/${m.mese}/file-mese/${k}">Scarica</a></span>`
@@ -622,7 +642,7 @@
         try { await chiama(f.dataset.url, { method: "POST", body: dati }); toast("File verificato"); stato.atti = await chiama(`/api/monitoraggi/${m.mese}/atti`); schedaRiepilogo(); }
         catch (err) { toast(err.message); f.querySelector("button").disabled = false; }
       });
-      document.querySelectorAll("[data-chiedi]").forEach(b => b.onclick = () => chiediVerifica(r.da_verificare[Number(b.dataset.chiedi)]));
+      document.querySelectorAll("[data-chiedi]").forEach(b => b.onclick = () => chiediVerifica(richieste[Number(b.dataset.chiedi)]));
       document.querySelectorAll("[data-vedi]").forEach(b => b.onclick = () => vediFile(b.dataset.vedi));
       const salva = () => chiama(`/api/monitoraggi/${m.mese}/riepilogo/testo`, corpoJson("PUT", { testo: $("testo-revisione").value }));
       $("salva-testo-revisione").onclick = async () => { try { await salva(); toast("Testo salvato"); } catch (err) { toast(err.message); } };

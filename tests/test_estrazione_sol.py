@@ -59,9 +59,9 @@ def test_confronto_in_entrambe_le_direzioni_e_gruppi_mancanti():
     righe = [_grad("367.562", "444208"), _grad("367.700", "455052"), _grad("367.524", "448313", bando_id=2)]
     esito = es.confronta(righe, ESTRAZIONE, "2026-10-01", "2026-10-31", profili_bandi=PROFILI)
     per = {a["numero_bando"]: a for a in esito["atti"]}
-    assert per["367.562"]["trovato"] and per["367.562"]["candidati"] == 2 and per["367.562"]["problemi"] == []
-    assert per["367.700"]["problemi"] == ["manca nell'estrazione"]
-    assert per["367.524"]["problemi"] == ["manca nell'estrazione", "nell'estrazione non c'è nessuna graduatoria CTER"]
+    assert per["367.562"]["trovato"] and per["367.562"]["candidati"] == 2 and per["367.562"]["gravi"] == []
+    assert per["367.700"]["gravi"] == ["manca nell'estrazione da Selezioni Online"]
+    assert per["367.524"]["gravi"] == ["manca nell'estrazione da Selezioni Online", "nell'estrazione non c'è nessuna graduatoria CTER"]
     assert [s["numero_bando"] for s in esito["solo_nel_file"]] == ["367.999"] and esito["fuori_periodo"] == 1
     assert esito["senza_graduatoria"] == 1 and not esito["allineato"]
 
@@ -70,8 +70,9 @@ def test_confronto_per_persona_con_la_segreteria():
     persone = {("367.562", "444208"): [{"nominativo": "Rossi Inventato", "chiave": vf.nome_chiave("Inventato Rossi"), "posizione": 1, "punteggio": "80/100"},
                                        {"nominativo": "Bianchi Inventato", "chiave": vf.nome_chiave("Bianchi Inventato"), "posizione": 3, "punteggio": "78.5"},
                                        {"nominativo": "Assente Inventato", "chiave": vf.nome_chiave("Assente Inventato"), "posizione": 4, "punteggio": "60"}]}
-    problemi = es.confronta([_grad("367.562", "444208")], ESTRAZIONE, "2026-10-01", "2026-10-31", persone, PROFILI)["atti"][0]["problemi"]
-    assert problemi == ["Assente Inventato: nel file della segreteria ma non nel file", "Bianchi Inventato: posizione 2 nel file, 3 nella segreteria"]
+    a = es.confronta([_grad("367.562", "444208")], ESTRAZIONE, "2026-10-01", "2026-10-31", persone, PROFILI)["atti"][0]
+    assert a["gravi"] == ["Assente Inventato: nel file della segreteria ma non su Selezioni Online"]
+    assert a["minori"] == ["Bianchi Inventato: posizione 2 su Selezioni Online, 3 nel file della segreteria"]  # minore
 
 
 def test_file_graduatorie_ordinato_per_gruppo_e_punteggio():
@@ -101,7 +102,7 @@ def test_nominativi_apostrofi_refusi_e_persone_sotto_un_altro_bando():
     persone = {("367.562", "445338"): [persona("Boscherini Inventatp", 1), persona("Altro Inventato", 1), persona("Ancora Inventato", 2)]}
     righe = [{"atto": "graduatoria", "chiave": "367.562 RIC", "numero_bando": "367.562", "protocollo": "445338", "data": "2026-10-20",
               "fonti": {}, "bando_id": 1, "rdp": []}]
-    problemi = es.confronta(righe, estrazione, "2026-10-01", "2026-10-31", persone, PROFILI)["atti"][0]["problemi"]
-    assert problemi == ["nome scritto diverso: «Boscherini Inventato» nel file, «Boscherini Inventatp» nel file della segreteria",
-                        "2 persone del file della segreteria per questo bando sono nel file sotto «367.483 RIC IEIIT PD (prot. 448313)»: "
-                        "bando o protocollo da verificare in uno dei due file (Altro Inventato, Ancora Inventato)"]
+    a = es.confronta(righe, estrazione, "2026-10-01", "2026-10-31", persone, PROFILI)["atti"][0]
+    assert a["minori"] == ["nome scritto diverso: «Boscherini Inventato» su Selezioni Online, «Boscherini Inventatp» nel file della segreteria"]
+    assert a["gravi"] == ["2 persone nel file della segreteria per questo bando sono su Selezioni Online sotto «367.483 RIC IEIIT PD (prot. 448313)»: "
+                          "bando o protocollo da verificare (Altro Inventato, Ancora Inventato)"]
