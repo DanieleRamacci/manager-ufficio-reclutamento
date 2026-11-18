@@ -205,7 +205,8 @@
     const schede = [["tutti", "Tutti", R.length, conta(r => r.difforme)], ["difformita", "Tutte le difformità", conta(r => r.difforme), 0], ["bando", "Bandi pubblicati", conta(r => r.atto === "bando"), 0],
       ["graduatoria", "Graduatorie pubbliche", conta(r => r.atto === "graduatoria"), contaD(r => r.atto === "graduatoria")],
       ["scorrimento", "Scorrimenti", conta(r => r.atto === "scorrimento"), contaD(r => r.atto === "scorrimento")],
-      ["subentro", "Subentri", conta(r => r.sottotipo === "subentro"), contaD(r => r.sottotipo === "subentro")]];
+      ["subentro", "di cui subentri", conta(r => r.sottotipo === "subentro"), contaD(r => r.sottotipo === "subentro")],
+      ["rettifica", "Rettifiche di graduatoria", conta(r => r.atto === "rettifica"), contaD(r => r.atto === "rettifica")]];
     const elencoMesi = dati.monitoraggi || [];
     $("contenuto").innerHTML = `<section><div class="tra"><div><h1>Monitoraggio di ${esc(dati.titolo)} <span class="pillola ${chiuso ? "p-na" : "p-blu"}">${chiuso ? "chiuso" : "in corso"}</span></h1>${presentazione(v)}</div>
         <div class="riga"><label class="muted">Mese <select id="mese-monitoraggio">${elencoMesi.map(m => `<option value="${esc(m.mese)}"${m.mese === dati.mese ? " selected" : ""}>${esc(m.titolo)}</option>`).join("")}</select></label><a href="${BASE}/monitoraggi">Tutti i monitoraggi</a></div></div>
@@ -221,7 +222,7 @@
       else if (filtri.schedaMese === "subentro") base = base.filter(r => r.sottotipo === "subentro");
       else base = base.filter(r => r.atto === filtri.schedaMese);
       const righe = filtrate(base);
-      $("tabella").innerHTML = `<div class="muted small" style="margin-bottom:6px">${righe.length} atti su ${base.length} · ${base.filter(r => r.difforme).length} con difformità</div><div class="scroll"><table style="min-width:1250px"><thead><tr>
+      $("tabella").innerHTML = `${filtri.schedaMese === "tutti" ? `<p class="small" style="margin:0 0 6px">${esc(App.scomposizioneAtti(dati.righe))}</p>` : ""}<div class="muted small" style="margin-bottom:6px">${righe.length} atti su ${base.length} · ${base.filter(r => r.difforme).length} con difformità</div><div class="scroll"><table style="min-width:1250px"><thead><tr>
         <th>Data</th><th>Bando</th><th>Tipologia</th><th>N. gest.</th><th>Atto</th><th>Prot.</th><th>SOL</th><th>URP</th><th>Segreteria</th><th>Difformità</th><th>RdP</th><th>Comunicazione</th><th>Punteggi</th></tr></thead><tbody>
         ${righe.map(r => { const i = dati.righe.indexOf(r); return `<tr><td>${esc(dataIt(r.data))}</td>${cellaBando(r)}<td>${chipTipologia(r.tipologia)}</td><td class="mono small">${esc(r.n_gestione || "")}</td>
           <td>${esc(ATTI[r.atto] || r.atto)}${chipSubentro(r)}</td><td class="mono small">${esc(r.protocollo || "")}</td>${cellaFonte(r, "sol")}${cellaFonte(r, "urp")}${cellaFonte(r, "segreteria")}

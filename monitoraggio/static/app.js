@@ -185,6 +185,17 @@ window.App = (() => {
     };
   }
 
+  // Di cosa è fatto il totale della scheda «Tutti»: i subentri sono già tra gli scorrimenti, le rettifiche non hanno una scheda.
+  function scomposizioneAtti(righe) {
+    const n = (f) => righe.filter(f).length, plurale = (k, uno, molti) => `${k} ${k === 1 ? uno : molti}`;
+    const parti = [plurale(n(r => r.atto === "bando"), "bando pubblicato", "bandi pubblicati"), plurale(n(r => r.atto === "graduatoria"), "graduatoria", "graduatorie"),
+      `${plurale(n(r => r.atto === "scorrimento"), "scorrimento", "scorrimenti")} (di cui ${plurale(n(r => r.sottotipo === "subentro"), "subentro", "subentri")})`];
+    const rettifiche = n(r => r.atto === "rettifica"), altri = n(r => !["bando", "graduatoria", "scorrimento", "rettifica"].includes(r.atto));
+    if (rettifiche) parti.push(plurale(rettifiche, "rettifica di graduatoria", "rettifiche di graduatoria"));
+    if (altri) parti.push(plurale(altri, "altro atto", "altri atti"));
+    return `${plurale(righe.length, "atto", "atti")}: ${parti.join(", ")}.`;
+  }
+
   // Comunicazione ai referenti di un atto (monitoraggio e stato complessivo, spec 009): stato, protocollo dell'email, storico.
   // Ritorna i pezzi; ogni pagina aggiunge le sue azioni.
   function partiComunicazione(c) {
@@ -207,5 +218,5 @@ window.App = (() => {
       azionabile: !["in_attesa", "in_regola"].includes(c.stato), inviata: ["inviata", "inviata_a_mano"].includes(c.stato) };
   }
 
-  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, json, toast, partiComunicazione, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati, contieneTesto, pannelloCandidati, testataArea, dividiPerSede, sediDellaRiga, elencoRilievi };
+  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, json, toast, partiComunicazione, scomposizioneAtti, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati, contieneTesto, pannelloCandidati, testataArea, dividiPerSede, sediDellaRiga, elencoRilievi };
 })();

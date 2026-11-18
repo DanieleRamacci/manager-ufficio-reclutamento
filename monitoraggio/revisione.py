@@ -15,7 +15,8 @@ from . import avvisi_scorrimenti, comunicazioni, config, estrazione_sol, excel_m
 log = logging.getLogger(__name__)
 MOBILITA = ("mobilita", "comando")
 NOMI_FILE = {"scorrimenti": "scorrimenti", "graduatorie": "graduatorie"}
-CATEGORIE = (("bandi", "Bandi pubblicati"), ("graduatorie", "Bandi con graduatoria"), ("scorrimenti", "Scorrimenti"), ("subentri", "Subentri"))
+CATEGORIE = (("bandi", "Bandi pubblicati"), ("graduatorie", "Bandi con graduatoria"), ("scorrimenti", "Scorrimenti"), ("subentri", "di cui subentri (tra gli scorrimenti)"),
+             ("rettifiche", "Rettifiche di graduatoria"))  # le rettifiche si contano a parte (scelta dell'utente del 2026-11-18)
 
 
 def _adesso() -> str:
@@ -64,6 +65,7 @@ def totali(conn, m: dict, righe: list[dict] | None = None, scorrimenti: dict | N
     trovate_g = {a["chiave"] for a in graduatorie.get("atti", []) if a["trovato"]}
     tabella = {k: {"categoria": nome, "concorsi": _vuoto(), "mobilita": _vuoto(), "totale": _vuoto(), "per_gruppo": {}} for k, nome in CATEGORIE}
     tabella["bandi"]["nei_file_da"] = "dal sistema (Selezioni Online)"
+    tabella["rettifiche"]["nei_file_da"] = "non sono nei file del monitoraggio"
 
     def conta(categoria: str, r: dict, nel_file: bool) -> None:
         voce, gruppo = tabella[categoria], verifica_file.gruppo_della_riga(r, pb)
@@ -83,6 +85,8 @@ def totali(conn, m: dict, righe: list[dict] | None = None, scorrimenti: dict | N
         elif r["atto"] == "graduatoria" and r.get("chiave") not in gia_g:
             gia_g.add(r.get("chiave"))
             conta("graduatorie", r, r.get("chiave") in trovate_g)
+        elif r["atto"] == "rettifica":
+            conta("rettifiche", r, False)
         elif r["atto"] == "scorrimento":
             a = trovati_s.get(chiave)
             conta("scorrimenti", r, bool(a))

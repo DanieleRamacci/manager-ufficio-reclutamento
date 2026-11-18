@@ -118,7 +118,8 @@
         ["bando", "Bandi pubblicati", conta(r => r.atto === "bando"), 0],
         ["graduatoria", "Graduatorie pubbliche", conta(r => r.atto === "graduatoria"), contaD(r => r.atto === "graduatoria")],
         ["scorrimento", "Scorrimenti", conta(r => r.atto === "scorrimento"), contaD(r => r.atto === "scorrimento")],
-        ["subentro", "Subentri", conta(r => r.sottotipo === "subentro"), contaD(r => r.sottotipo === "subentro")],
+        ["subentro", "di cui subentri", conta(r => r.sottotipo === "subentro"), contaD(r => r.sottotipo === "subentro")],
+        ["rettifica", "Rettifiche di graduatoria", conta(r => r.atto === "rettifica"), contaD(r => r.atto === "rettifica")],
         ["correzioni", "Correzioni", null, 0], ["comunicazioni", "Comunicazioni", null, 0],
         ...(m.segnalazioni.totali || m.posta.portale_referenti ? [["segnalazioni", "Segnalazioni", m.segnalazioni.totali, m.segnalazioni.aperte]] : []),
         ["riepilogo", "Riepilogo e revisione", null, 0], ["preparazione", "File ed email", null, 0], ["versioni", chiuso ? "Dati salvati" : "Versioni", m.fotografia.versioni.length, 0]];
@@ -161,7 +162,7 @@
     function disegnaScheda() {
       const s = stato.scheda;
       $("filtri-atti").innerHTML = "";
-      if (["tutti", "difformita", "bando", "graduatoria", "scorrimento", "subentro"].includes(s)) return schedaAtti();
+      if (["tutti", "difformita", "bando", "graduatoria", "scorrimento", "subentro", "rettifica"].includes(s)) return schedaAtti();
       if (s === "correzioni") return schedaCorrezioni();
       if (s === "comunicazioni") return schedaComunicazioni();
       if (s === "segnalazioni") return schedaSegnalazioni();
@@ -280,6 +281,7 @@
         <select id="f-rdp" aria-label="RdP"><option value="">Tutti gli RdP</option>${opzioniRdp(stato.atti.righe.flatMap(r => r.rdp || []), f.rdp)}</select>
         <input type="search" id="f-q" placeholder="Codice, titolo, protocollo, RdP o testo" size="34" value="${esc(f.q)}" aria-label="Cerca"></div>`;
       $("corpo-scheda").innerHTML = `
+        ${stato.scheda === "tutti" ? `<p class="small" style="margin:0 0 8px">${esc(App.scomposizioneAtti(stato.atti.righe))}</p>` : ""}
         ${stato.esitoAtti ? `<div style="margin-bottom:8px">${stato.esitoAtti}</div>` : ""}
         ${stato.scheda === "bando" ? "" : `<div class="small muted" id="stato-candidati" style="margin-bottom:8px"></div>`}
         ${daInviare.length && m.stato !== "chiuso" ? `<div class="banda solo-admin"><span><b>${daInviare.length}</b> bandi con difformità ancora da comunicare</span>
