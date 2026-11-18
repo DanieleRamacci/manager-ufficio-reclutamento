@@ -25,6 +25,7 @@
   const vista = parti[0] === "monitoraggi" ? (parti[1] ? "mese" : "elenco") : "stato";
   if (!AREA) { const s = document.createElement("script"); s.src = "/monitoraggio/menu.js"; document.head.appendChild(s); }
   const filtri = { q: "", atto: "", difformi: false, come: "", tipologia: "", schedaStato: "stato", schedaMese: "tutti" };
+  if (new URLSearchParams(location.search).get("cerca")) filtri.q = new URLSearchParams(location.search).get("cerca");  // dal riepilogo dei totali
   let dati = null;
 
   const errore = (err) => { $("contenuto").innerHTML = `<div class="errore" role="alert">${esc(err.message || err)}</div>`; };
@@ -190,7 +191,7 @@
     if (!r) return file;
     return `${file}<div class="card" style="margin-top:12px;padding:12px"><h2 style="margin:0 0 4px">Monitoraggio in revisione</h2>
       <p class="muted small" style="margin:0 0 8px">Dal ${esc(ora(r.il))}. Per ogni voce: quanti atti risultano a noi e quanti ce ne sono nei file del monitoraggio. Segnalateci eventuali correzioni.</p>
-      ${App.tabellaTotali(r.totali)}</div>`;
+      ${App.tabellaTotali(r.totali, (codice) => `${BASE}/monitoraggi/${encodeURIComponent(dati.mese)}?cerca=${encodeURIComponent(codice)}`)}</div>`;
   }
   function disegnaMese() {
     const v = dati.visitatore;

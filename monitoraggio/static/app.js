@@ -186,7 +186,8 @@ window.App = (() => {
   }
 
   // Tabella dei totali del monitoraggio (spec 011): per voce quanti atti risultano a noi e quanti sono nei file caricati.
-  function tabellaTotali(tot) {
+  // `link(codice)`: indirizzo della pagina del monitoraggio filtrata sul bando, per controllare un atto che manca.
+  function tabellaTotali(tot, link) {
     const pers = (n, c) => c.senza_persone || !n ? "" : ` <span class="muted small">(${n} ${n === 1 ? "persona" : "persone"})</span>`;
     const confronto = (c) => !c.nei_file_da || c.categoria === "Bandi pubblicati";
     const coppia = (v, c) => `${v.attesi}${confronto(c) ? ` <span class="muted small">· nei file</span> ${v.nei_file}` : ""}`;
@@ -195,7 +196,8 @@ window.App = (() => {
       return `<tr><td><b>${esc(c.categoria)}</b>${c.nei_file_da ? `<div class="muted small">${esc(c.nei_file_da)}</div>` : ""}</td>
         <td style="text-align:center"><b>${t.attesi}</b>${pers(t.persone_attese, c)}</td>
         <td style="text-align:center">${confronto(c) ? `<b>${t.nei_file}</b>${pers(t.persone_nei_file, c)}` : `<span class="muted2">–</span>`}</td>
-        <td style="text-align:center">${mancano === null ? `<span class="muted2">–</span>` : mancano > 0 ? `<b style="color:var(--ko)">${mancano}</b>` : mancano < 0 ? `<b style="color:var(--warn)">${-mancano} in più</b>` : `<span style="color:var(--ok)">0</span>`}</td>
+        <td style="text-align:center">${mancano === null ? `<span class="muted2">–</span>` : mancano > 0 ? `<b style="color:var(--ko)">${mancano}</b>` : mancano < 0 ? `<b style="color:var(--warn)">${-mancano} in più</b>` : `<span style="color:var(--ok)">0</span>`}
+          ${(c.mancanti || []).length ? `<div class="small" style="text-align:left;margin-top:4px">${c.mancanti.map(x => `<div>${link ? `<a href="${esc(link(x.codice))}" title="Apri il monitoraggio filtrato su questo bando">${esc(x.codice)}</a>` : esc(x.codice)}${x.protocollo ? ` <span class="muted">prot. ${esc(x.protocollo)}</span>` : ""}${x.mobilita ? ` <span class="muted">(mobilità)</span>` : ""}</div>`).join("")}</div>` : ""}</td>
         <td class="small">${coppia(c.concorsi, c)}</td><td class="small">${coppia(c.mobilita, c)}</td>
         <td class="small">${c.per_gruppo.map(g => `${esc(g.nome)}: ${coppia(g, c)}`).join("<br>")}</td></tr>`;
     }).join("");

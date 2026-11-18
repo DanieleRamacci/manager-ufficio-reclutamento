@@ -23,6 +23,8 @@ def test_estrazione_riepilogo_richiesta_e_revisione(ambiente, db, monkeypatch): 
     assert _carica_estrazione(admin, mese, [_candidato("367.999 RIC", "Ricercatore III livello", "Neri", "70", "1",
                                                       protocollo="0500001", data="10/04/2026")]).status_code == 200
     r = admin.get(f"/api/monitoraggi/{mese}/riepilogo").get_json()
+    mancanti = next(c for c in r["totali"]["categorie"] if c["categoria"] == "Bandi con graduatoria")["mancanti"]
+    assert [x["codice"] for x in mancanti] == ["367.479 CTER"]  # quale bando manca, per controllarlo nel monitoraggio
     voci = {v["codice"]: v for v in r["da_verificare"]}
     assert voci["367.479 CTER"]["problemi"][0] == "manca nell'estrazione da Selezioni Online (risulta: URP, Selezioni Online)" and "367.999 RIC" in voci
     anteprima = admin.get(f"/api/monitoraggi/{mese}/verifica-file/graduatorie/richiesta?chiave=367.479 CTER").get_json()

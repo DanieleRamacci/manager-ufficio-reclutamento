@@ -67,7 +67,8 @@ def totali(conn, m: dict, righe: list[dict] | None = None, scorrimenti: dict | N
     pb = verifica_file.profili_per_bando(conn)
     trovati_s = {(a["chiave"], a["protocollo"], a["data"]): a for a in scorrimenti.get("atti", []) if a["trovato"]}
     trovate_g = {a["chiave"]: a for a in graduatorie.get("atti", []) if a["trovato"]}
-    tabella = {k: {"categoria": nome, "concorsi": _vuoto(), "mobilita": _vuoto(), "totale": _vuoto(), "per_gruppo": {}} for k, nome in CATEGORIE}
+    tabella = {k: {"categoria": nome, "concorsi": _vuoto(), "mobilita": _vuoto(), "totale": _vuoto(), "per_gruppo": {}, "mancanti": []}
+               for k, nome in CATEGORIE}
     tabella["bandi"]["nei_file_da"] = "dal sistema (Selezioni Online)"
     tabella["rettifiche"]["nei_file_da"] = "non sono nei file del monitoraggio"
 
@@ -79,6 +80,9 @@ def totali(conn, m: dict, righe: list[dict] | None = None, scorrimenti: dict | N
             parte["nei_file"] += int(nel_file)
             parte["persone_attese"] += r.get("persone") or 0
             parte["persone_nei_file"] += persone_file
+        if not nel_file and categoria in ("graduatorie", "scorrimenti", "subentri"):  # quali atti mancano: per controllarli nel monitoraggio
+            voce["mancanti"].append({"codice": r.get("codice") or r.get("numero_bando"), "protocollo": r.get("protocollo"), "data": r.get("data"),
+                                     "mobilita": _mobilita(r)})
 
     gia_g = set()
     tipologie = Counter()
@@ -105,8 +109,10 @@ def totali(conn, m: dict, righe: list[dict] | None = None, scorrimenti: dict | N
     if not scorrimenti.get("caricato"):
         for k in ("scorrimenti", "subentri"):
             tabella[k]["nei_file_da"] = "file scorrimenti non caricato"
+            tabella[k]["mancanti"] = []
     if not graduatorie.get("caricato"):
         tabella["graduatorie"]["nei_file_da"] = "estrazione da Selezioni Online non caricata"
+        tabella["graduatorie"]["mancanti"] = []
     for k in ("bandi", "rettifiche"):
         tabella[k]["senza_persone"] = True
     return {"categorie": [tabella[k] for k, _ in CATEGORIE], "scorrimenti_per_tipologia": dict(tipologie)}
@@ -282,6 +288,8 @@ def tabella_testo(tot: dict) -> str:
                      f"(concorsi {c['concorsi']['attesi']}, mobilità {c['mobilita']['attesi']})")
         for g in c["per_gruppo"]:
             righe.append(f"   – {g['nome']}: {g['attesi']}{nei(g)}")
+        if c.get("mancanti"):
+            righe.append("   mancano nei file: " + ", ".join(x["codice"] or "" for x in c["mancanti"]))
     if tot["scorrimenti_per_tipologia"]:
         righe.append("Scorrimenti per tipologia: " + ", ".join(f"{k} {v}" for k, v in sorted(tot["scorrimenti_per_tipologia"].items())))
     return "\n".join(righe)

@@ -620,7 +620,7 @@
         <section><h2>File del mese</h2><p class="muted small">Carica le estrazioni delle graduatorie da Selezioni Online (export «Punteggi», .xls: concorsi e mobilità) e il file scorrimenti compilato. Il controllo parte da ciò che risulta nel monitoraggio (file della segreteria, URP, Selezioni Online): ogni graduatoria e ogni scorrimento deve esserci, anche quando manca un intero foglio o gruppo di concorsi. I nomi veri sono quelli di Selezioni Online. I nominativi si vedono solo qui.</p>
           <div class="griglia2">${schede}</div></section>
         <section><h2>Totali del monitoraggio</h2><p class="muted small">Per ogni voce: quanti atti risultano nel monitoraggio e quanti ce ne sono nei file caricati; tra parentesi le persone. È la tabella che vedono coordinatori e persone dell'ufficio.</p>
-          ${App.tabellaTotali(r.totali)}</section>
+          ${App.tabellaTotali(r.totali, (codice) => `/monitoraggio/mensili/${encodeURIComponent(m.mese)}?scheda=tutti&cerca=${encodeURIComponent(codice)}`)}</section>
         <section><h2>Scorrimenti</h2><p class="muted small">Divisi per tipologia. In rosso quelli che risultano a noi e mancano nel file scorrimenti; in arancione quelli che ci sono solo nel file.</p>${sezioneScorrimenti}</section>
         <section><h2>Graduatorie</h2><p class="muted small">In rosso quelle che risultano a noi (file della segreteria, URP, Selezioni Online) e mancano nell'estrazione da Selezioni Online; in arancione quelle dell'estrazione che non sono nel monitoraggio.</p>${sezioneGraduatorie}${minori}</section>
         <section><h2>I file che verranno mandati</h2>
@@ -709,6 +709,9 @@
 
     // dallo stato complessivo: /monitoraggio/mensili/<mese>?messaggio=<codice> apre subito il messaggio di quel bando
     const daAprire = new URLSearchParams(location.search).get("messaggio");
+    // dal riepilogo: ?scheda=tutti&cerca=<codice> apre la scheda già filtrata sul bando da controllare
+    const parametriPagina = new URLSearchParams(location.search);
+    if (parametriPagina.get("cerca")) { stato.filtri.q = parametriPagina.get("cerca"); stato.scheda = parametriPagina.get("scheda") || "tutti"; }
     (meseScelto ? dettaglio().then(() => { if (daAprire) { history.replaceState(null, "", location.pathname); apriMessaggio(daAprire); } }) : elenco()).catch(errorePagina);
   </script>
 </body>
