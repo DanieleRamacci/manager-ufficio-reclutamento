@@ -180,10 +180,20 @@ def confronta(righe: list[dict], voci: list[dict], fogli: list[str] | None = Non
             trovati = [i for i, b in enumerate(blocchi) if i not in usati and prot & set(b["protocolli"])]
             if trovati:
                 minori.append(f"nel file il bando è scritto «{blocchi[trovati[0]]['bando']}»")
+        seg = [p for pr in prot for p in (persone or {}).get((r.get("numero_bando"), pr), [])] or None
+        # protocollo diverso (scelta dell'utente: va bene): stesso bando e stesse persone; vale anche per una parte delle persone
+        chiavi_seg = {p["chiave"] for p in seg or []}
+        stesse_persone = [i for i in stessi if i not in usati and i not in trovati and blocchi[i]["protocolli"]
+                          and chiavi_seg & {verifica_file.nome_chiave(n) for n in blocchi[i]["nominativi"]}]
+        if stesse_persone:
+            altri = sorted({p for i in stesse_persone for p in blocchi[i]["protocolli"]})
+            n_altre = len({verifica_file.nome_chiave(n) for i in stesse_persone for n in blocchi[i]["nominativi"]} & chiavi_seg)
+            minori.append(f"protocollo diverso: nel file {', '.join(altri)}, nel monitoraggio {r.get('protocollo')}"
+                          + (f" ({n_altre} {'persona' if n_altre == 1 else 'persone'})" if trovati else ""))
+            trovati = trovati + stesse_persone
         usati.update(trovati)
         tipologia = "; ".join(dict.fromkeys(t for i in trovati for t in blocchi[i]["tipologie"]))
         subentro_indicato = any(blocchi[i]["subentro"] for i in trovati)
-        seg = [p for pr in prot for p in (persone or {}).get((r.get("numero_bando"), pr), [])] or None
         attesa = _tipologia_attesa(r, seg)
         nel_file = [{"nominativo": n} for i in trovati for n in blocchi[i]["nominativi"]]
         sol_persone = [p for pr in prot for p in (sol or {}).get(pr, [])]

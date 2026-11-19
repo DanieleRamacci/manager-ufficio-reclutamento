@@ -100,6 +100,12 @@ def punteggio_numero(v) -> float | None:
     return float(m.group().replace(",", ".")) if m else None
 
 
+def nome_scritto(testo) -> str:
+    """Il nominativo normalizzato ma nell'ordine in cui è scritto."""
+    t = "".join(c for c in unicodedata.normalize("NFKD", str(testo or "")) if not unicodedata.combining(c))
+    return " ".join(re.findall(r"[a-z]+", re.sub(r"[^A-Za-z]+", " ", t).lower()))
+
+
 SIMILI = 0.85  # sopra questa somiglianza due nominativi sono la stessa persona scritta in modo diverso
 
 
@@ -121,9 +127,13 @@ def confronta_persone(prima: list[dict], seconda: list[dict] | None, nome_prima:
     pb = {(p.get("chiave") or nome_chiave(p["nominativo"])): p for p in seconda}
     solo_a = [k for k in pa if k not in pb]
     solo_b = [k for k in pb if k not in pa]
+    def somiglianza(x: str, y: str) -> float:
+        """Sulle parole in ordine e così come sono scritte: «DELL'ANNA ADDA» / «DELL’ANNA NADA» va confrontato com'è."""
+        return max(difflib.SequenceMatcher(None, x, y).ratio(),
+                   difflib.SequenceMatcher(None, nome_scritto(pa[x]["nominativo"]), nome_scritto(pb[y]["nominativo"])).ratio())
     for k in list(solo_a):  # refusi: la stessa persona scritta in modo diverso; vale il nome della prima fonte
-        simile = max(solo_b, key=lambda s: difflib.SequenceMatcher(None, k, s).ratio(), default=None)
-        if simile and difflib.SequenceMatcher(None, k, simile).ratio() >= SIMILI:
+        simile = max(solo_b, key=lambda s: somiglianza(k, s), default=None)
+        if simile and somiglianza(k, simile) >= SIMILI:
             esito["minori"].append(f"nome scritto diverso: «{pa[k]['nominativo']}» {nome_prima}, «{pb[simile]['nominativo']}» {nome_seconda}")
             solo_a.remove(k)
             solo_b.remove(simile)

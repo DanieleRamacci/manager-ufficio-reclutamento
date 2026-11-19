@@ -156,3 +156,25 @@ def test_nomi_veri_da_sol_e_conteggio_per_bando():
     assert "su Selezioni Online lo scorrimento non è ancora indicato (esito S con questo protocollo)" in esito["atti"][1]["minori"]
     assert esito["conteggi_bando"] == [{"numero_bando": "367.434", "scorrimenti_file": 3, "scorrimenti_rif": 2, "subentri_file": 2, "subentri_rif": 0}]
     assert [b["tipo"] for b in esito["solo_nel_file"]] == ["subentro"] and not esito["allineato"]
+
+
+def test_protocollo_diverso_con_le_stesse_persone_e_refuso_nell_ordine_scritto():
+    """Dal file di ottobre: il 367.598 PT ha nel file un protocollo diverso ma le stesse persone (va bene, errore minore);
+    a Firenze una persona è su una riga con un altro protocollo; «DELL'ANNA ADDA» / «DELL’ANNA NADA» è un refuso."""
+    from monitoraggio import verifica_file as vf
+    file = _file({"PT": [["367598", 1, None, None, "Uno Inventato", None, "426499 del 9/10/2026", "Scorrimento"]],
+                  "COLL.AMM": [["367.434 Cod. 11", 1, None, None, "Due Inventato", None, "461291 del 28/10/2026", "Scorrimento"],
+                               ["367.434 Cod. 11", 1, None, None, "Tre Inventato", None, "457623 del 20/10/2026", None],
+                               ["367.434 Cod. 14", 1, None, None, "DELL'ANNA ADDA", None, "461295 del 28/10/2026", "Scorrimento"]]})
+    letto = sc.leggi_file(file)
+    persona = lambda n: {"nominativo": n, "chiave": vf.nome_chiave(n), "tipologia": "Scorrimento"}  # noqa: E731
+    persone = {("367.598", "429837"): [persona("Uno Inventato")], ("367.434", "461291"): [persona("Due Inventato"), persona("Tre Inventato")],
+               ("367.434", "461295"): [persona("DELL’ANNA NADA")]}
+    righe = [_riga("367.598", "429837", "367.598 PT"), _riga("367.434", "461291", "367.434 COD 11"), _riga("367.434", "461295", "367.434 COD 14")]
+    esito = sc.confronta(righe, letto["voci"], letto["fogli"], persone, PROFILI)
+    per = {a["chiave"]: a for a in esito["atti"]}
+    assert per["367.598 PT"]["trovato"] and per["367.598 PT"]["gravi"] == [] and per["367.598 PT"]["minori"] == ["protocollo diverso: nel file 426499, nel monitoraggio 429837"]
+    assert per["367.434 COD 11"]["gravi"] == [] and per["367.434 COD 11"]["minori"] == ["protocollo diverso: nel file 457623, nel monitoraggio 461291 (1 persona)"]
+    assert per["367.434 COD 14"]["gravi"] == [] and per["367.434 COD 14"]["minori"] == [
+        "nome scritto diverso: «DELL'ANNA ADDA» nel file scorrimenti, «DELL’ANNA NADA» nel file della segreteria"]
+    assert esito["solo_nel_file"] == []
