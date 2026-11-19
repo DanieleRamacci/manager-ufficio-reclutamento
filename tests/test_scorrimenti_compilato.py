@@ -170,7 +170,7 @@ def test_protocollo_diverso_con_le_stesse_persone_e_refuso_nell_ordine_scritto()
     persona = lambda n: {"nominativo": n, "chiave": vf.nome_chiave(n), "tipologia": "Scorrimento"}  # noqa: E731
     persone = {("367.598", "429837"): [persona("Uno Inventato")], ("367.434", "461291"): [persona("Due Inventato"), persona("Tre Inventato")],
                ("367.434", "461295"): [persona("DELL’ANNA NADA")]}
-    righe = [_riga("367.598", "429837", "367.598 PT"), _riga("367.434", "461291", "367.434 COD 11"), _riga("367.434", "461295", "367.434 COD 14")]
+    righe = [_riga("367.598", "429837", "367.598 PT", gruppo_bando=99), _riga("367.434", "461291", "367.434 COD 11"), _riga("367.434", "461295", "367.434 COD 14")]
     esito = sc.confronta(righe, letto["voci"], letto["fogli"], persone, PROFILI)
     per = {a["chiave"]: a for a in esito["atti"]}
     assert per["367.598 PT"]["trovato"] and per["367.598 PT"]["gravi"] == [] and per["367.598 PT"]["minori"] == ["protocollo diverso: nel file 426499, nel monitoraggio 429837"]
