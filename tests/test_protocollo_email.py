@@ -62,6 +62,13 @@ def test_dal_programma_alla_tabella_e_al_confronto(ambiente, db):  # noqa: F811
     assert programma.post("/api/programma-protocollo/ricevi", json={"voci": [voce]}).status_code == 401  # senza chiave
     chiave = admin.post("/api/segreteria/protocollo/chiavi", json={"nome": "PC segreteria"}).get_json()["chiave"]
     h = {"Authorization": f"Bearer {chiave}"}
+    # un PC nuovo resta in attesa: niente viene salvato finché un amministratore non lo abilita
+    r = programma.post("/api/programma-protocollo/ricevi", json={"casella": "seg@cnr.it", "voci": [voce]}, headers=h)
+    assert r.status_code == 403 and "in attesa di abilitazione" in r.get_json()["error"]
+    assert admin.get("/api/segreteria/protocollo").get_json()["protocolli"] == []
+    pc = admin.get("/api/impostazioni/programma-protocollo").get_json()["pc"][0]
+    assert pc["stato"] == "in_attesa" and pc["nome_pc"] == "PC senza nome" and pc["nome_chiave"] == "PC segreteria"
+    assert admin.put(f"/api/impostazioni/programma-protocollo/pc/{pc['id']}", json={"abilitato": True}).status_code == 200
     assert programma.post("/api/programma-protocollo/ricevi", json={"casella": "seg@cnr.it", "voci": [voce]}, headers=h).get_json() == {"nuove": 1, "gia_presenti": 0}
     assert programma.post("/api/programma-protocollo/ricevi", json={"voci": [voce]}, headers=h).get_json() == {"nuove": 0, "gia_presenti": 0}  # stessa email
     # stesso protocollo da un'altra casella con un altro oggetto, e un protocollo simile (una cifra diversa)
@@ -101,6 +108,9 @@ def test_zip_per_windows_e_lettura_di_una_cartella(ambiente, tmp_path):  # noqa:
     nomi = set(z.namelist())
     assert {"Protocollo-monitoraggio/protocollo_cnr.py", "Protocollo-monitoraggio/Prova-senza-inviare.bat",
             "Protocollo-monitoraggio/Leggi-e-invia.bat", "Protocollo-monitoraggio/Controllo-continuo.bat", "Protocollo-monitoraggio/LEGGIMI.txt"} <= nomi
+    auto = z.read("Protocollo-monitoraggio/Avvio-automatico-attiva.bat").decode()
+    assert "schtasks /Create" in auto and "/MO 15" in auto and "pythonw.exe" in auto and "--registro" in auto and "\r\n" in auto
+    assert "schtasks /Delete" in z.read("Protocollo-monitoraggio/Avvio-automatico-disattiva.bat").decode()
     bat = z.read("Protocollo-monitoraggio/Prova-senza-inviare.bat")
     assert b"\r\n" in bat and b"--prova" in bat and b"%LOCALAPPDATA%\\MonitoraggioProtocollo" in bat
     codice = z.read("Protocollo-monitoraggio/protocollo_cnr.py").decode()
@@ -182,3 +192,28 @@ def test_la_casella_di_ogni_email_arriva_nella_tabella(ambiente, db):  # noqa: F
                    {**_voce("485664", "20261111", "Provvedimento nomina personale vigilanza 367.634 FA IMM", "b"), "casella": "mario.rossi@cnr.it"}], "seg", "")
     r = admin.get("/api/segreteria/protocollo").get_json()["protocolli"][0]
     assert [x["casella"] for x in r["ricevute"]] == ["Segreteria Reclutamento", "mario.rossi@cnr.it"]
+
+
+
+def test_pc_che_comunicano_abilita_disabilita(ambiente, db):  # noqa: F811
+    admin = ambiente()
+    programma = admin.application.test_client()
+    chiave = admin.post("/api/segreteria/protocollo/chiavi", json={"nome": "Segreteria"}).get_json()["chiave"]
+    h = {"Authorization": f"Bearer {chiave}"}
+    pc = {"nome": "PC-SEGRETERIA-01", "utente": "maria.bianchi", "versione": "1.1", "caselle": ["Segreteria Reclutamento", "maria.bianchi@cnr.it"]}
+    assert programma.post("/api/programma-protocollo/ricevi", json={"voci": [], "pc": pc}, headers=h).status_code == 403  # contatto senza email
+    d = admin.get("/api/impostazioni/programma-protocollo").get_json()["pc"][0]
+    assert (d["nome_pc"], d["utente_windows"], d["caselle"], d["contatti"]) == ("PC-SEGRETERIA-01", "maria.bianchi", pc["caselle"], 1)
+    admin.put(f"/api/impostazioni/programma-protocollo/pc/{d['id']}", json={"abilitato": True})
+    assert programma.post("/api/programma-protocollo/ricevi", json={"voci": [_voce("461293", "20261028", "Utilizzo graduatoria 367.434")], "pc": pc},
+                          headers=h).get_json() == {"nuove": 1, "gia_presenti": 0}
+    d = admin.get("/api/impostazioni/programma-protocollo").get_json()["pc"][0]
+    assert d["stato"] == "abilitato" and d["email_ricevute"] == 1 and d["contatti"] == 2 and d["deciso_da"]
+    # un altro PC con la stessa chiave è un PC diverso: anche lui in attesa
+    assert programma.post("/api/programma-protocollo/ricevi", json={"voci": [], "pc": {**pc, "nome": "PC-CASA"}}, headers=h).status_code == 403
+    admin.put(f"/api/impostazioni/programma-protocollo/pc/{d['id']}", json={"abilitato": False})
+    r = programma.post("/api/programma-protocollo/ricevi", json={"voci": [], "pc": pc}, headers=h)
+    assert r.status_code == 403 and "disabilitato" in r.get_json()["error"]
+    # solo gli amministratori vedono e decidono
+    admin.post("/api/utenti", json={"username": "lettore.uno", "ruolo": "lettura"})
+    assert admin.application.test_client().get("/api/impostazioni/programma-protocollo").status_code in (302, 401, 403)

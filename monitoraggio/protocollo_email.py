@@ -244,14 +244,56 @@ def revoca(conn, id_chiave: int, utente: str | None) -> bool:
     return conn.execute(sql, par).rowcount > 0
 
 
-def utente_della_chiave(conn, chiave: str | None) -> str | None:
+def chiave_valida(conn, chiave: str | None) -> dict | None:
+    """La chiave attiva (id e utente del sito), o None."""
     if not chiave or not chiave.startswith("mp_"):
         return None
     r = conn.execute("SELECT id, utente FROM chiave_programma WHERE impronta = ? AND revocata_il IS NULL", (_impronta(chiave),)).fetchone()
     if not r:
         return None
     conn.execute("UPDATE chiave_programma SET usata_il = ? WHERE id = ?", (_adesso(), r["id"]))
-    return r["utente"]
+    return dict(r)
+
+
+def utente_della_chiave(conn, chiave: str | None) -> str | None:
+    c = chiave_valida(conn, chiave)
+    return c["utente"] if c else None
+
+
+# ------------------------------------------------------------------ PC su cui gira il programma
+
+def contatto(conn, chiave_id: int, pc: dict | None) -> dict:
+    """Registra il contatto di un PC e dice se può mandare dati: un PC nuovo resta in attesa finché un amministratore
+    non lo abilita (scelta dell'utente del 2026-11-19)."""
+    pc = pc if isinstance(pc, dict) else {}
+    nome = norm_space(str(pc.get("nome") or "PC senza nome"))[:80]
+    utente_win = norm_space(str(pc.get("utente") or ""))[:80]
+    caselle = [norm_space(str(x))[:120] for x in (pc.get("caselle") or []) if str(x).strip()][:20]
+    ora = _adesso()
+    riga = conn.execute("SELECT * FROM programma_pc WHERE chiave_id = ? AND nome_pc = ? AND utente_windows = ?", (chiave_id, nome, utente_win)).fetchone()
+    if riga is None:
+        conn.execute("INSERT INTO programma_pc (chiave_id, nome_pc, utente_windows, versione, caselle, primo_contatto, ultimo_contatto, contatti) "
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, 1)", (chiave_id, nome, utente_win, str(pc.get("versione") or "")[:20], json.dumps(caselle), ora, ora))
+        riga = conn.execute("SELECT * FROM programma_pc WHERE chiave_id = ? AND nome_pc = ? AND utente_windows = ?", (chiave_id, nome, utente_win)).fetchone()
+    else:
+        conn.execute("UPDATE programma_pc SET ultimo_contatto = ?, contatti = contatti + 1, versione = ?, caselle = ? WHERE id = ?",
+                     (ora, str(pc.get("versione") or riga["versione"] or "")[:20], json.dumps(caselle) if caselle else riga["caselle"], riga["id"]))
+    return {"id": riga["id"], "stato": riga["stato"], "nome": nome}
+
+
+def conta_email(conn, id_pc: int, n: int) -> None:
+    conn.execute("UPDATE programma_pc SET email_ricevute = email_ricevute + ? WHERE id = ?", (n, id_pc))
+
+
+def elenco_pc(conn) -> list[dict]:
+    return [{**dict(r), "caselle": json.loads(r["caselle"])} for r in conn.execute(
+        "SELECT p.*, c.utente AS utente_sito, c.nome AS nome_chiave, c.revocata_il FROM programma_pc p JOIN chiave_programma c ON c.id = p.chiave_id "
+        "ORDER BY p.stato = 'in_attesa' DESC, p.ultimo_contatto DESC")]
+
+
+def decidi_pc(conn, id_pc: int, abilitato: bool, utente: str | None) -> bool:
+    return conn.execute("UPDATE programma_pc SET stato = ?, deciso_da = ?, deciso_il = ? WHERE id = ?",
+                        ("abilitato" if abilitato else "disabilitato", utente, _adesso(), id_pc)).rowcount > 0
 
 
 # ------------------------------------------------------------------ programma per Windows
@@ -278,6 +320,37 @@ if not exist "%CARTELLA%\venv\Scripts\python.exe" (
 echo.
 pause
 """
+_AUTOMATICO_ON = r"""@echo off
+chcp 65001 >nul
+title Monitoraggio bandi - attiva l'avvio automatico
+set "CARTELLA=%LOCALAPPDATA%\MonitoraggioProtocollo"
+if not exist "%CARTELLA%\venv\Scripts\pythonw.exe" (
+  echo Avvia prima una volta «Leggi-e-invia.bat»: prepara l'ambiente e salva la chiave.
+  pause
+  exit /b 1
+)
+if not exist "%APPDATA%\MonitoraggioProtocollo\config.json" (
+  echo Manca la chiave: avvia prima una volta «Leggi-e-invia.bat» e incollala.
+  pause
+  exit /b 1
+)
+copy /Y "%~dp0protocollo_cnr.py" "%CARTELLA%\protocollo_cnr.py" >nul
+schtasks /Create /F /SC MINUTE /MO 15 /TN "Monitoraggio bandi - protocollo" /TR "\"%CARTELLA%\venv\Scripts\pythonw.exe\" \"%CARTELLA%\protocollo_cnr.py\" --registro \"%CARTELLA%\registro.txt\"" >nul
+if errorlevel 1 (
+  echo Non sono riuscito a creare l'attività pianificata.
+) else (
+  echo Fatto: ogni 15 minuti il programma legge la posta e manda i protocolli, senza finestre, finché sei collegato al PC.
+  echo Il registro è in %CARTELLA%\registro.txt
+  echo Se aggiorni il programma, rilancia questo file.
+)
+pause
+"""
+_AUTOMATICO_OFF = r"""@echo off
+chcp 65001 >nul
+schtasks /Delete /F /TN "Monitoraggio bandi - protocollo" >nul 2>nul
+echo Avvio automatico disattivato.
+pause
+"""
 _LEGGIMI = """MONITORAGGIO BANDI - LETTURA DELLE EMAIL DI PROTOCOLLO (TITULUS)
 
 Cosa fa
@@ -294,11 +367,16 @@ Primo test
   4. Doppio clic su «Prova-senza-inviare.bat»: elenca le email di protocollo che trova, senza mandare niente.
      La prima volta prepara l'ambiente (1-2 minuti).
   5. Se l'elenco è giusto: doppio clic su «Leggi-e-invia.bat», incolla la chiave quando la chiede (la ricorda per le volte dopo).
+     La prima volta il programma dice che il PC è «in attesa di abilitazione»: chiedi a un amministratore di abilitarlo
+     (Impostazioni > Programma protocollo), poi rilancia «Leggi-e-invia.bat».
   6. Sul sito ricarica la scheda: trovi i protocolli da verificare, approvare, correggere o scartare.
 
-Tenerlo attivo
-  «Controllo-continuo.bat» ripete la lettura ogni 10 minuti finché la finestra resta aperta. Per avviarlo all'accensione,
-  metti un collegamento al file nella cartella che si apre con Win+R > shell:startup.
+Tenerlo attivo senza cliccare ogni volta
+  Dopo il primo «Leggi-e-invia.bat» riuscito, doppio clic UNA VOLTA su «Avvio-automatico-attiva.bat»: crea un'attività
+  pianificata di Windows che ogni 15 minuti legge la posta e manda i protocolli, senza finestre, finché sei collegato al PC
+  (serve Outlook aperto). Il registro di cosa fa è in %LOCALAPPDATA%\MonitoraggioProtocollo\registro.txt.
+  «Avvio-automatico-disattiva.bat» la toglie. Se scarichi una versione nuova del programma, rilancia «Avvio-automatico-attiva.bat».
+  In alternativa «Controllo-continuo.bat» ripete la lettura ogni 10 minuti finché la sua finestra resta aperta.
 
 Outlook
   Funziona con Outlook «classico» (legge Posta in arrivo e sottocartelle degli ultimi 60 giorni, senza password).
@@ -328,5 +406,7 @@ def programma_zip(server: str) -> tuple[str, bytes]:
         z.writestr("Protocollo-monitoraggio/protocollo_cnr.py", _PROGRAMMA.read_text(encoding="utf-8").replace("__SERVER__", server))
         for nome, argomenti in (("Prova-senza-inviare", "--prova %*"), ("Leggi-e-invia", "%*"), ("Controllo-continuo", "--continuo %*")):
             z.writestr(f"Protocollo-monitoraggio/{nome}.bat", crlf(_AVVIO.replace("{argomenti}", argomenti)))
+        z.writestr("Protocollo-monitoraggio/Avvio-automatico-attiva.bat", crlf(_AUTOMATICO_ON))
+        z.writestr("Protocollo-monitoraggio/Avvio-automatico-disattiva.bat", crlf(_AUTOMATICO_OFF))
         z.writestr("Protocollo-monitoraggio/LEGGIMI.txt", crlf(_LEGGIMI))
     return "Protocollo-monitoraggio.zip", contenuto.getvalue()

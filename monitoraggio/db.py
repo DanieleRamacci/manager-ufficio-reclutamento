@@ -6,7 +6,7 @@ import sqlite3
 from . import config
 from .normalizza import AGGIUNTA_TIPOLOGIE, ANCORA_SCORRIMENTI, codice_sede, nota_sottotipo
 
-SCHEMA_VERSION = 32
+SCHEMA_VERSION = 33
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -340,6 +340,24 @@ CREATE TABLE IF NOT EXISTS chiave_programma (
     creata_il TEXT NOT NULL,
     usata_il TEXT,
     revocata_il TEXT
+);
+
+-- spec 010: i PC su cui gira il programma; un PC nuovo resta in attesa finché un amministratore non lo abilita
+CREATE TABLE IF NOT EXISTS programma_pc (
+    id INTEGER PRIMARY KEY,
+    chiave_id INTEGER NOT NULL REFERENCES chiave_programma(id),
+    nome_pc TEXT NOT NULL,
+    utente_windows TEXT NOT NULL DEFAULT '',
+    versione TEXT,
+    caselle TEXT NOT NULL DEFAULT '[]',
+    stato TEXT NOT NULL DEFAULT 'in_attesa' CHECK (stato IN ('in_attesa', 'abilitato', 'disabilitato')),
+    primo_contatto TEXT NOT NULL,
+    ultimo_contatto TEXT NOT NULL,
+    contatti INTEGER NOT NULL DEFAULT 0,
+    email_ricevute INTEGER NOT NULL DEFAULT 0,
+    deciso_da TEXT,
+    deciso_il TEXT,
+    UNIQUE (chiave_id, nome_pc, utente_windows)
 );
 
 -- spec 011: richieste di verifica dei file agli RdP di un bando

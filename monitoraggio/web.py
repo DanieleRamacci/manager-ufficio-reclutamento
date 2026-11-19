@@ -634,11 +634,18 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
             return jsonify({"error": "Invio troppo grande"}), 413
         conn = _conn()
         try:
-            chi = protocollo_email.utente_della_chiave(conn, chiave)
-            if not chi:
+            c = protocollo_email.chiave_valida(conn, chiave)
+            if not c:
                 return jsonify({"error": "Chiave non valida o revocata: generane una nuova nella pagina File segreteria"}), 401
             corpo = request.get_json(silent=True) or {}
-            return jsonify(protocollo_email.ricevi(conn, corpo.get("voci") or [], chi, str(corpo.get("casella") or "")))
+            pc = protocollo_email.contatto(conn, c["id"], corpo.get("pc"))
+            if pc["stato"] != "abilitato":  # i PC nuovi li abilita un amministratore (Impostazioni > Programma protocollo)
+                testo = ("in attesa di abilitazione: chiedi a un amministratore di abilitarlo in Impostazioni > Programma protocollo"
+                         if pc["stato"] == "in_attesa" else "disabilitato da un amministratore")
+                return jsonify({"error": f"Questo PC ({pc['nome']}) è {testo}. Nessun dato è stato salvato.", "stato_pc": pc["stato"]}), 403
+            esito = protocollo_email.ricevi(conn, corpo.get("voci") or [], c["utente"], str(corpo.get("casella") or ""))
+            protocollo_email.conta_email(conn, pc["id"], esito["nuove"] + esito["gia_presenti"])
+            return jsonify(esito)
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
         finally:

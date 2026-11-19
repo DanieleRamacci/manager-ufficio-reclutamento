@@ -16,6 +16,7 @@
       <a href="#utenti" data-sezione="utenti">Utenti<small>Chi può entrare e cosa può fare</small></a>
       <a href="#email" data-sezione="email">Email<small>Prove, invii ufficiali e firma</small></a>
       <a href="#aggiornamenti" data-sezione="aggiornamenti">Aggiornamenti notturni<small>Orari, esiti e storico</small></a>
+      <a href="#programma" data-sezione="programma">Programma protocollo<small>PC che leggono le email di Titulus</small></a>
     </nav>
     <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
       <section id="s-utenti" hidden>
@@ -64,6 +65,14 @@
         <p class="small" id="server-posta"></p>
       </section>
 
+      <section id="s-programma" hidden>
+        <h2>Programma protocollo</h2>
+        <p class="muted small" style="margin-top:0">I PC su cui gira il programma che legge le email di Titulus in copia (si scarica da File segreteria &gt; Documenti in uscita protocollo). Un PC nuovo resta <b>in attesa</b>: finché non lo abiliti il sito non accetta i suoi dati. Disabilitandolo smette di mandarli; revocando la chiave smettono tutti i PC che la usano.</p>
+        <div class="errore" id="errore-programma" role="alert" hidden></div>
+        <div class="scroll"><table id="tabella-pc" style="min-width:1000px"></table></div>
+        <details style="margin-top:12px"><summary class="small">Chiavi del programma</summary><div class="scroll" style="margin-top:8px"><table id="tabella-chiavi" style="min-width:640px"></table></div></details>
+      </section>
+
       <section id="s-aggiornamenti" hidden>
         <h2>Aggiornamenti notturni</h2>
         <p class="small" id="prossima"></p>
@@ -97,7 +106,7 @@
   const { $, esc, ora, dataIt, chiama, json, toast, copia } = App;
   const errore = (id, testo) => { $(id).hidden = !testo; $(id).textContent = testo || ""; };
   function mostraSezione() {
-    const s = ["utenti", "email", "aggiornamenti"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "utenti";
+    const s = ["utenti", "email", "aggiornamenti", "programma"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "utenti";
     ["utenti", "email", "aggiornamenti"].forEach(x => { $(`s-${x}`).hidden = x !== s; });
     document.querySelectorAll("[data-sezione]").forEach(a => a.classList.toggle("attiva", a.dataset.sezione === s));
   }
@@ -280,6 +289,38 @@
     catch (err) { errore("errore-scorrimenti", err.message); }
   };
   chiama("/api/impostazioni/avvisi-scorrimenti").then(mostraScorrimenti).catch(e => errore("errore-scorrimenti", e.message));
+
+  // --- programma protocollo (spec 010): PC che comunicano, abilitazione, chiavi
+  const STATI_PC = { in_attesa: ["p-warn", "in attesa di abilitazione"], abilitato: ["p-ok", "abilitato"], disabilitato: ["p-na", "disabilitato"] };
+  async function caricaProgramma() {
+    let d;
+    try { errore("errore-programma"); d = await chiama("/api/impostazioni/programma-protocollo"); } catch (e) { errore("errore-programma", e.message); return; }
+    $("tabella-pc").innerHTML = `<thead><tr><th>Stato</th><th>PC</th><th>Utente Windows</th><th>Chiave (utente del sito)</th><th>Primo contatto</th><th>Ultimo contatto</th><th>Caselle lette</th><th>Email mandate</th><th>Azioni</th></tr></thead><tbody>` +
+      (d.pc.map(p => `<tr><td><span class="pillola ${STATI_PC[p.stato][0]}">${STATI_PC[p.stato][1]}</span>${p.revocata_il ? `<div class="etichetta" style="margin-top:4px">chiave revocata</div>` : ""}</td>
+        <td><b>${esc(p.nome_pc)}</b>${p.versione ? `<div class="muted small">versione ${esc(p.versione)}</div>` : ""}</td><td>${esc(p.utente_windows)}</td>
+        <td class="small">${esc(p.nome_chiave || "chiave")}<div class="muted">${esc(p.utente_sito)}</div></td>
+        <td class="small">${ora(p.primo_contatto)}</td><td class="small">${ora(p.ultimo_contatto)}<div class="muted">${p.contatti} contatti</div></td>
+        <td class="small">${p.caselle.map(esc).join("<br>") || "–"}</td><td>${p.email_ricevute}</td>
+        <td>${p.stato === "abilitato" ? `<button type="button" class="piccolo" data-pc="${p.id}" data-abilita="0">Disabilita</button>` : `<button type="button" class="primario piccolo" data-pc="${p.id}" data-abilita="1">Abilita</button>`}
+          ${p.deciso_da ? `<div class="muted small">${esc(p.deciso_da)} · ${ora(p.deciso_il)}</div>` : ""}</td></tr>`).join("")
+        || `<tr><td colspan="9" class="muted">Nessun PC ha ancora contattato il sito.</td></tr>`) + `</tbody>`;
+    $("tabella-chiavi").innerHTML = `<thead><tr><th>Nome</th><th>Utente del sito</th><th>Creata</th><th>Ultimo uso</th><th></th></tr></thead><tbody>` +
+      (d.chiavi.map(c => `<tr><td>${esc(c.nome || "chiave")}</td><td>${esc(c.utente)}</td><td class="small">${ora(c.creata_il)}</td><td class="small">${c.usata_il ? ora(c.usata_il) : "mai"}</td>
+        <td>${c.revocata_il ? `<span class="muted small">revocata ${ora(c.revocata_il)}</span>` : `<button type="button" class="piccolo" data-revoca-chiave="${c.id}">Revoca</button>`}</td></tr>`).join("")
+        || `<tr><td colspan="5" class="muted">Nessuna chiave.</td></tr>`) + `</tbody>`;
+    document.querySelectorAll("[data-abilita]").forEach(b => b.onclick = async () => {
+      const abilitato = b.dataset.abilita === "1";
+      if (!abilitato && !confirm("Disabilitare questo PC? Il sito non accetterà più i suoi dati.")) return;
+      try { await chiama(`/api/impostazioni/programma-protocollo/pc/${b.dataset.pc}`, json("PUT", { abilitato })); toast(abilitato ? "PC abilitato" : "PC disabilitato"); caricaProgramma(); }
+      catch (e) { errore("errore-programma", e.message); }
+    });
+    document.querySelectorAll("[data-revoca-chiave]").forEach(b => b.onclick = async () => {
+      if (!confirm("Revocare la chiave? Tutti i PC che la usano smetteranno di mandare dati.")) return;
+      try { await chiama(`/api/impostazioni/programma-protocollo/chiavi/${b.dataset.revocaChiave}`, { method: "DELETE" }); caricaProgramma(); }
+      catch (e) { errore("errore-programma", e.message); }
+    });
+  }
+  caricaProgramma();
 
   caricaUtenti().catch(e => errore("errore-utenti", e.message));
   chiama("/api/impostazioni/posta").then(mostraEmail).catch(e => errore("errore-email", e.message));

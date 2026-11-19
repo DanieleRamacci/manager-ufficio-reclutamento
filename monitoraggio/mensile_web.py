@@ -6,7 +6,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, redirect, request, send_file, send_from_directory, session
 
-from . import atti, attivita, avvisi_scorrimenti, comunicazioni, config, db, difformita, estrazione_sol, excel_mese, impostazioni, mensile, portale, posta, profili, punteggi, referenti, revisione, scorrimenti_compilato, sol_sessione, utenti
+from . import atti, attivita, avvisi_scorrimenti, comunicazioni, protocollo_email, config, db, difformita, estrazione_sol, excel_mese, impostazioni, mensile, portale, posta, profili, punteggi, referenti, revisione, scorrimenti_compilato, sol_sessione, utenti
 
 STATIC = Path(__file__).resolve().parent / "static"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -125,6 +125,38 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
         return jsonify(avvisi_scorrimenti.stato())
+
+    @bp.get("/api/impostazioni/programma-protocollo")
+    @protezione
+    @solo_admin
+    def api_programma_pc():
+        """Spec 010: i PC su cui gira il programma delle email di protocollo e le chiavi."""
+        conn = _conn()
+        try:
+            return jsonify({"pc": protocollo_email.elenco_pc(conn), "chiavi": protocollo_email.chiavi(conn)})
+        finally:
+            conn.close()
+
+    @bp.put("/api/impostazioni/programma-protocollo/pc/<int:id_pc>")
+    @protezione
+    @solo_admin
+    def api_programma_pc_decidi(id_pc: int):
+        conn = _conn()
+        try:
+            fatto = protocollo_email.decidi_pc(conn, id_pc, bool((request.get_json(silent=True) or {}).get("abilitato")), utente_corrente())
+            return (jsonify({"ok": True}), 200) if fatto else (jsonify({"error": "PC non trovato"}), 404)
+        finally:
+            conn.close()
+
+    @bp.delete("/api/impostazioni/programma-protocollo/chiavi/<int:id_chiave>")
+    @protezione
+    @solo_admin
+    def api_programma_revoca(id_chiave: int):
+        conn = _conn()
+        try:
+            return (jsonify({"ok": True}), 200) if protocollo_email.revoca(conn, id_chiave, None) else (jsonify({"error": "Chiave non trovata"}), 404)
+        finally:
+            conn.close()
 
     @bp.get("/monitoraggio/utenti")
     @protezione

@@ -27,6 +27,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 SERVER = "__SERVER__"
+VERSIONE = "1.1"
 FRASE = "Il sistema di protocollo"
 NUMERO = re.compile(r"N\.\s*(\d{1,7})\s+del\s+(\d{8})\s*\(([^)\s]+)\)")
 CONFIG = Path(os.environ.get("APPDATA") or Path.home()) / "MonitoraggioProtocollo" / "config.json"
@@ -156,8 +157,18 @@ def da_cartella(percorso: str) -> tuple[list[dict], list[str]]:
     return trovate, [f"cartella {percorso}"]
 
 
-def invia(chiave: str, voci: list[dict]) -> dict:
-    corpo = json.dumps({"voci": voci}).encode("utf-8")  # ogni email dice la sua casella
+class Rifiutato(Exception):
+    """Il sito non ha accettato l'invio (es. PC in attesa di abilitazione): si riprova al giro successivo."""
+
+
+def info_pc(lette: list[str]) -> dict:
+    import platform
+    return {"nome": os.environ.get("COMPUTERNAME") or platform.node(), "utente": os.environ.get("USERNAME") or os.environ.get("USER") or "",
+            "versione": VERSIONE, "caselle": lette}
+
+
+def invia(chiave: str, voci: list[dict], pc: dict) -> dict:
+    corpo = json.dumps({"voci": voci, "pc": pc}).encode("utf-8")  # ogni email dice la sua casella
     req = urllib.request.Request(f"{SERVER}/api/programma-protocollo/ricevi", data=corpo, method="POST",
                                  headers={"Content-Type": "application/json", "Authorization": f"Bearer {chiave}"})
     try:
@@ -168,9 +179,9 @@ def invia(chiave: str, voci: list[dict]) -> dict:
             messaggio = json.loads(e.read().decode("utf-8")).get("error")
         except Exception:
             messaggio = str(e)
-        raise SystemExit(f"Il sito ha risposto con un errore: {messaggio}")
+        raise Rifiutato(messaggio)
     except urllib.error.URLError as e:
-        raise SystemExit(f"Sito non raggiungibile ({e.reason}): controlla la rete o la VPN.")
+        raise Rifiutato(f"Sito non raggiungibile ({e.reason}): controlla la rete o la VPN.")
 
 
 def un_giro(arg, config) -> None:
@@ -187,11 +198,11 @@ def un_giro(arg, config) -> None:
     if arg.prova:
         print("Prova: niente è stato mandato al sito.")
         return
-    if not voci:
-        return
+    # anche senza email nuove il PC si fa vedere: l'amministratore vede quando è stato attivo l'ultima volta
     inviate = {"nuove": 0, "gia_presenti": 0}
-    for i in range(0, len(voci), 400):
-        r = invia(config["chiave"], voci[i:i + 400])
+    pc = info_pc(lette)
+    for i in range(0, max(len(voci), 1), 400):
+        r = invia(config["chiave"], voci[i:i + 400], pc)
         inviate["nuove"] += r.get("nuove", 0)
         inviate["gia_presenti"] += r.get("gia_presenti", 0)
     print(f"Mandate al sito: {inviate['nuove']} nuove, {inviate['gia_presenti']} già presenti (ricevute di nuovo).")
@@ -207,8 +218,17 @@ def main() -> None:
     a.add_argument("--caselle", help='quali caselle leggere, per nome (es. "segreteria"; più nomi separati da virgola; "tutte" per tornare a tutte)')
     a.add_argument("--elenca-caselle", action="store_true", help="mostra le caselle collegate a Outlook ed esce")
     a.add_argument("--cartella", help="cartella con le email salvate (.eml/.msg), al posto di Outlook")
+    a.add_argument("--registro", help="scrive in questo file invece che nella finestra (avvio automatico, senza finestra)")
     a.add_argument("--chiave", help="la chiave personale generata nella pagina «File segreteria»")
     arg = a.parse_args()
+    if arg.registro:  # avvio automatico senza finestra: tutto nel file di registro, che si accorcia da solo
+        registro = Path(arg.registro)
+        try:
+            if registro.exists() and registro.stat().st_size > 1_000_000:
+                registro.write_text(registro.read_text(encoding="utf-8", errors="ignore")[-200_000:], encoding="utf-8")
+        except OSError:
+            pass
+        sys.stdout = sys.stderr = open(registro, "a", encoding="utf-8", buffering=1)
     config = leggi_config()
     if arg.elenca_caselle:
         for _, nome in caselle(_outlook()):
@@ -222,13 +242,20 @@ def main() -> None:
         config["chiave"] = arg.chiave.strip()
         salva_config(config)
     if not arg.prova and not config.get("chiave"):
+        if arg.registro:
+            raise SystemExit("Manca la chiave: avvia una volta «Leggi-e-invia.bat» e incollala.")
         chiave = input("Incolla la chiave personale (pagina «File segreteria» > Documenti in uscita protocollo > Genera chiave): ").strip()
         if not chiave.startswith("mp_"):
             raise SystemExit("La chiave deve iniziare con mp_")
         config["chiave"] = chiave
         salva_config(config)
     while True:
-        un_giro(arg, config)
+        try:
+            un_giro(arg, config)
+        except Rifiutato as e:
+            print(f"ATTENZIONE: {e}")
+            if not arg.continuo:
+                raise SystemExit(1)
         if not arg.continuo:
             break
         print(f"Prossimo controllo tra {arg.minuti} minuti (chiudi la finestra per fermarlo).")
