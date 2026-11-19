@@ -109,8 +109,10 @@
   const { $, esc, ora, dataIt, chiama, json, toast, copia } = App;
   const errore = (id, testo) => { $(id).hidden = !testo; $(id).textContent = testo || ""; };
   function mostraSezione() {
-    const s = ["utenti", "email", "aggiornamenti", "programma"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "utenti";
-    ["utenti", "email", "aggiornamenti"].forEach(x => { $(`s-${x}`).hidden = x !== s; });
+    // un solo elenco: ogni sezione con il suo link nel menu (aggiungendone una, basta metterla qui)
+    const SEZIONI = [...document.querySelectorAll("[data-sezione]")].map(a => a.dataset.sezione);
+    const s = SEZIONI.includes(location.hash.slice(1)) ? location.hash.slice(1) : "utenti";
+    SEZIONI.forEach(x => { $(`s-${x}`).hidden = x !== s; });
     document.querySelectorAll("[data-sezione]").forEach(a => a.classList.toggle("attiva", a.dataset.sezione === s));
   }
   addEventListener("hashchange", mostraSezione);
