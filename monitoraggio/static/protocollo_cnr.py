@@ -5,7 +5,8 @@ SOLO: numero e data di protocollo, segnatura, oggetto, link Titulus, data di ric
 Non manda il resto delle email, non apre i documenti su Titulus, non modifica né sposta niente nella posta.
 
 Dove legge:
-  - Outlook classico installato sul PC (senza password): Posta in arrivo e sottocartelle (--tutte-le-cartelle: tutta la casella);
+  - Outlook classico installato sul PC (senza password): tutte le caselle collegate al profilo (personale, generale della
+    segreteria, ...), Posta in arrivo e sottocartelle (--tutte-le-cartelle: tutte le cartelle); --caselle per sceglierle;
   - oppure una cartella di Windows con le email salvate (.eml o .msg), con --cartella "C:\\percorso".
 
 Uso (dai file .bat):  Prova-senza-inviare.bat  ·  Leggi-e-invia.bat  ·  Controllo-continuo.bat
@@ -57,29 +58,43 @@ def analizza(oggetto_email: str, corpo: str, ricevuta: str, identificativo: str)
             "link": link.group(0) if link else "", "ricevuta_il": ricevuta, "id_messaggio": identificativo}
 
 
-def da_outlook(giorni: int, tutte: bool = False) -> tuple[list[dict], str]:
+def _outlook():
     try:
         import win32com.client  # pywin32: solo con Outlook classico
     except ImportError:
         raise SystemExit("Manca pywin32: avvia il programma dai file .bat, che lo installano.")
     try:
-        ns = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
+        return win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
     except Exception:
         raise SystemExit("Outlook classico non risponde. Con il «nuovo Outlook» usa la modalità cartella (vedi LEGGIMI.txt).")
-    casella = ""
-    try:
-        casella = ns.CurrentUser.AddressEntry.GetExchangeUser().PrimarySmtpAddress or ""
-    except Exception:
-        casella = str(getattr(ns.CurrentUser, "Name", "") or "")
+
+
+def caselle(ns) -> list:
+    """Le caselle collegate al profilo di Outlook (personale, generale della segreteria, altri account), senza cartelle pubbliche."""
+    trovate = []
+    for store in ns.Stores:
+        try:
+            if getattr(store, "ExchangeStoreType", None) == 2:  # cartelle pubbliche
+                continue
+            trovate.append((store, str(store.DisplayName or "").strip() or "casella senza nome"))
+        except Exception:
+            continue
+    return trovate
+
+
+def da_outlook(giorni: int, tutte: bool = False, filtro: list[str] | None = None) -> tuple[list[dict], list[str]]:
+    """Le email di Titulus delle caselle scelte (tutte, se `filtro` è vuoto). Ogni email dice da quale casella arriva."""
+    ns = _outlook()
     limite = datetime.now() - timedelta(days=giorni)
     trovate: list[dict] = []
+    lette: list[str] = []
 
-    def cartella(f, profondita=0):
+    def cartella(f, nome_casella, profondita=0):
         try:
             elementi = f.Items
             elementi.Sort("[ReceivedTime]", True)
         except Exception:
-            return
+            elementi = []
         for it in elementi:
             try:
                 if getattr(it, "Class", 0) != 43:  # solo email
@@ -90,19 +105,30 @@ def da_outlook(giorni: int, tutte: bool = False) -> tuple[list[dict], str]:
                     break
                 v = analizza(it.Subject or "", it.Body or "", quando.isoformat(timespec="minutes"), it.EntryID)
                 if v:
+                    v["casella"] = nome_casella
                     trovate.append(v)
             except Exception:
                 continue
         if profondita < 4:
-            for sotto in f.Folders:
-                cartella(sotto, profondita + 1)
+            try:
+                for sotto in f.Folders:
+                    cartella(sotto, nome_casella, profondita + 1)
+            except Exception:
+                pass
 
-    inbox = ns.GetDefaultFolder(6)
-    cartella(inbox.Parent if tutte else inbox)  # Posta in arrivo e sottocartelle, o tutta la casella
-    return trovate, casella
+    for store, nome in caselle(ns):
+        if filtro and not any(x.lower() in nome.lower() for x in filtro):
+            continue
+        try:
+            inbox = store.GetDefaultFolder(6)
+        except Exception:
+            inbox = None  # es. archivio .pst o casella senza Posta in arrivo: si legge tutta
+        cartella(store.GetRootFolder() if tutte or inbox is None else inbox, nome)
+        lette.append(nome)
+    return trovate, lette
 
 
-def da_cartella(percorso: str) -> tuple[list[dict], str]:
+def da_cartella(percorso: str) -> tuple[list[dict], list[str]]:
     trovate = []
     for f in sorted(Path(percorso).glob("*")):
         try:
@@ -123,14 +149,15 @@ def da_cartella(percorso: str) -> tuple[list[dict], str]:
             else:
                 continue
             if v:
+                v["casella"] = f"cartella {Path(percorso).name}"
                 trovate.append(v)
         except Exception as e:
             print(f"  {f.name}: non letto ({type(e).__name__})")
-    return trovate, ""
+    return trovate, [f"cartella {percorso}"]
 
 
-def invia(chiave: str, voci: list[dict], casella: str) -> dict:
-    corpo = json.dumps({"casella": casella, "voci": voci}).encode("utf-8")
+def invia(chiave: str, voci: list[dict]) -> dict:
+    corpo = json.dumps({"voci": voci}).encode("utf-8")  # ogni email dice la sua casella
     req = urllib.request.Request(f"{SERVER}/api/programma-protocollo/ricevi", data=corpo, method="POST",
                                  headers={"Content-Type": "application/json", "Authorization": f"Bearer {chiave}"})
     try:
@@ -147,11 +174,14 @@ def invia(chiave: str, voci: list[dict], casella: str) -> dict:
 
 
 def un_giro(arg, config) -> None:
-    voci, casella = da_cartella(arg.cartella) if arg.cartella else da_outlook(arg.giorni, arg.tutte_le_cartelle)
+    voci, lette = da_cartella(arg.cartella) if arg.cartella else da_outlook(arg.giorni, arg.tutte_le_cartelle, config.get("caselle"))
     voci = list({(v["numero"], v["data"], v["id_messaggio"]): v for v in voci}.values())
-    print(f"{datetime.now():%d/%m/%Y %H:%M} · email di protocollo trovate: {len(voci)}" + (f" · casella {casella}" if casella else ""))
+    print(f"{datetime.now():%d/%m/%Y %H:%M} · caselle lette: {', '.join(lette) or 'nessuna'}")
+    for nome in lette:
+        print(f"   {nome}: {sum(1 for v in voci if v.get('casella') == nome)} email di protocollo")
+    print(f"Email di protocollo trovate in tutto: {len(voci)}")
     for v in voci[:15]:
-        print(f"   N. {v['numero']} del {v['data'][6:8]}/{v['data'][4:6]}/{v['data'][:4]} · {v['oggetto'][:90]}")
+        print(f"   N. {v['numero']} del {v['data'][6:8]}/{v['data'][4:6]}/{v['data'][:4]} · [{v.get('casella', '')}] {v['oggetto'][:80]}")
     if len(voci) > 15:
         print(f"   ... e altre {len(voci) - 15}")
     if arg.prova:
@@ -161,7 +191,7 @@ def un_giro(arg, config) -> None:
         return
     inviate = {"nuove": 0, "gia_presenti": 0}
     for i in range(0, len(voci), 400):
-        r = invia(config["chiave"], voci[i:i + 400], casella)
+        r = invia(config["chiave"], voci[i:i + 400])
         inviate["nuove"] += r.get("nuove", 0)
         inviate["gia_presenti"] += r.get("gia_presenti", 0)
     print(f"Mandate al sito: {inviate['nuove']} nuove, {inviate['gia_presenti']} già presenti (ricevute di nuovo).")
@@ -174,10 +204,20 @@ def main() -> None:
     a.add_argument("--minuti", type=int, default=10)
     a.add_argument("--giorni", type=int, default=60, help="quanti giorni indietro leggere in Outlook (predefinito 60)")
     a.add_argument("--tutte-le-cartelle", action="store_true", help="legge tutta la casella, non solo Posta in arrivo")
+    a.add_argument("--caselle", help='quali caselle leggere, per nome (es. "segreteria"; più nomi separati da virgola; "tutte" per tornare a tutte)')
+    a.add_argument("--elenca-caselle", action="store_true", help="mostra le caselle collegate a Outlook ed esce")
     a.add_argument("--cartella", help="cartella con le email salvate (.eml/.msg), al posto di Outlook")
     a.add_argument("--chiave", help="la chiave personale generata nella pagina «File segreteria»")
     arg = a.parse_args()
     config = leggi_config()
+    if arg.elenca_caselle:
+        for _, nome in caselle(_outlook()):
+            print(f"   {nome}" + ("   (letta)" if not config.get("caselle") or any(x.lower() in nome.lower() for x in config["caselle"]) else ""))
+        return
+    if arg.caselle:
+        config["caselle"] = [] if arg.caselle.strip().lower() == "tutte" else [x.strip() for x in arg.caselle.split(",") if x.strip()]
+        salva_config(config)
+        print("Caselle da leggere: " + (", ".join(config["caselle"]) or "tutte"))
     if arg.chiave:
         config["chiave"] = arg.chiave.strip()
         salva_config(config)

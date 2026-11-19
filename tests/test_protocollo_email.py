@@ -118,3 +118,67 @@ def test_zip_per_windows_e_lettura_di_una_cartella(ambiente, tmp_path):  # noqa:
     voci, _ = prog.da_cartella(str(tmp_path / "email"))
     assert [(v["numero"], v["oggetto"]) for v in voci] == [("485664", "Provvedimento nomina personale vigilanza 367.634 FA IMM")]
     assert Path(prog.CONFIG).name == "config.json"
+
+
+class _Data:
+    def __init__(self, d):
+        self.year, self.month, self.day, self.hour, self.minute = d.year, d.month, d.day, d.hour, d.minute
+
+
+class _Email:
+    Class = 43
+
+    def __init__(self, corpo, oggetto, quando, id_):
+        self.Body, self.Subject, self.ReceivedTime, self.EntryID = corpo, oggetto, _Data(quando), id_
+
+
+class _Elementi(list):
+    def Sort(self, *a):
+        self.sort(key=lambda e: (e.ReceivedTime.year, e.ReceivedTime.month, e.ReceivedTime.day), reverse=True)
+
+
+class _Cartella:
+    def __init__(self, email=(), sotto=()):
+        self.Items, self.Folders = _Elementi(email), list(sotto)
+
+
+class _Casella:
+    def __init__(self, nome, inbox, tipo=0):
+        self.DisplayName, self._inbox, self.ExchangeStoreType = nome, inbox, tipo
+
+    def GetDefaultFolder(self, n):
+        return self._inbox
+
+    def GetRootFolder(self):
+        return _Cartella(sotto=[self._inbox])
+
+
+def test_piu_caselle_in_outlook_ognuna_con_il_suo_nome(ambiente, tmp_path, monkeypatch):  # noqa: F811
+    from datetime import datetime
+    admin = ambiente()
+    codice = zipfile.ZipFile(io.BytesIO(admin.get("/monitoraggio/segreteria/programma-protocollo").data)).read("Protocollo-monitoraggio/protocollo_cnr.py").decode()
+    (tmp_path / "protocollo_cnr.py").write_text(codice)
+    spec = importlib.util.spec_from_file_location("protocollo_cnr2", tmp_path / "protocollo_cnr.py")
+    prog = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(prog)
+    oggi = datetime.now()
+    personale = _Casella("mario.rossi@cnr.it", _Cartella([_Email(EMAIL_1, "[CC]:Prova", oggi, "a"), _Email("ciao", "riunione", oggi, "b")]))
+    segreteria = _Casella("Segreteria Reclutamento", _Cartella([], [_Cartella([_Email(EMAIL_2, "[CC]:vigilanza", oggi, "c")])]))
+    pubbliche = _Casella("Cartelle pubbliche", _Cartella([_Email(EMAIL_2, "x", oggi, "d")]), tipo=2)
+
+    class _Ns:
+        Stores = [personale, segreteria, pubbliche]
+    monkeypatch.setattr(prog, "_outlook", lambda: _Ns())
+    voci, lette = prog.da_outlook(60)
+    assert lette == ["mario.rossi@cnr.it", "Segreteria Reclutamento"]  # le cartelle pubbliche no
+    assert sorted((v["numero"], v["casella"]) for v in voci) == [("485664", "Segreteria Reclutamento"), ("496971", "mario.rossi@cnr.it")]
+    voci, lette = prog.da_outlook(60, filtro=["segreteria"])
+    assert lette == ["Segreteria Reclutamento"] and [v["numero"] for v in voci] == ["485664"]
+
+
+def test_la_casella_di_ogni_email_arriva_nella_tabella(ambiente, db):  # noqa: F811
+    admin = ambiente()
+    pe.ricevi(db, [{**_voce("485664", "20261111", "Provvedimento nomina personale vigilanza 367.634 FA IMM", "a"), "casella": "Segreteria Reclutamento"},
+                   {**_voce("485664", "20261111", "Provvedimento nomina personale vigilanza 367.634 FA IMM", "b"), "casella": "mario.rossi@cnr.it"}], "seg", "")
+    r = admin.get("/api/segreteria/protocollo").get_json()["protocolli"][0]
+    assert [x["casella"] for x in r["ricevute"]] == ["Segreteria Reclutamento", "mario.rossi@cnr.it"]

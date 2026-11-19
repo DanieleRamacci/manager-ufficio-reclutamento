@@ -88,7 +88,7 @@ def ricevi(conn, voci: list[dict], utente: str, casella: str | None) -> dict:
         if link and not link.startswith("https://titulus"):
             link = ""
         numero = protocollo(numero)
-        ricezione = {"casella": (casella or "")[:120], "utente": utente, "il": str(v.get("ricevuta_il") or "")[:32],
+        ricezione = {"casella": str(v.get("casella") or casella or "")[:120], "utente": utente, "il": str(v.get("ricevuta_il") or "")[:32],
                      "messaggio": hashlib.sha256(str(v.get("id_messaggio") or "").encode()).hexdigest()[:16]}
         riga = conn.execute("SELECT * FROM protocollo_email WHERE numero = ? AND anno = ?", (numero, data[:4])).fetchone()
         if riga is None:
@@ -302,6 +302,12 @@ Tenerlo attivo
 
 Outlook
   Funziona con Outlook «classico» (legge Posta in arrivo e sottocartelle degli ultimi 60 giorni, senza password).
+  Legge TUTTE le caselle collegate al profilo (personale, generale della segreteria, ...): ogni protocollo dice da quale
+  casella arriva; se arriva in due caselle resta una riga sola con le due ricezioni. Per sceglierle, dal Prompt dei comandi:
+     Leggi-e-invia.bat --elenca-caselle            (mostra le caselle che vede)
+     Leggi-e-invia.bat --caselle "segreteria"      (legge solo quelle con «segreteria» nel nome; la scelta resta salvata)
+     Leggi-e-invia.bat --caselle tutte             (torna a leggerle tutte)
+  Una casella condivisa aperta solo come «cartella di un altro utente» non è visibile: va aggiunta al profilo di Outlook.
   Se una regola sposta le email di protocollo in una cartella fuori da Posta in arrivo, avvia con --tutte-le-cartelle
   (dal Prompt dei comandi: Leggi-e-invia.bat --tutte-le-cartelle).
   Con il «nuovo Outlook» o la posta dal browser non si può leggere direttamente: salva le email di protocollo (trascinale) in
