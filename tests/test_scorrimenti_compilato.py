@@ -124,7 +124,7 @@ def test_nominativi_tipologia_e_posizioni_confrontati_con_la_segreteria():
     persone = {("367.434", "461293"): [{"nominativo": "MARIO ROSSI", "chiave": vf.nome_chiave("MARIO ROSSI"), "tipologia": "Subentro"},
                                        {"nominativo": "Bianchi Luca", "chiave": vf.nome_chiave("Bianchi Luca"), "tipologia": "Subentro"}]}
     a = sc.confronta([_riga("367.434", "461293")], letto["voci"], letto["fogli"], persone, PROFILI)["atti"][0]
-    assert "tipologia «scorrimento» nel file, «subentro» nel file della segreteria" in a["gravi"]
+    assert "tipologia «Scorrimento» (scorrimento) nel file scorrimenti, «Subentro» (subentro) nel file della segreteria" in a["gravi"]
     assert "Neri Anna: nel file scorrimenti ma non nel file della segreteria" in a["gravi"]
     assert "Bianchi Luca: nel file della segreteria ma non nel file scorrimenti" in a["gravi"]
     assert "3 posizioni dichiarate, 2 nominativi" in a["minori"]
@@ -198,3 +198,16 @@ def test_provvedimento_dg_comune_alle_sedi_e_riga_incompleta():
                                              "che le altre righe dello scorrimento hanno"]
     assert per["367.598 PT"]["trovato"] and per["367.598 PT"]["gravi"] == [] and per["367.598 PT"]["minori"] == []
     assert esito["solo_nel_file"] == []
+
+
+
+def test_scorrimento_per_rinuncia_e_un_subentro():
+    """Ottobre 2026: il file scorrimenti dice «Scorrimento per rinuncia», la segreteria «Scorrimento»: sbaglia la segreteria."""
+    from monitoraggio import verifica_file as vf
+    assert sc.tipo_di("SCORRIMENTO PER RINUNCIA ") == sc.tipo_di("Scorrimento per rinuncia vincitrice") == "subentro"
+    file = _file({"COLL.AMM": [["367.434 Cod. 20 PALERMO", 1, None, None, "Uno Inventato", None, "438443 DEL 15/10/2026", "SCORRIMENTO PER RINUNCIA"]]})
+    letto = sc.leggi_file(file)
+    persone = {("367.434", "438443"): [{"nominativo": "Uno Inventato", "chiave": vf.nome_chiave("Uno Inventato"), "tipologia": "Scorrimento"}]}
+    a = sc.confronta([_riga("367.434", "438443")], letto["voci"], letto["fogli"], persone, PROFILI)["atti"][0]
+    assert a["gravi"] == ["«SCORRIMENTO PER RINUNCIA» nel file scorrimenti è un subentro: nel file della segreteria è indicato «Scorrimento», da correggere lì"]
+    assert a["tipo"] == "subentro"

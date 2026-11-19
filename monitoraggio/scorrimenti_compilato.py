@@ -43,7 +43,8 @@ def _numero(valore) -> str | None:
 
 
 def tipo_di(testo: str | None) -> str | None:
-    """La tipologia scritta nel file: subentro, cessazione dopo i 6 mesi, scorrimento; None se vuota."""
+    """La tipologia scritta nel file: subentro, cessazione dopo i 6 mesi, scorrimento; None se vuota.
+    Regola dell'utente (2026-11-19): uno scorrimento per rinuncia è un subentro («Scorrimento per rinuncia vincitrice»)."""
     if not testo or not testo.strip():
         return None
     return "subentro" if _SUBENTRO.search(testo) else "cessazione" if _CESSAZIONE.search(testo) else "scorrimento"
@@ -255,7 +256,13 @@ def confronta(righe: list[dict], voci: list[dict], fogli: list[str] | None = Non
                 gravi.append("subentro non indicato")
             tipo_file = tipo_di(tipologia)
             if tipo_file and seg and tipo_file != attesa:
-                gravi.append(f"tipologia «{tipo_file}» nel file, «{attesa}» nel file della segreteria")
+                scritto = next((blocchi[i]["tipologie"][0] for i in trovati if blocchi[i]["tipologie"]), tipologia)
+                scritto = " ".join(scritto.split())[:60]
+                in_segreteria = next((str(p.get("tipologia")).strip() for p in seg if p.get("tipologia")), attesa)
+                if tipo_file == "subentro" and attesa == "scorrimento":  # «scorrimento per rinuncia» è un subentro: sbaglia la segreteria
+                    gravi.append(f"«{scritto}» nel file scorrimenti è un subentro: nel file della segreteria è indicato «{in_segreteria}», da correggere lì")
+                else:
+                    gravi.append(f"tipologia «{scritto}» ({tipo_file}) nel file scorrimenti, «{in_segreteria}» ({attesa}) nel file della segreteria")
             fogli_trovati = {verifica_file.gruppo_di_foglio(blocchi[i]["foglio"]) for i in trovati}
             if gruppo and gruppo != verifica_file.ALTRO and gruppo not in fogli_trovati:
                 minori.append(f"nel foglio {', '.join(blocchi[i]['foglio'] for i in trovati)} invece che nel foglio {gruppo}")
