@@ -633,8 +633,9 @@
           <textarea id="testo-revisione" style="min-height:110px"${chiuso ? " disabled" : ""}>${esc(r.testo)}</textarea>
           <div class="riga" style="margin-top:8px;align-items:center"><button type="button" id="salva-testo-revisione"${chiuso ? " disabled" : ""}>Salva il testo</button>
             <button type="button" id="copia-testo-revisione">Copia il testo</button>
-            <button class="primario" type="button" id="manda-revisione"${chiuso ? " disabled" : ""}>${rev ? "Rimanda in revisione" : "Manda in revisione"}</button>
-            ${m.posta.prova ? `<span class="muted small">Email in prova: vanno a ${esc(m.posta.prova)}</span>` : ""}</div></section>`;
+            ${m.posta.prova_attiva ? `<button type="button" class="prova" id="prova-revisione"${chiuso ? " disabled" : ""}>Invia prova a ${esc(m.posta.indirizzo_prova || "")}</button>` : ""}
+            ${m.posta.ufficiali_attive ? `<button class="primario" type="button" id="manda-revisione"${chiuso ? " disabled" : ""}>${rev ? "Rimanda in revisione" : "Manda in revisione"} (invio reale)</button>`
+              : `<a class="small" href="/monitoraggio/impostazioni#email">Email ufficiali disattivate · impostazioni</a>`}</div></section>`;
       document.querySelectorAll("form.carica-file").forEach(f => f.onsubmit = async (e) => {
         e.preventDefault();
         const dati = new FormData(); dati.append("file", f.querySelector("input").files[0]);
@@ -647,11 +648,14 @@
       const salva = () => chiama(`/api/monitoraggi/${m.mese}/riepilogo/testo`, corpoJson("PUT", { testo: $("testo-revisione").value }));
       $("salva-testo-revisione").onclick = async () => { try { await salva(); toast("Testo salvato"); } catch (err) { toast(err.message); } };
       $("copia-testo-revisione").onclick = () => copia($("testo-revisione").value, "Testo copiato");
-      $("manda-revisione").onclick = async () => {
-        if (!confirm(`${m.posta.prova ? `In prova, solo a ${m.posta.prova}.` : "INVIO REALE a coordinatori e persone dell'ufficio."}\n\nMandare il monitoraggio in revisione?`)) return;
-        try { await salva(); const x = await chiama(`/api/monitoraggi/${m.mese}/revisione`, { method: "POST" }); toast(x.prova ? "Inviata in prova" : `Inviata a ${x.destinatari.length} persone`); schedaRiepilogo(); }
+      const revisione = async (modo) => {
+        if (modo === "ufficiale" && !confirm("INVIO REALE a coordinatori e persone dell'ufficio.\n\nMandare il monitoraggio in revisione?")) return;
+        try { await salva(); const x = await chiama(`/api/monitoraggi/${m.mese}/revisione`, corpoJson("POST", { modo }));
+          toast(x.prova ? `Prova inviata a ${m.posta.indirizzo_prova}: il monitoraggio non risulta ancora in revisione` : `Inviata a ${x.destinatari.length} persone`); schedaRiepilogo(); }
         catch (err) { toast(err.message); }
       };
+      if ($("prova-revisione")) $("prova-revisione").onclick = () => revisione("prova");
+      if ($("manda-revisione")) $("manda-revisione").onclick = () => revisione("ufficiale");
     }
     async function chiediVerifica(v) {
       const m = stato.m, url = `/api/monitoraggi/${m.mese}/verifica-file/${v.file}/richiesta`;
@@ -664,14 +668,20 @@
         <textarea id="rv-corpo" style="margin-top:8px;min-height:260px" aria-label="Testo">${esc(d.corpo)}</textarea>
         <p class="muted small">Il testo può contenere nominativi: toglili se non devono essere nell'email.</p>
         ${d.storico.length ? `<div class="small">Già chiesto: ${d.storico.map(s => `${ora(s.quando)} (${esc(s.esito)})`).join(", ")}</div>` : ""}</div>
-        <footer><button type="button" id="rv-no">Annulla</button><button class="primario" type="button" id="rv-si"${d.destinatari.length && d.posta.configurata ? "" : " disabled"}>${d.posta.prova ? `Invia in prova a ${esc(d.posta.prova)}` : "Invia"}</button></footer>`);
+        <footer><button type="button" id="rv-no">Annulla</button>
+          ${d.posta.prova_attiva ? `<button type="button" class="prova" id="rv-prova"${d.destinatari.length && d.posta.configurata ? "" : " disabled"}>Invia prova a ${esc(d.posta.indirizzo_prova || "")}</button>` : ""}
+          ${d.posta.ufficiali_attive ? `<button class="primario" type="button" id="rv-si"${d.destinatari.length && d.posta.configurata ? "" : " disabled"}>Invia ai destinatari veri</button>`
+            : `<a class="small" href="/monitoraggio/impostazioni#email">Email ufficiali disattivate · impostazioni</a>`}</footer>`);
       o.querySelector("#rv-no").onclick = chiudiFinestra;
-      o.querySelector("#rv-si").onclick = async () => {
-        if (!d.posta.prova && !confirm(`INVIO REALE a:\n${d.destinatari.join(", ")}\n\nProcedere?`)) return;
-        try { const x = await chiama(url, corpoJson("POST", { chiave: v.chiave, oggetto: o.querySelector("#rv-oggetto").value, corpo: o.querySelector("#rv-corpo").value }));
-          chiudiFinestra(); toast(x.prova ? "Inviata in prova" : "Richiesta inviata"); schedaRiepilogo(); }
+      const invia = async (modo) => {
+        if (modo === "ufficiale" && !confirm(`INVIO REALE a:\n${d.destinatari.join(", ")}\n\nProcedere?`)) return;
+        try { const x = await chiama(url, corpoJson("POST", { chiave: v.chiave, modo, oggetto: o.querySelector("#rv-oggetto").value, corpo: o.querySelector("#rv-corpo").value }));
+          if (!x.prova) chiudiFinestra();
+          toast(x.prova ? `Prova inviata a ${d.posta.indirizzo_prova}` : "Richiesta inviata ai destinatari"); if (!x.prova) schedaRiepilogo(); }
         catch (err) { toast(err.message); }
       };
+      if (o.querySelector("#rv-prova")) o.querySelector("#rv-prova").onclick = () => invia("prova");
+      if (o.querySelector("#rv-si")) o.querySelector("#rv-si").onclick = () => invia("ufficiale");
     }
     async function vediFile(file) {
       const m = stato.m;

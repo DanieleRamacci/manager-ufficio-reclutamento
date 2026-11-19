@@ -895,7 +895,7 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
             corpo = request.get_json(silent=True) or {}
             try:
                 return jsonify(revisione.invia_richiesta(conn, m, file, str(corpo.get("chiave") or ""), str(corpo.get("oggetto") or "").strip(),
-                                                         str(corpo.get("corpo") or ""), utente_corrente()))
+                                                         str(corpo.get("corpo") or ""), utente_corrente(), corpo.get("modo") or None))
             except (ValueError, posta.PostaErrore) as e:
                 return jsonify({"error": str(e)}), 400
         finally:
@@ -909,7 +909,8 @@ def crea_blueprint_mensile(protezione=lambda f: f, solo_admin=lambda f: f, utent
         try:
             if not _trova(conn, mese):
                 return jsonify({"error": "Monitoraggio non trovato"}), 404
-            return jsonify(revisione.manda_in_revisione(conn, mensile.leggi(conn, mese), utente_corrente()))
+            return jsonify(revisione.manda_in_revisione(conn, mensile.leggi(conn, mese), utente_corrente(),
+                                                        (request.get_json(silent=True) or {}).get("modo") or None))
         except mensile.MeseChiuso as e:
             return jsonify({"error": str(e)}), 409
         except (ValueError, posta.PostaErrore) as e:

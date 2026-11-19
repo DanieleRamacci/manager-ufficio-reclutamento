@@ -217,7 +217,12 @@ def richiesta(conn, m: dict, file: str, chiave: str) -> dict | None:
             "problemi": len(problemi), "storico": storico, "posta": posta.stato()}
 
 
-def invia_richiesta(conn, m: dict, file: str, chiave: str, oggetto: str, corpo: str, utente: str | None) -> dict:
+MODI = (None, "prova", "ufficiale")  # come nel pannello del messaggio: prova o casella dell'ufficio; None = regola generale
+
+
+def invia_richiesta(conn, m: dict, file: str, chiave: str, oggetto: str, corpo: str, utente: str | None, modo: str | None = None) -> dict:
+    if modo not in MODI:
+        raise ValueError("Modo di invio non valido")
     anteprima = richiesta(conn, m, file, chiave)
     if anteprima is None:
         raise ValueError("Bando non trovato in questo monitoraggio")
@@ -225,7 +230,7 @@ def invia_richiesta(conn, m: dict, file: str, chiave: str, oggetto: str, corpo: 
         raise ValueError("Nessuna email RdP per questo bando")
     if comunicazioni.contiene_dati_candidati(oggetto, corpo):
         raise ValueError("Il testo sembra contenere un codice fiscale: invio bloccato")
-    prova = posta.invia(anteprima["destinatari"], oggetto, corpo)
+    prova = posta.invia(anteprima["destinatari"], oggetto, corpo, modo=modo)
     conn.execute("INSERT INTO richiesta_verifica (mese, file, chiave, destinatari, oggetto, esito, utente, quando) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                  (m["mese"], file, chiave, json.dumps(anteprima["destinatari"]), oggetto, "prova" if prova else "inviata", utente, _adesso()))
     return {"ok": True, "prova": prova}
@@ -299,7 +304,9 @@ def destinatari_revisione(conn) -> list[str]:
     return list(dict.fromkeys([*(c["email"] for c in portale.elenco_coordinatori(conn)), *avvisi_scorrimenti.interni()]))
 
 
-def manda_in_revisione(conn, m: dict, utente: str | None) -> dict:
+def manda_in_revisione(conn, m: dict, utente: str | None, modo: str | None = None) -> dict:
+    if modo not in MODI:
+        raise ValueError("Modo di invio non valido")
     mensile.verifica_aperto(conn, m["mese"])
     destinatari = destinatari_revisione(conn)
     if not destinatari:
@@ -311,8 +318,9 @@ def manda_in_revisione(conn, m: dict, utente: str | None) -> dict:
              f"(per chi accede al sito: {config.sito_url()}/monitoraggio/consulta/monitoraggi/{m['mese']})\n\n"
              f"Totali del monitoraggio di {mese_testo}\n{tabella_testo(r['totali'])}\n\n"
              f"Cordiali saluti,\n{posta.impostazioni_email()['firma'] or ''}\n")
-    prova = posta.invia(destinatari, f"Monitoraggio {mese_testo}: in revisione", corpo)
-    conn.execute("UPDATE monitoraggio_mese SET revisione_il = ?, revisione_da = ? WHERE mese = ?", (_adesso(), utente, m["mese"]))
+    prova = posta.invia(destinatari, f"Monitoraggio {mese_testo}: in revisione", corpo, modo=modo)
+    if not prova:  # una prova non manda davvero il monitoraggio in revisione
+        conn.execute("UPDATE monitoraggio_mese SET revisione_il = ?, revisione_da = ? WHERE mese = ?", (_adesso(), utente, m["mese"]))
     return {"ok": True, "prova": prova, "destinatari": destinatari}
 
 

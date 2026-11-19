@@ -30,7 +30,9 @@ def test_estrazione_riepilogo_richiesta_e_revisione(ambiente, db, monkeypatch): 
     anteprima = admin.get(f"/api/monitoraggi/{mese}/verifica-file/graduatorie/richiesta?chiave=367.479 CTER").get_json()
     assert anteprima["destinatari"] == ["rdp@cnr.it"] and "manca nell'estrazione" in anteprima["corpo"] and "nostro errore" in anteprima["corpo"]
     assert admin.post(f"/api/monitoraggi/{mese}/verifica-file/graduatorie/richiesta",
-                      json={"chiave": "367.479 CTER", "oggetto": anteprima["oggetto"], "corpo": anteprima["corpo"]}).get_json() == {"ok": True, "prova": True}
+                      json={"chiave": "367.479 CTER", "modo": "prova", "oggetto": anteprima["oggetto"], "corpo": anteprima["corpo"]}).get_json() == {"ok": True, "prova": True}
+    assert admin.post(f"/api/monitoraggi/{mese}/verifica-file/graduatorie/richiesta",
+                      json={"chiave": "367.479 CTER", "modo": "boh", "oggetto": "x", "corpo": "y"}).status_code == 400
     assert inviati[-1]["To"] == "prova@esempio.it"
     r = admin.get(f"/api/monitoraggi/{mese}/riepilogo").get_json()
     assert next(v for v in r["da_verificare"] if v["codice"] == "367.479 CTER")["richiesta"]["esito"] == "prova"
@@ -49,8 +51,13 @@ def test_estrazione_riepilogo_richiesta_e_revisione(ambiente, db, monkeypatch): 
     assert admin.post(f"/api/monitoraggi/{mese}/revisione").status_code == 400
     avvisi_scorrimenti.salva({"interni": "collega@cnr.it"}, "admin")
     admin.put(f"/api/monitoraggi/{mese}/riepilogo/testo", json={"testo": "Testo di prova della revisione."})
-    esito = admin.post(f"/api/monitoraggi/{mese}/revisione").get_json()
-    assert esito["ok"] and esito["destinatari"] == ["collega@cnr.it"]
+    esito = admin.post(f"/api/monitoraggi/{mese}/revisione", json={"modo": "prova"}).get_json()
+    assert esito["ok"] and esito["prova"] and esito["destinatari"] == ["collega@cnr.it"] and inviati[-1]["To"] == "prova@esempio.it"
+    assert admin.get(f"/api/monitoraggi/{mese}/riepilogo").get_json()["revisione"]["il"] is None  # la prova non la manda in revisione
+    assert admin.post(f"/api/monitoraggi/{mese}/revisione", json={"modo": "ufficiale"}).status_code == 400  # ufficiali disattivate
+    posta.salva_email({"ufficiali_attive": True}, "test")
+    esito = admin.post(f"/api/monitoraggi/{mese}/revisione", json={"modo": "ufficiale"}).get_json()
+    assert esito["ok"] and not esito["prova"] and inviati[-1]["To"] == "collega@cnr.it"  # invio vero, anche con le prove attive
     testo = inviati[-1].get_content()
     assert "Testo di prova della revisione." in testo and f"/referenti/monitoraggi/{mese}" in testo and "Bandi con graduatoria: 1 · nei file 1 (1 persona)" in testo
     assert "Rossi" not in testo
