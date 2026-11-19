@@ -6,7 +6,7 @@ import sqlite3
 from . import config
 from .normalizza import AGGIUNTA_TIPOLOGIE, ANCORA_SCORRIMENTI, codice_sede, nota_sottotipo
 
-SCHEMA_VERSION = 31
+SCHEMA_VERSION = 32
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -306,6 +306,40 @@ CREATE TABLE IF NOT EXISTS estrazione_mobilita (
     caricato_da TEXT,
     caricato_il TEXT NOT NULL,
     righe TEXT NOT NULL
+);
+
+-- spec 010: protocolli letti dalle email di Titulus in copia (dal programma sul PC); una riga per protocollo
+CREATE TABLE IF NOT EXISTS protocollo_email (
+    id INTEGER PRIMARY KEY,
+    numero TEXT NOT NULL,
+    anno TEXT NOT NULL,
+    data TEXT NOT NULL,
+    segnatura TEXT,
+    oggetto TEXT NOT NULL,
+    link TEXT,
+    ricevute TEXT NOT NULL DEFAULT '[]',
+    oggetti_diversi TEXT NOT NULL DEFAULT '[]',
+    prima_ricezione TEXT NOT NULL,
+    stato TEXT NOT NULL DEFAULT 'da_verificare' CHECK (stato IN ('da_verificare', 'approvato', 'scartato')),
+    categoria TEXT,
+    sottotipo TEXT,
+    numero_bando TEXT,
+    codice_sotto TEXT,
+    note TEXT,
+    deciso_da TEXT,
+    deciso_il TEXT,
+    UNIQUE (numero, anno)
+);
+
+-- spec 010: chiavi personali del programma che manda i protocolli (si salva solo l'impronta)
+CREATE TABLE IF NOT EXISTS chiave_programma (
+    id INTEGER PRIMARY KEY,
+    utente TEXT NOT NULL,
+    nome TEXT,
+    impronta TEXT NOT NULL UNIQUE,
+    creata_il TEXT NOT NULL,
+    usata_il TEXT,
+    revocata_il TEXT
 );
 
 -- spec 011: richieste di verifica dei file agli RdP di un bando

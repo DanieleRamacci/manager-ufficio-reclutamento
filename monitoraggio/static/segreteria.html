@@ -7,6 +7,16 @@
   <link rel="stylesheet" href="/monitoraggio/app.css">
   <script src="/monitoraggio/menu.js" defer></script>
   <script src="/monitoraggio/app.js"></script>
+  <style>
+    /* tabella dei protocolli: l'intestazione resta ferma mentre si scorre */
+    .tabella-fissa { max-height: 72vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+    .tabella-fissa table { border-collapse: separate; border-spacing: 0; }
+    .tabella-fissa thead th { position: sticky; top: 0; z-index: 2; background: var(--surface-2); box-shadow: inset 0 -1px 0 var(--border); }
+    .controlli { margin: 0; padding-left: 16px; font-size: 12px; }
+    .controlli li.attenzione { color: var(--warn); font-weight: 600; } .controlli li.manca { color: var(--ko); } .controlli li.ok { color: var(--ok); }
+    tr.p-attenzione > td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+    .azioni-riga { display: flex; flex-direction: column; gap: 4px; min-width: 104px; }
+  </style>
 </head>
 <body>
 <main>
@@ -20,6 +30,11 @@
     </form>
   </section>
 
+  <nav class="schede" role="tablist" aria-label="Sezioni" style="margin:6px 0 10px">
+    <button type="button" role="tab" id="tab-file" aria-selected="true">File Excel della segreteria</button>
+    <button type="button" role="tab" id="tab-protocollo" aria-selected="false">Documenti in uscita protocollo <span id="conteggio-protocollo"></span></button>
+  </nav>
+  <div id="pannello-file">
   <section>
     <h2 style="margin-bottom:4px">Versione in uso</h2>
     <div class="small muted" id="versione-info">Nessun file caricato.</div>
@@ -39,6 +54,27 @@
     </div>
     <div class="scroll"><table id="atti" style="min-width:900px"></table></div>
   </section>
+  </div>
+
+  <div id="pannello-protocollo" hidden>
+    <section>
+      <h2 style="margin-bottom:4px">Documenti in uscita protocollo</h2>
+      <p class="muted small" style="margin-top:0">I protocolli delle email di Titulus arrivate in copia, letti dal programma sul PC. Per ognuno il sistema propone il tipo di atto leggendo l'oggetto (e dice da quale frase) e fa i controlli. Verifica e, se serve, correggi con <b>Modifica</b>; poi <b>Approva</b>: graduatorie, scorrimenti, rettifiche e bandi approvati valgono come righe del file della segreteria «aggiunte automaticamente», finché non le inserisci nel file. Il riferimento è il numero di protocollo.</p>
+      <div class="riga" style="align-items:center;margin:8px 0">
+        <a class="pulsante" href="/monitoraggio/segreteria/programma-protocollo">Scarica il programma per Windows</a>
+        <button type="button" id="nuova-chiave" class="solo-decide">Genera chiave per il programma</button>
+        <details><summary class="small">Chiavi attive</summary><div id="elenco-chiavi" class="small" style="margin-top:6px"></div></details>
+      </div>
+      <div class="riga" style="margin:10px 0">
+        <label>Stato <select id="p-stato"><option value="da_verificare">Da verificare</option><option value="approvato">Approvati</option><option value="scartato">Scartati</option><option value="">Tutti</option></select></label>
+        <label>Tipo <select id="p-tipo"><option value="">Tutti</option></select></label>
+        <label class="spunta"><input type="checkbox" id="p-attenzione"> solo con controlli da guardare</label>
+        <label>Cerca <input type="search" id="p-q" placeholder="Protocollo, bando o oggetto" size="26"></label>
+        <span class="muted small" id="p-conteggio"></span>
+      </div>
+      <div class="tabella-fissa"><table id="protocolli" style="min-width:1250px"></table></div>
+    </section>
+  </div>
 </main>
 <script>
 const { $, esc, ora, dataIt, chiama, toast, apriFinestra, chiudiFinestra } = App;
@@ -47,6 +83,104 @@ const SOTTOTIPI = { ordinario: "scorrimento", subentro: "subentro", misto: "scor
 const PROBLEMI = { senza_bando: "senza numero di bando", senza_protocollo: "senza protocollo", data_illeggibile: "data non leggibile", numero_discordante: "N. Bando diverso da N Bando", senza_tipologia: "scorrimento senza tipologia" };
 const FOGLI = { bandi: "Bandi", graduatorie: "Graduatorie", scorrimento: "Scorrimento" };
 let versioneVista = null, atti = [];
+
+// --- schede
+function apriScheda(quale) {
+  $("pannello-file").hidden = quale !== "file"; $("pannello-protocollo").hidden = quale !== "protocollo";
+  $("tab-file").setAttribute("aria-selected", String(quale === "file")); $("tab-protocollo").setAttribute("aria-selected", String(quale === "protocollo"));
+  history.replaceState(null, "", quale === "protocollo" ? "#protocollo" : location.pathname);
+  if (quale === "protocollo") caricaProtocolli();
+}
+$("tab-file").onclick = () => apriScheda("file");
+$("tab-protocollo").onclick = () => apriScheda("protocollo");
+
+// --- documenti in uscita protocollo (spec 010)
+let P = null;
+const STATI_P = { da_verificare: ["p-warn", "da verificare"], approvato: ["p-ok", "approvato"], scartato: ["p-na", "scartato"] };
+async function caricaProtocolli() {
+  try { P = await chiama("/api/segreteria/protocollo"); } catch (err) { $("protocolli").innerHTML = `<tbody><tr><td class="errore">${esc(err.message)}</td></tr></tbody>`; return; }
+  if ($("p-tipo").options.length === 1) Object.entries(P.categorie).forEach(([k, n]) => $("p-tipo").add(new Option(n, k)));
+  document.querySelectorAll(".solo-decide").forEach(b => { b.hidden = !P.puo_decidere; });
+  $("conteggio-protocollo").textContent = `(${P.protocolli.filter(r => r.stato === "da_verificare").length})`;
+  $("elenco-chiavi").innerHTML = P.chiavi.length ? P.chiavi.map(c => `<div>${esc(c.nome || "chiave")} · ${esc(c.utente)} · creata ${ora(c.creata_il)} · ${c.revocata_il ? `revocata ${ora(c.revocata_il)}` : `${c.usata_il ? `usata ${ora(c.usata_il)}` : "mai usata"} <button type="button" class="piccolo" data-revoca="${c.id}">Revoca</button>`}</div>`).join("") : "Nessuna chiave.";
+  document.querySelectorAll("[data-revoca]").forEach(b => b.onclick = async () => {
+    if (!confirm("Revocare la chiave? Il programma che la usa smetterà di mandare i protocolli.")) return;
+    try { await chiama(`/api/segreteria/protocollo/chiavi/${b.dataset.revoca}`, { method: "DELETE" }); caricaProtocolli(); } catch (err) { toast(err.message); }
+  });
+  disegnaProtocolli();
+}
+function disegnaProtocolli() {
+  const stato = $("p-stato").value, tipo = $("p-tipo").value, att = $("p-attenzione").checked, q = $("p-q").value.toLowerCase();
+  const righe = P.protocolli.filter(r => (!stato || r.stato === stato) && (!tipo || r.categoria === tipo)
+    && (!att || r.controlli.some(c => c.livello === "attenzione")) && (!q || `${r.numero} ${r.numero_bando || ""} ${r.oggetto}`.toLowerCase().includes(q)));
+  $("p-conteggio").textContent = `${righe.length} di ${P.protocolli.length}`;
+  const tipoTesto = (r) => `<b>${esc(P.categorie[r.categoria] || r.categoria)}</b>${r.sottotipo ? ` · ${esc(P.sottotipi[r.sottotipo] || r.sottotipo)}` : ""}
+    ${r.numero_bando ? `<div>bando <b>${esc(r.numero_bando)}</b>${r.codice_sotto ? ` · cod. ${esc(r.codice_sotto)}` : ""}</div>` : ""}
+    <div class="muted small" title="Da dove viene la proposta">${esc(r.motivo)}</div>
+    ${r.proposta_originale.categoria !== r.categoria || (r.proposta_originale.sottotipo || null) !== (r.sottotipo || null) ? `<div class="small" style="color:var(--warn)">corretto a mano (proposta: ${esc(P.categorie[r.proposta_originale.categoria])})</div>` : ""}
+    ${r.note ? `<div class="small"><i>${esc(r.note)}</i></div>` : ""}`;
+  const azioni = (r) => !P.puo_decidere ? "" : r.stato === "da_verificare"
+    ? `<button type="button" class="primario piccolo" data-approva="${r.id}">Approva</button><button type="button" class="piccolo" data-modifica="${r.id}">Modifica</button><button type="button" class="piccolo" data-scarta="${r.id}">Scarta</button>`
+    : `<button type="button" class="piccolo" data-riapri="${r.id}">Riapri</button>${r.deciso_da ? `<span class="muted small">${esc(r.deciso_da)} · ${ora(r.deciso_il)}</span>` : ""}`;
+  $("protocolli").innerHTML = `<thead><tr><th>Stato</th><th>Protocollo</th><th>Oggetto</th><th>Proposta</th><th>Controlli</th><th>Ricevuto</th><th>Titulus</th><th>Azioni</th></tr></thead><tbody>` +
+    (righe.map(r => `<tr class="${r.controlli.some(c => c.livello === "attenzione") ? "p-attenzione" : ""}">
+      <td><span class="pillola ${STATI_P[r.stato][0]}">${STATI_P[r.stato][1]}</span>${r.stato === "approvato" && P.nel_file.includes(r.categoria) ? `<div class="small muted">${r.nel_file_segreteria ? "già nel file" : "aggiunto automaticamente"}</div>` : ""}</td>
+      <td class="mono"><b>${esc(r.numero)}</b><div class="small">${esc(dataIt(r.data))}</div><div class="muted small">${esc(r.segnatura || "")}</div></td>
+      <td style="min-width:260px">${esc(r.oggetto)}</td>
+      <td style="min-width:220px">${tipoTesto(r)}</td>
+      <td style="min-width:240px"><ul class="controlli">${r.controlli.map(c => `<li class="${c.livello}">${esc(c.testo)}</li>`).join("") || `<li class="muted">nessuno</li>`}</ul></td>
+      <td class="small">${r.ricevute.map(x => `<div>${esc(x.casella || x.utente)}${x.il ? ` · ${esc(String(x.il).slice(0, 16).replace("T", " "))}` : ""}</div>`).join("")}</td>
+      <td>${r.link ? `<a href="${esc(r.link)}" target="_blank" rel="noopener noreferrer">Apri ↗</a>` : ""}</td>
+      <td><div class="azioni-riga">${azioni(r)}</div></td></tr>`).join("") || `<tr><td colspan="8" class="muted">Nessun protocollo${stato ? " in questo stato" : ""}. Avvia il programma sul PC per leggere le email di Titulus.</td></tr>`) + `</tbody>`;
+  const trova = (id) => P.protocolli.find(r => r.id === Number(id));
+  const stato_ = async (id, s) => { try { await chiama(`/api/segreteria/protocollo/${id}/stato`, App.json("POST", { stato: s })); await caricaProtocolli(); } catch (err) { toast(err.message); } };
+  document.querySelectorAll("[data-approva]").forEach(b => b.onclick = () => {
+    const r = trova(b.dataset.approva);
+    const msg = P.nel_file.includes(r.categoria) ? `Approvare il protocollo ${r.numero}?\n\nVarrà come riga del file della segreteria (aggiunta automaticamente): ${P.categorie[r.categoria]}${r.sottotipo ? ` – ${P.sottotipi[r.sottotipo]}` : ""}, bando ${r.numero_bando || "?"}.` : `Approvare il protocollo ${r.numero}? Resta registrato (${P.categorie[r.categoria]}) ma non va nel file della segreteria.`;
+    if (confirm(msg)) stato_(r.id, "approvato");
+  });
+  document.querySelectorAll("[data-scarta]").forEach(b => b.onclick = () => stato_(b.dataset.scarta, "scartato"));
+  document.querySelectorAll("[data-riapri]").forEach(b => b.onclick = () => stato_(b.dataset.riapri, "da_verificare"));
+  document.querySelectorAll("[data-modifica]").forEach(b => b.onclick = () => modificaProtocollo(trova(b.dataset.modifica)));
+}
+function modificaProtocollo(r) {
+  const opzioni = (voci, scelto) => Object.entries(voci).map(([k, n]) => `<option value="${k}"${k === scelto ? " selected" : ""}>${esc(n)}</option>`).join("");
+  const o = apriFinestra(`<header><b>Protocollo ${esc(r.numero)} del ${esc(dataIt(r.data))}</b></header><div class="corpo">
+    <p class="small" style="margin-top:0">${esc(r.oggetto)}</p><p class="muted small">Proposta: ${esc(r.motivo)}</p>
+    <div class="griglia2"><label class="campo-largo">Tipo di documento <select id="m-categoria">${opzioni(P.categorie, r.categoria)}</select></label>
+    <label class="campo-largo">Tipologia dello scorrimento <select id="m-sottotipo"><option value="">–</option>${opzioni(P.sottotipi, r.sottotipo)}</select></label>
+    <label class="campo-largo">Numero del bando <input id="m-bando" value="${esc(r.numero_bando || "")}" placeholder="367.434"></label>
+    <label class="campo-largo">Codice di sede (facoltativo) <input id="m-sede" value="${esc(r.codice_sotto || "")}" placeholder="13"></label></div>
+    <label class="campo-largo" style="margin-top:8px">Note <textarea id="m-note" style="min-height:60px">${esc(r.note || "")}</textarea></label></div>
+    <footer><button type="button" id="m-annulla">Annulla</button><button type="button" id="m-salva">Salva</button><button class="primario" type="button" id="m-approva">Salva e approva</button></footer>`);
+  const aggiornaSottotipo = () => { o.querySelector("#m-sottotipo").disabled = o.querySelector("#m-categoria").value !== "scorrimento"; };
+  o.querySelector("#m-categoria").onchange = aggiornaSottotipo; aggiornaSottotipo();
+  o.querySelector("#m-annulla").onclick = chiudiFinestra;
+  const salva = async (approva) => {
+    try {
+      await chiama(`/api/segreteria/protocollo/${r.id}`, App.json("PUT", { categoria: o.querySelector("#m-categoria").value, sottotipo: o.querySelector("#m-sottotipo").value,
+        numero_bando: o.querySelector("#m-bando").value, codice_sotto: o.querySelector("#m-sede").value, note: o.querySelector("#m-note").value }));
+      if (approva) await chiama(`/api/segreteria/protocollo/${r.id}/stato`, App.json("POST", { stato: "approvato" }));
+      chiudiFinestra(); toast(approva ? "Salvato e approvato" : "Salvato"); await caricaProtocolli();
+    } catch (err) { toast(err.message); }
+  };
+  o.querySelector("#m-salva").onclick = () => salva(false);
+  o.querySelector("#m-approva").onclick = () => salva(true);
+}
+$("nuova-chiave").onclick = async () => {
+  const nome = prompt("Nome della chiave (es. PC segreteria di Maria):", "PC segreteria");
+  if (nome === null) return;
+  try {
+    const { chiave } = await chiama("/api/segreteria/protocollo/chiavi", App.json("POST", { nome }));
+    const o = apriFinestra(`<header><b>Chiave per il programma</b></header><div class="corpo"><p class="small">Copiala adesso: per sicurezza non sarà più mostrata. Il programma la chiede al primo «Leggi-e-invia».</p>
+      <p class="mono" style="font-size:15px;user-select:all;word-break:break-all">${esc(chiave)}</p></div><footer><button type="button" id="k-copia">Copia</button><button class="primario" type="button" id="k-ok">Fatto</button></footer>`);
+    o.querySelector("#k-copia").onclick = () => App.copia(chiave, "Chiave copiata");
+    o.querySelector("#k-ok").onclick = () => { chiudiFinestra(); caricaProtocolli(); };
+  } catch (err) { toast(err.message); }
+};
+["p-stato", "p-tipo", "p-attenzione", "p-q"].forEach(id => $(id).addEventListener("input", () => P && disegnaProtocolli()));
+if (location.hash === "#protocollo") setTimeout(() => apriScheda("protocollo"), 0);
+
 
 async function disegnaRapporto(v) {
   if (!v || !v.rapporto || !v.rapporto.fogli) { $("versione-info").textContent = "Nessun file caricato."; $("rapporto").innerHTML = ""; return; }

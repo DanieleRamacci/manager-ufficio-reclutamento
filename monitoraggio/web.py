@@ -4,6 +4,7 @@
 `login_required` (SSO); il server locale di prova (`python -m monitoraggio web`) ascolta solo
 su 127.0.0.1 e non usa login.
 """
+import io
 import json
 import re
 import threading
@@ -11,10 +12,10 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from flask import Blueprint, jsonify, redirect, request, send_from_directory
+from flask import Blueprint, jsonify, redirect, request, send_file, send_from_directory
 from werkzeug.utils import secure_filename
 
-from . import accessibilita, atti, collegamento, compat, comunicazioni, config, db, difformita, impostazioni, notifiche, punteggi, referenti, segreteria, sol_sessione, utenti
+from . import accessibilita, atti, collegamento, compat, comunicazioni, config, db, difformita, impostazioni, notifiche, protocollo_email, punteggi, referenti, segreteria, sol_sessione, utenti
 
 # esito dell'ultima verifica dei punteggi (solo conteggi, in memoria)
 ULTIMA_VERIFICA: dict = {}
@@ -540,6 +541,105 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
             difformita.sincronizza_tutti("file della segreteria")
             return jsonify({"versione": versione, "differenze": segreteria.differenze(conn, versione["id"])}), 201
         except segreteria.FileNonValido as e:
+            return jsonify({"error": str(e)}), 400
+        finally:
+            conn.close()
+
+    # --- spec 010: protocolli dalle email di Titulus («Documenti in uscita protocollo» nella pagina della segreteria)
+    def _puo_decidere():
+        return ruolo_corrente() in ("amministratore", "segreteria")
+
+    @bp.get("/api/segreteria/protocollo")
+    @protezione
+    def api_protocollo_elenco():
+        conn = _conn()
+        try:
+            risposta = jsonify({"protocolli": protocollo_email.elenco(conn), "categorie": protocollo_email.CATEGORIE,
+                                "sottotipi": protocollo_email.SOTTOTIPI, "nel_file": list(protocollo_email.NEL_FILE),
+                                "chiavi": protocollo_email.chiavi(conn, None if ruolo_corrente() == "amministratore" else utente_corrente()),
+                                "puo_decidere": _puo_decidere()})
+            risposta.headers["Cache-Control"] = "no-store"
+            return risposta
+        finally:
+            conn.close()
+
+    @bp.put("/api/segreteria/protocollo/<int:id_riga>")
+    @protezione
+    def api_protocollo_modifica(id_riga: int):
+        if not _puo_decidere():
+            return jsonify({"error": "Operazione riservata agli amministratori e alla segreteria"}), 403
+        conn = _conn()
+        try:
+            protocollo_email.modifica(conn, id_riga, request.get_json(silent=True) or {})
+            return jsonify({"ok": True})
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        finally:
+            conn.close()
+
+    @bp.post("/api/segreteria/protocollo/<int:id_riga>/stato")
+    @protezione
+    def api_protocollo_stato(id_riga: int):
+        if not _puo_decidere():
+            return jsonify({"error": "Operazione riservata agli amministratori e alla segreteria"}), 403
+        conn = _conn()
+        try:
+            protocollo_email.decidi(conn, id_riga, str((request.get_json(silent=True) or {}).get("stato") or ""), utente_corrente())
+            return jsonify({"ok": True})
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except LookupError as e:
+            return jsonify({"error": str(e)}), 404
+        finally:
+            conn.close()
+
+    @bp.post("/api/segreteria/protocollo/chiavi")
+    @protezione
+    def api_protocollo_nuova_chiave():
+        if not _puo_decidere():
+            return jsonify({"error": "Operazione riservata agli amministratori e alla segreteria"}), 403
+        conn = _conn()
+        try:
+            chiave = protocollo_email.crea_chiave(conn, utente_corrente(), str((request.get_json(silent=True) or {}).get("nome") or ""))
+            risposta = jsonify({"chiave": chiave})  # si vede una volta sola: nel database c'è solo l'impronta
+            risposta.headers["Cache-Control"] = "no-store"
+            return risposta, 201
+        finally:
+            conn.close()
+
+    @bp.delete("/api/segreteria/protocollo/chiavi/<int:id_chiave>")
+    @protezione
+    def api_protocollo_revoca_chiave(id_chiave: int):
+        if not _puo_decidere():
+            return jsonify({"error": "Operazione riservata agli amministratori e alla segreteria"}), 403
+        conn = _conn()
+        try:
+            fatto = protocollo_email.revoca(conn, id_chiave, None if ruolo_corrente() == "amministratore" else utente_corrente())
+            return (jsonify({"ok": True}), 200) if fatto else (jsonify({"error": "Chiave non trovata"}), 404)
+        finally:
+            conn.close()
+
+    @bp.get("/monitoraggio/segreteria/programma-protocollo")
+    @protezione
+    def programma_protocollo():
+        nome, contenuto = protocollo_email.programma_zip(request.host_url.rstrip("/"))
+        return send_file(io.BytesIO(contenuto), mimetype="application/zip", as_attachment=True, download_name=nome)
+
+    @bp.post("/api/programma-protocollo/ricevi")
+    def api_programma_ricevi():
+        """Dal programma sul PC: niente sessione, vale la chiave personale (header Authorization: Bearer mp_...)."""
+        intestazione = request.headers.get("Authorization", "")
+        chiave = intestazione[7:].strip() if intestazione.startswith("Bearer ") else None
+        if request.content_length and request.content_length > 2 * 1024 * 1024:
+            return jsonify({"error": "Invio troppo grande"}), 413
+        conn = _conn()
+        try:
+            chi = protocollo_email.utente_della_chiave(conn, chiave)
+            if not chi:
+                return jsonify({"error": "Chiave non valida o revocata: generane una nuova nella pagina File segreteria"}), 401
+            corpo = request.get_json(silent=True) or {}
+            return jsonify(protocollo_email.ricevi(conn, corpo.get("voci") or [], chi, str(corpo.get("casella") or "")))
+        except ValueError as e:
             return jsonify({"error": str(e)}), 400
         finally:
             conn.close()

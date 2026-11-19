@@ -4,7 +4,7 @@ graduatoria, scorrimento o rettifica compare una sola volta, con lo stato su ogn
 """
 from collections import defaultdict
 
-from . import config, profili, punteggi, referenti, segreteria
+from . import config, profili, protocollo_email, punteggi, referenti, segreteria
 from .collegamento import _da_confrontare
 from . import sedi
 from .fonti.sol import url_punteggi
@@ -122,6 +122,8 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
     versione = segreteria.versione_in_uso(conn)
     atti_seg = segreteria.atti_versione(conn, versione["id"]) if versione else []
     periodo = _periodo_segreteria(atti_seg)
+    # spec 010: i protocolli approvati dalle email di Titulus valgono come righe del file, finché non ci sono davvero
+    atti_seg = atti_seg + protocollo_email.atti_approvati(conn, {str(x["protocollo"]) for x in atti_seg if x.get("protocollo")})
     bandi_seg: dict = {}         # chiave bando -> atto "bando" del file
     solo_file: dict = {}         # numero bando senza bando su URP/SOL -> dati per la riga
     for a in atti_seg:
@@ -133,10 +135,12 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
         if a["categoria"] == "bando":
             bandi_seg.setdefault(chiave_bando, a)
             continue
-        extra = {"persone": a["persone"], "protocollo_privato": a["protocollo_privato"], "codice_sotto": a["codice_sotto"]}
+        extra = {"persone": a["persone"], "protocollo_privato": a["protocollo_privato"], "codice_sotto": a["codice_sotto"],
+                 "aggiunto_automaticamente": bool(a.get("aggiunto_automaticamente"))}
         gia = voci[chiave_bando]["segreteria"].get((a["categoria"], a["protocollo"]))
         voce = voci[chiave_bando]["segreteria"].setdefault((a["categoria"], a["protocollo"]), _voce(
-            a["categoria"], a["data"], a["protocollo"], url_file_segreteria(atto=a["id"]), a["sottotipo"], "segreteria",
+            a["categoria"], a["data"], a["protocollo"], url_file_segreteria(atto=a["id"]) if a["id"] else "/monitoraggio/segreteria#protocollo",
+            a["sottotipo"], "segreteria",
             a["titolo"], extra))
         if gia is not None:  # stesso atto per più sedi: il file ha una riga per ogni sede
             voce["persone"] = (voce.get("persone") or 0) + (a["persone"] or 0)
@@ -146,7 +150,8 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
 
     def cella(fonte, voce, applicabile_urp, categoria, data):
         if voce is not None:
-            return {"stato": PRESENTE, "url": voce.get("url"), "protocollo": voce.get("protocollo")}
+            return {"stato": PRESENTE, "url": voce.get("url"), "protocollo": voce.get("protocollo"),
+                    **({"automatico": True} if voce.get("aggiunto_automaticamente") else {})}
         if fonte == "segreteria":
             if not versione:
                 return {"stato": NON_CARICATO}
@@ -241,7 +246,7 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
         data_bando = (b["data_pubblicazione"] if b else None) or (seg_bando["data"] if seg_bando else None)
         if (b or seg_bando) and dal <= (data_bando or "") <= al:
             voce_seg = _voce("bando", seg_bando["data"], seg_bando["protocollo"],
-                             url_file_segreteria(atto=seg_bando["id"])) if seg_bando else None
+                             url_file_segreteria(atto=seg_bando["id"]) if seg_bando["id"] else "/monitoraggio/segreteria#protocollo") if seg_bando else None
             note = []
             if seg_bando and "urp" in sch and seg_bando["protocollo"] and sch["urp"]["protocollo"] \
                     and seg_bando["protocollo"] != sch["urp"]["protocollo"]:
