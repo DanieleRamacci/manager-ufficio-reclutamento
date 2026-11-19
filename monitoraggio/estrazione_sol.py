@@ -215,11 +215,15 @@ def scorrimenti_sol(righe_estrazione: list[dict]) -> dict[str, list[dict]]:
 
 
 def righe_excel(righe_estrazione: list[dict], dal: str, al: str, mobilita: set[str]) -> tuple[list, list]:
-    """Le righe del file graduatorie: chi è nelle graduatorie del periodo, per gruppo di concorsi, bando e punteggio decrescente.
+    """Le righe del file graduatorie: i candidati dei bandi con una graduatoria nel periodo, per gruppo di concorsi, bando e
+    punteggio decrescente. Restano anche i candidati non entrati in graduatoria (senza protocollo né esito), dopo gli altri dello
+    stesso bando, come nell'export di Selezioni Online (scelta dell'utente del 2026-11-19).
     `mobilita`: numeri di bando di mobilità o comando, che vanno nel foglio a parte."""
     ordine = {g: i for i, g in enumerate([*verifica_file.GRUPPI, verifica_file.ALTRO])}
-    scelte = [v for v in righe_estrazione if v["protocollo_graduatoria"] and (not v["data_graduatoria"] or dal <= v["data_graduatoria"] <= al)]
-    scelte.sort(key=lambda v: (ordine[verifica_file.gruppo_di_profilo(v["profilo"])], v["codice_bando"],
+    nel_periodo = lambda v: v["protocollo_graduatoria"] and (not v["data_graduatoria"] or dal <= v["data_graduatoria"] <= al)  # noqa: E731
+    con_graduatoria = {v["codice_bando"] for v in righe_estrazione if nel_periodo(v)}
+    scelte = [v for v in righe_estrazione if nel_periodo(v) or (not v["protocollo_graduatoria"] and v["codice_bando"] in con_graduatoria)]
+    scelte.sort(key=lambda v: (ordine[verifica_file.gruppo_di_profilo(v["profilo"])], v["codice_bando"], not v["protocollo_graduatoria"],
                                -(verifica_file.punteggio_numero(v["punteggio"]) or 0), verifica_file.punteggio_numero(v["posizione"]) or 9999))
     riga = lambda v: ([v["colonne"].get(h) for h in INTESTAZIONI_EXCEL], False)  # noqa: E731
     return ([riga(v) for v in scelte if v["numero_bando"] not in mobilita], [riga(v) for v in scelte if v["numero_bando"] in mobilita])

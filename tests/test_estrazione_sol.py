@@ -106,3 +106,15 @@ def test_nominativi_apostrofi_refusi_e_persone_sotto_un_altro_bando():
     assert a["minori"] == ["nome scritto diverso: «Boscherini Inventato» su Selezioni Online, «Boscherini Inventatp» nel file della segreteria"]
     assert a["gravi"] == ["2 persone nel file della segreteria per questo bando sono su Selezioni Online sotto «367.483 RIC IEIIT PD (prot. 448313)»: "
                           "bando o protocollo da verificare (Altro Inventato, Ancora Inventato)"]
+
+
+
+def test_nel_file_restano_i_candidati_non_in_graduatoria_dopo_gli_altri():
+    estrazione = es.leggi(_file([
+        _candidato("367.562 RIC ISSMC", "Ricercatore III livello", "Fuori", "40", "", protocollo="", data="", esito=""),
+        _candidato("367.562 RIC ISSMC", "Ricercatore III livello", "Dentro", "80", "1", protocollo="0445338"),
+        _candidato("367.999 RIC ALTRO", "Ricercatore III livello", "Altrobando", "50", "", protocollo="", data=""),  # bando senza graduatoria
+    ]))
+    concorsi, _ = es.righe_excel(estrazione, "2026-10-01", "2026-10-31", set())
+    cognome = INTESTAZIONI_EXCEL.index("Cognome")
+    assert [v[cognome] for v, _ in concorsi] == ["Dentro", "Fuori"]
