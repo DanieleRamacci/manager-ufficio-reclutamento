@@ -142,14 +142,26 @@ class _Email:
         self.Body, self.Subject, self.ReceivedTime, self.EntryID = corpo, oggetto, _Data(quando), id_
 
 
-class _Elementi(list):
+class _Raccolta(list):
+    """Come le raccolte di Outlook: Count e Item(i) da 1; un elemento None simula quello che non risponde."""
+    @property
+    def Count(self):
+        return len(self)
+
+    def Item(self, i):
+        if self[i - 1] is None:
+            raise OSError(-1039924975, "OLE error 0xc2040111")
+        return self[i - 1]
+
+
+class _Elementi(_Raccolta):
     def Sort(self, *a):
         self.sort(key=lambda e: (e.ReceivedTime.year, e.ReceivedTime.month, e.ReceivedTime.day), reverse=True)
 
 
 class _Cartella:
     def __init__(self, email=(), sotto=()):
-        self.Items, self.Folders = _Elementi(email), list(sotto)
+        self.Items, self.Folders = _Elementi(email), _Raccolta(sotto)
 
 
 class _Casella:
@@ -177,7 +189,7 @@ def test_piu_caselle_in_outlook_ognuna_con_il_suo_nome(ambiente, tmp_path, monke
     pubbliche = _Casella("Cartelle pubbliche", _Cartella([_Email(EMAIL_2, "x", oggi, "d")]), tipo=2)
 
     class _Ns:
-        Stores = [personale, segreteria, pubbliche]
+        Stores = _Raccolta([personale, None, segreteria, pubbliche])  # None: la casella che dà l'errore OLE 0xc2040111
     monkeypatch.setattr(prog, "_outlook", lambda: _Ns())
     voci, lette = prog.da_outlook(60)
     assert lette == ["mario.rossi@cnr.it", "Segreteria Reclutamento"]  # le cartelle pubbliche no

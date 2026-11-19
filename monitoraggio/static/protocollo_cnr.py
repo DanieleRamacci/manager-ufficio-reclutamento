@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 SERVER = "__SERVER__"
-VERSIONE = "1.1"
+VERSIONE = "1.2"
 FRASE = "Il sistema di protocollo"
 NUMERO = re.compile(r"N\.\s*(\d{1,7})\s+del\s+(\d{8})\s*\(([^)\s]+)\)")
 CONFIG = Path(os.environ.get("APPDATA") or Path.home()) / "MonitoraggioProtocollo" / "config.json"
@@ -70,16 +70,37 @@ def _outlook():
         raise SystemExit("Outlook classico non risponde. Con il «nuovo Outlook» usa la modalità cartella (vedi LEGGIMI.txt).")
 
 
+def _elementi(collezione, cosa: str = "elemento"):
+    """Gli elementi di una raccolta di Outlook uno per uno: se uno non risponde (casella condivisa non raggiungibile, archivio
+    .pst scollegato, account che chiede la password) si salta, invece di fermare tutto (errore OLE 0xc2040111)."""
+    try:
+        quanti = collezione.Count
+    except Exception:
+        return
+    for i in range(1, quanti + 1):
+        try:
+            yield collezione.Item(i)
+        except Exception as e:
+            print(f"   {cosa} {i} non leggibile, saltato ({_errore(e)})")
+
+
+def _errore(e) -> str:
+    try:
+        return f"{e.args[1]} {hex(e.args[0] & 0xFFFFFFFF)}"
+    except Exception:
+        return type(e).__name__
+
+
 def caselle(ns) -> list:
     """Le caselle collegate al profilo di Outlook (personale, generale della segreteria, altri account), senza cartelle pubbliche."""
     trovate = []
-    for store in ns.Stores:
+    for store in _elementi(ns.Stores, "casella"):
         try:
             if getattr(store, "ExchangeStoreType", None) == 2:  # cartelle pubbliche
                 continue
             trovate.append((store, str(store.DisplayName or "").strip() or "casella senza nome"))
-        except Exception:
-            continue
+        except Exception as e:
+            print(f"   una casella non risponde, saltata ({_errore(e)})")
     return trovate
 
 
@@ -94,6 +115,7 @@ def da_outlook(giorni: int, tutte: bool = False, filtro: list[str] | None = None
         try:
             elementi = f.Items
             elementi.Sort("[ReceivedTime]", True)
+            elementi = _elementi(elementi, "email")
         except Exception:
             elementi = []
         for it in elementi:
@@ -112,20 +134,30 @@ def da_outlook(giorni: int, tutte: bool = False, filtro: list[str] | None = None
                 continue
         if profondita < 4:
             try:
-                for sotto in f.Folders:
+                for sotto in _elementi(f.Folders, "cartella"):
                     cartella(sotto, nome_casella, profondita + 1)
             except Exception:
                 pass
 
-    for store, nome in caselle(ns):
+    elenco = caselle(ns)
+    for store, nome in elenco:
         if filtro and not any(x.lower() in nome.lower() for x in filtro):
             continue
         try:
             inbox = store.GetDefaultFolder(6)
         except Exception:
             inbox = None  # es. archivio .pst o casella senza Posta in arrivo: si legge tutta
-        cartella(store.GetRootFolder() if tutte or inbox is None else inbox, nome)
-        lette.append(nome)
+        try:
+            cartella(store.GetRootFolder() if tutte or inbox is None else inbox, nome)
+            lette.append(nome)
+        except Exception as e:
+            print(f"   casella «{nome}» non leggibile, saltata ({_errore(e)})")
+    if not elenco:  # Outlook non dà l'elenco delle caselle: almeno la Posta in arrivo principale
+        try:
+            cartella(ns.GetDefaultFolder(6), "Posta in arrivo")
+            lette.append("Posta in arrivo")
+        except Exception as e:
+            raise SystemExit(f"Outlook non permette di leggere la posta ({_errore(e)}). Apri Outlook classico e riprova.")
     return trovate, lette
 
 
