@@ -69,8 +69,11 @@
         <h2>Programma protocollo</h2>
         <p class="muted small" style="margin-top:0">I PC su cui gira il programma che legge le email di Titulus in copia (si scarica da File segreteria &gt; Documenti in uscita protocollo). Un PC nuovo resta <b>in attesa</b>: finché non lo abiliti il sito non accetta i suoi dati. Disabilitandolo smette di mandarli; revocando la chiave smettono tutti i PC che la usano.</p>
         <div class="errore" id="errore-programma" role="alert" hidden></div>
-        <div class="scroll"><table id="tabella-pc" style="min-width:1000px"></table></div>
-        <details style="margin-top:12px"><summary class="small">Chiavi del programma</summary><div class="scroll" style="margin-top:8px"><table id="tabella-chiavi" style="min-width:640px"></table></div></details>
+        <p id="riepilogo-pc" class="small" style="margin:8px 0"><span class="muted">Caricamento…</span></p>
+        <h3 style="margin:10px 0 6px">PC collegati</h3>
+        <div class="scroll"><table id="tabella-pc" style="min-width:1000px"><thead><tr><th>Stato</th><th>PC</th><th>Utente Windows</th><th>Chiave (utente del sito)</th><th>Primo contatto</th><th>Ultimo contatto</th><th>Caselle lette</th><th>Email mandate</th><th>Azioni</th></tr></thead><tbody><tr><td colspan="9" class="muted">Caricamento…</td></tr></tbody></table></div>
+        <h3 style="margin:16px 0 6px">Chiavi del programma</h3>
+        <div class="scroll"><table id="tabella-chiavi" style="min-width:640px"><thead><tr><th>Nome</th><th>Utente del sito</th><th>Creata</th><th>Ultimo uso</th><th></th></tr></thead><tbody><tr><td colspan="5" class="muted">Caricamento…</td></tr></tbody></table></div>
       </section>
 
       <section id="s-aggiornamenti" hidden>
@@ -294,7 +297,17 @@
   const STATI_PC = { in_attesa: ["p-warn", "in attesa di abilitazione"], abilitato: ["p-ok", "abilitato"], disabilitato: ["p-na", "disabilitato"] };
   async function caricaProgramma() {
     let d;
-    try { errore("errore-programma"); d = await chiama("/api/impostazioni/programma-protocollo"); } catch (e) { errore("errore-programma", e.message); return; }
+    try { errore("errore-programma"); d = await chiama("/api/impostazioni/programma-protocollo"); }
+    catch (e) {
+      errore("errore-programma", `Non riesco a leggere i PC collegati: ${e.message}`);
+      $("riepilogo-pc").textContent = "";
+      $("tabella-pc").querySelector("tbody").innerHTML = `<tr><td colspan="9" class="muted">Dati non disponibili.</td></tr>`;
+      return;
+    }
+    const conta = (s) => d.pc.filter(p => p.stato === s).length, attive = d.chiavi.filter(c => !c.revocata_il).length;
+    $("riepilogo-pc").innerHTML = d.pc.length
+      ? `<b>${conta("abilitato")}</b> PC abilitati · <b class="${conta("in_attesa") ? "rosso" : ""}">${conta("in_attesa")}</b> in attesa di abilitazione · ${conta("disabilitato")} disabilitati · ${attive} chiavi attive`
+      : `<b>Nessun PC collegato.</b> ${attive ? `${attive} ${attive === 1 ? "chiave attiva" : "chiavi attive"}, ma nessun PC l'ha ancora usata.` : "Nessuna chiave generata."}`;
     $("tabella-pc").innerHTML = `<thead><tr><th>Stato</th><th>PC</th><th>Utente Windows</th><th>Chiave (utente del sito)</th><th>Primo contatto</th><th>Ultimo contatto</th><th>Caselle lette</th><th>Email mandate</th><th>Azioni</th></tr></thead><tbody>` +
       (d.pc.map(p => `<tr><td><span class="pillola ${STATI_PC[p.stato][0]}">${STATI_PC[p.stato][1]}</span>${p.revocata_il ? `<div class="etichetta" style="margin-top:4px">chiave revocata</div>` : ""}</td>
         <td><b>${esc(p.nome_pc)}</b>${p.versione ? `<div class="muted small">versione ${esc(p.versione)}</div>` : ""}</td><td>${esc(p.utente_windows)}</td>
@@ -303,11 +316,11 @@
         <td class="small">${p.caselle.map(esc).join("<br>") || "–"}</td><td>${p.email_ricevute}</td>
         <td>${p.stato === "abilitato" ? `<button type="button" class="piccolo" data-pc="${p.id}" data-abilita="0">Disabilita</button>` : `<button type="button" class="primario piccolo" data-pc="${p.id}" data-abilita="1">Abilita</button>`}
           ${p.deciso_da ? `<div class="muted small">${esc(p.deciso_da)} · ${ora(p.deciso_il)}</div>` : ""}</td></tr>`).join("")
-        || `<tr><td colspan="9" class="muted">Nessun PC ha ancora contattato il sito.</td></tr>`) + `</tbody>`;
+        || `<tr><td colspan="9"><b>Nessun PC collegato.</b><div class="muted small" style="margin-top:4px">Per collegarne uno: in <a href="/monitoraggio/segreteria#protocollo">File segreteria &gt; Documenti in uscita protocollo</a> genera una chiave e scarica il programma; sul PC avvia «Leggi-e-invia.bat» e incolla la chiave. Il PC compare qui «in attesa di abilitazione» («Prova-senza-inviare.bat» non contatta il sito).</div></td></tr>`) + `</tbody>`;
     $("tabella-chiavi").innerHTML = `<thead><tr><th>Nome</th><th>Utente del sito</th><th>Creata</th><th>Ultimo uso</th><th></th></tr></thead><tbody>` +
       (d.chiavi.map(c => `<tr><td>${esc(c.nome || "chiave")}</td><td>${esc(c.utente)}</td><td class="small">${ora(c.creata_il)}</td><td class="small">${c.usata_il ? ora(c.usata_il) : "mai"}</td>
         <td>${c.revocata_il ? `<span class="muted small">revocata ${ora(c.revocata_il)}</span>` : `<button type="button" class="piccolo" data-revoca-chiave="${c.id}">Revoca</button>`}</td></tr>`).join("")
-        || `<tr><td colspan="5" class="muted">Nessuna chiave.</td></tr>`) + `</tbody>`;
+        || `<tr><td colspan="5" class="muted">Nessuna chiave generata: si genera in File segreteria &gt; Documenti in uscita protocollo.</td></tr>`) + `</tbody>`;
     document.querySelectorAll("[data-abilita]").forEach(b => b.onclick = async () => {
       const abilitato = b.dataset.abilita === "1";
       if (!abilitato && !confirm("Disabilitare questo PC? Il sito non accetterà più i suoi dati.")) return;
