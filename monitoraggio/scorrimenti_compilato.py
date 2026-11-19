@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 import openpyxl
 
 from . import verifica_file
-from .normalizza import norm_space, numero_bando, protocollo
+from .normalizza import codice_sotto, norm_space, numero_bando, protocollo
 
 _SUBENTRO = re.compile(r"subentr|rinunci", re.I)
 _CESSAZIONE = re.compile(r"cessaz|6\s*mesi|sei\s*mesi", re.I)
@@ -49,6 +49,12 @@ def tipo_di(testo: str | None) -> str | None:
     return "subentro" if _SUBENTRO.search(testo) else "cessazione" if _CESSAZIONE.search(testo) else "scorrimento"
 
 
+def _protocolli_testo(valore) -> list[str]:
+    """I protocolli scritti in una cella: «461293 DEL 28/10/2026», «prot. n. 426499 del 7 ottobre», «Protocollo 429837/2026»."""
+    testo = re.sub(r"(\d{5,7})/(\d{4})\b", r"\1 ", _testo(valore))  # il numero seguito dall'anno è un protocollo
+    return sorted({protocollo(p) for p in _PROTOCOLLO.findall(testo)})
+
+
 def leggi_file(contenuto: bytes) -> dict:
     """Le righe compilate di tutti i fogli e i nomi dei fogli (anche vuoti)."""
     try:
@@ -74,10 +80,11 @@ def leggi_file(contenuto: bytes) -> dict:
             if bando in (None, "") or "TOTALE" in _testo(bando).upper():  # anche i subtotali «CODICE 13 ROMA TOTALE»
                 continue
             leggibili = [_testo(valori[i]) for t, i in colonne.items() if "NOMINATIV" not in t and i < len(valori)]
-            provvedimenti = " ".join(_testo(prendi(x)) for x in ("PROVVEDIMENTO DG", "PROVVEDIMENTO RECLUTAMENTO"))
+            # due provvedimenti: quello del DG (può valere per più sedi) e quello di reclutamento, che identifica lo scorrimento
+            dg, rec = (_protocolli_testo(prendi(x)) for x in ("PROVVEDIMENTO DG", "PROVVEDIMENTO RECLUTAMENTO"))
             posizioni = prendi("POSIZION")
-            voci.append({"foglio": ws.title, "riga": n, "bando": _testo(bando), "numero_bando": _numero(bando),
-                         "protocolli": sorted({protocollo(p) for p in _PROTOCOLLO.findall(provvedimenti)}),
+            voci.append({"foglio": ws.title, "riga": n, "bando": _testo(bando), "numero_bando": _numero(bando), "sede": codice_sotto(_testo(bando)),
+                         "protocolli": sorted(set(dg) | set(rec)), "protocolli_dg": dg, "protocolli_rec": rec,
                          "tipologia": _testo(prendi("TIPOLOGIA")), "subentro": any(_SUBENTRO.search(t) for t in leggibili),
                          "nominativi": verifica_file.dividi_nominativi(prendi("NOMINATIV")),
                          "posizioni": int(posizioni) if isinstance(posizioni, (int, float)) or str(posizioni or "").strip().isdigit() else None})
@@ -115,22 +122,58 @@ def _protocolli_riga(riga: dict) -> set[str]:
 
 
 def _blocchi(voci: list[dict]) -> list[dict]:
-    """Le righe dello stesso bando, foglio e protocolli sono un solo scorrimento (una riga per nominativo)."""
-    blocchi: dict[tuple, dict] = {}
-    for i, v in enumerate(voci):
-        chiave = (v.get("numero_bando") or v["bando"], v["foglio"], tuple(v["protocolli"]))
-        b = blocchi.setdefault(chiave, {"numero_bando": v.get("numero_bando"), "bando": v["bando"], "foglio": v["foglio"],
-                                        "protocolli": list(v["protocolli"]), "indici": [], "righe": [], "tipologie": [],
-                                        "nominativi": [], "posizioni": None, "subentro": False})
+    """Uno scorrimento del file: le righe dello stesso bando, foglio e sede con lo stesso protocollo di reclutamento (una riga per
+    nominativo). Il provvedimento del DG può valere per più sedi: una riga che ha solo quello si aggancia allo scorrimento della
+    stessa sede con lo stesso DG ed è incompleta (es. ottobre 2026, Firenze riga 31). Righe senza protocolli: un blocco per sede."""
+    blocchi: list[dict] = []
+
+    def nuovo(v, base):
+        b = {"_base": base, "numero_bando": v.get("numero_bando"), "bando": v["bando"], "foglio": v["foglio"], "rec": set(), "dg": set(),
+             "indici": [], "righe": [], "tipologie": [], "nominativi": [], "posizioni": None, "subentro": False, "_righe": []}
+        blocchi.append(b)
+        return b
+
+    def aggiungi(b, i, v):
+        b["rec"] |= set(v.get("protocolli_rec") or [])
+        b["dg"] |= set(v.get("protocolli_dg") or [])
         b["indici"].append(i)
         b["righe"].append(v["riga"])
+        b["_righe"].append(v)
         if v.get("tipologia"):
             b["tipologie"].append(v["tipologia"])
         b["nominativi"] += v.get("nominativi") or []
         if v.get("posizioni") is not None:
             b["posizioni"] = (b["posizioni"] or 0) + v["posizioni"]
         b["subentro"] = b["subentro"] or bool(v.get("subentro"))
-    return list(blocchi.values())
+
+    base_di = lambda v: (v.get("numero_bando") or v["bando"], v["foglio"], v.get("sede"))  # noqa: E731
+    rec_di = lambda v: set(v.get("protocolli_rec", v.get("protocolli")) or [])  # noqa: E731  (voci salvate prima della spec 011)
+    for i, v in enumerate(voci):  # prima le righe con il protocollo di reclutamento
+        rec = rec_di(v)
+        if rec:
+            b = next((b for b in blocchi if b["_base"] == base_di(v) and b["rec"] & rec), None) or nuovo(v, base_di(v))
+            aggiungi(b, i, v)
+    for i, v in enumerate(voci):  # poi le altre: con il solo DG si agganciano alla stessa sede, altrimenti fanno blocco da sole
+        if rec_di(v):
+            continue
+        dg = set(v.get("protocolli_dg") or [])
+        b = next((b for b in blocchi if b["_base"] == base_di(v) and dg and b["dg"] & dg), None) \
+            or next((b for b in blocchi if b["_base"] == base_di(v) and not b["rec"] and b["dg"] == dg), None) or nuovo(v, base_di(v))
+        aggiungi(b, i, v)
+    for b in blocchi:
+        b["protocolli"] = sorted(b["rec"] | b["dg"])
+        b["righe"].sort()
+        con_tipologia = any(r.get("tipologia") for r in b["_righe"])
+        b["incomplete"] = []
+        for r in sorted(b["_righe"], key=lambda r: r["riga"]):
+            manca_rec = sorted(b["rec"] - set(r.get("protocolli_rec") or []))
+            cosa = ([f"il protocollo del provvedimento di reclutamento {', '.join(manca_rec)}"] if manca_rec else []) + \
+                   (["la tipologia"] if con_tipologia and not r.get("tipologia") else [])
+            if len(b["_righe"]) > 1 and cosa and "protocolli_rec" in r:
+                b["incomplete"].append(f"{b['foglio']}, riga {r['riga']}: manca {' e '.join(cosa)}, che le altre righe dello scorrimento hanno")
+        for k in ("_righe", "rec", "dg"):
+            del b[k]
+    return blocchi
 
 
 def _dove(b: dict) -> str:
@@ -207,6 +250,7 @@ def confronta(righe: list[dict], voci: list[dict], fogli: list[str] | None = Non
                 gravi.append("tipologia non indicata")
             if not any(blocchi[i]["protocolli"] for i in trovati):
                 gravi.append("protocollo del provvedimento non indicato")
+            gravi += [x for i in trovati for x in blocchi[i]["incomplete"]]
             if attesa == "subentro" and not subentro_indicato:
                 gravi.append("subentro non indicato")
             tipo_file = tipo_di(tipologia)

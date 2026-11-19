@@ -178,3 +178,23 @@ def test_protocollo_diverso_con_le_stesse_persone_e_refuso_nell_ordine_scritto()
     assert per["367.434 COD 14"]["gravi"] == [] and per["367.434 COD 14"]["minori"] == [
         "nome scritto diverso: «DELL'ANNA ADDA» nel file scorrimenti, «DELL’ANNA NADA» nel file della segreteria"]
     assert esito["solo_nel_file"] == []
+
+
+def test_provvedimento_dg_comune_alle_sedi_e_riga_incompleta():
+    """Ottobre 2026: il provvedimento DG 457623 vale per più sedi; lo scorrimento è quello di reclutamento (461291 Firenze,
+    461295 Napoli). La riga 31 di Firenze ha solo il DG: è incompleta, non un altro scorrimento. «429837/2026» è un protocollo."""
+    dg = " provvedimento del Direttore Generale prot. 457623  in data 27 ottobre 2026"
+    file = _file({"COLL.AMM": [["367.434 Cod. 11 FIRENZE", 1, None, None, "Uno Inventato", dg, "461291 DEL 28/10/2026", "SCORRIMENTO"],
+                               ["367.434 Cod. 11 FIRENZE", 1, None, None, "Due Inventato", dg, None, None],
+                               ["367.434 Cod. 14 NAPOLI", 1, None, None, "Tre Inventato", dg, "461295 DEL 28/10/2026", "SCORRIMENTO"]],
+                  "PT": [[367598, 1, "UPE", None, "Quattro Inventato", "prot. n. 426499 del 7 ottobre 2026", "Protocollo\xa0429837/2026 del 09/10/2026", "Scorrimento"]]})
+    letto = sc.leggi_file(file)
+    assert [v["protocolli_rec"] for v in letto["voci"] if v["foglio"] == "PT"] == [["429837"]]
+    righe = [_riga("367.434", "461291", "367.434 COD 11"), _riga("367.434", "461295", "367.434 COD 14"), _riga("367.598", "429837", "367.598 PT", gruppo_bando=99)]
+    esito = sc.confronta(righe, letto["voci"], letto["fogli"], profili_bandi=PROFILI)
+    per = {a["chiave"]: a for a in esito["atti"]}
+    assert per["367.434 COD 11"]["nominativi"] == 2 and per["367.434 COD 14"]["nominativi"] == 1  # le sedi non si mescolano
+    assert per["367.434 COD 11"]["gravi"] == ["COLL.AMM, riga 4: manca il protocollo del provvedimento di reclutamento 461291 e la tipologia, "
+                                             "che le altre righe dello scorrimento hanno"]
+    assert per["367.598 PT"]["trovato"] and per["367.598 PT"]["gravi"] == [] and per["367.598 PT"]["minori"] == []
+    assert esito["solo_nel_file"] == []
