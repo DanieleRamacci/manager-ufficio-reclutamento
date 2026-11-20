@@ -133,7 +133,9 @@ def test_senza_esito_per_sede(db):
     salva(db, "urp", [scheda("urp", "/node/9", "367.433 FA", "367.433", data="2024-01-10",
                              documenti=[{**doc("ug", "graduatoria", "5", "2023-06-01"), "titolo": "Graduatoria - cod. 01"}])])
     collegamento.collega(db)
-    assert [x["scheda"]["codice_originale"] for x in atti.senza_esito(db, oggi)] == ["367.433 FA - CODICE 02"]
+    # cod. 01 ha una graduatoria sua: decidono i punteggi (tipo «sede»); cod. 02 non ha niente: concorso senza esito
+    assert {x["scheda"]["codice_originale"]: x["tipo"] for x in atti.senza_esito(db, oggi)} == {
+        "367.433 FA - CODICE 01": "sede", "367.433 FA - CODICE 02": "bando"}
 
 
 def test_senza_esito_nello_stato_complessivo(db):
@@ -381,6 +383,7 @@ def test_sede_senza_vincitori_con_graduatoria_generale(db):
     assert set(righe) == {"367.501 CTER - CODICE 03 IBSBC MI"}  # c1 ha un vincitore, c4 non è ancora controllata
     r = righe["367.501 CTER - CODICE 03 IBSBC MI"]
     assert r["stato_deserto"] == "sede_senza_esito" and r["sede_di"] == "367.501 CTER" and "284411" in r["esito_verifica"]["testo"]
+    assert (r["data"], r["protocollo"]) == ("2026-06-22", "284411")  # la data è quella della graduatoria generale
     assert atti.sedi_da_controllare(db) == 1
 
 
@@ -389,7 +392,12 @@ def test_sede_con_graduatoria_specifica_non_e_un_dubbio(db):
     salva(db, "urp", [scheda("urp", "/node/501", "367.501 CTER", "367.501", data="2025-07-23",
                              documenti=[{**doc("g", "graduatoria", "284411", "2026-06-22"), "titolo": "Graduatoria"},
                                         {**doc("g3", "graduatoria", "9", "2026-06-22"), "titolo": "Graduatoria cod. 03"}])])
-    assert "c3" not in {x["scheda"]["id_esterno"] for x in atti.senza_esito(db, date(2026, 11, 20))}
+    # anche con una graduatoria del codice decidono i punteggi (es. 367.433 cod. 04: «Graduatoria» con esito negativo);
+    # con un vincitore su SOL la sede non compare
+    sid = ids["c3"]
+    db.execute("INSERT INTO punteggi_verifica (scheda_id, verificato_il, domande, con_punteggi, vincitori, idonei, scorrimento, "
+               "non_ammessi, esito) VALUES (?, '2026-11-21', 3, 3, 1, 0, 0, 0, 'completi')", (sid,))
+    assert not [r for r in atti.elenco_atti(db, "2000-01-01", None, con_senza_esito=True) if r["atto"] == "senza_esito" and r.get("scheda_sol_id") == sid]
 
 
 def test_segna_deserto_e_annulla(db):
@@ -431,3 +439,21 @@ def test_api_segna(db):
     assert any(x["stato_deserto"] == "segnato_deserto" for x in corpo["atti"] if x.get("stato_deserto"))
     assert c.delete(f"/api/deserti/segna/{ids['c3']}").status_code == 200
     assert c.post(f"/api/deserti/segna/{ids['c3']}", json={"esito": "x"}).status_code == 400
+
+
+
+def test_sede_con_graduatoria_generale_caricata_dentro_la_sede(db):
+    """Come su SOL per il 367.501: la graduatoria generale (284411) è allegata anche a ogni sede, con la data della graduatoria."""
+    salva(db, "sol", [
+        _concorso("p", "367.501 CTER", "367.501", "2025-08-22"),
+        {**_concorso("c7", "367.501 CTER - CODICE 07 IMATI GE", "367.501", "2025-08-22", sotto="7", id_padre="p",
+                     documenti=[{**doc("g7", "graduatoria", "284411", "2026-06-22"), "tipo_fonte": "D:jconon_attachment:call_classification"}]),
+         "data_pubbl_graduatoria": "2026-06-22"},
+    ])
+    collegamento.collega(db)
+    sid = db.execute("SELECT id FROM scheda WHERE id_esterno = 'c7'").fetchone()[0]
+    assert [x["tipo"] for x in atti.senza_esito(db, date(2026, 11, 20))] == ["sede"]
+    db.execute("INSERT INTO punteggi_verifica (scheda_id, verificato_il, domande, con_punteggi, vincitori, idonei, scorrimento, "
+               "non_ammessi, esito) VALUES (?, '2026-11-21', 4, 2, 0, 0, 0, 1, 'parziali')", (sid,))
+    r = next(r for r in atti.elenco_atti(db, "2000-01-01", None, con_senza_esito=True) if r.get("scheda_sol_id") == sid)
+    assert r["stato_deserto"] == "sede_senza_esito" and r["data"] == "2026-06-22"
