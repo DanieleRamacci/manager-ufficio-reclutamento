@@ -202,7 +202,7 @@
 
 
   <section id="panel-deserti" role="tabpanel" aria-labelledby="tab-deserti" hidden>
-    <h2>Concorsi deserti <span class="muted" id="conteggio-deserti-label"></span></h2>
+    <h2>Concorsi deserti · <span id="periodo-deserti">tutti gli anni</span> <span class="muted" id="conteggio-deserti-label"></span></h2>
     <div class="muted small" id="legenda-deserti" style="margin-bottom:8px"></div>
     <div class="filtri">
       <select id="des-stato" aria-label="Stato"><option value="">Tutti gli stati</option></select>
@@ -995,6 +995,7 @@ function disegnaDeserti() {
     && contieneTesto(q, `${a.numero_bando} ${a.codice} ${a.titolo_bando || ""} ${a.protocollo || ""} ${(a.rdp || []).map(r => `${r.nome} ${r.cognome} ${r.email}`).join(" ")}`))
     .sort((x, y) => ORDINE_DESERTI.indexOf(x.stato_deserto) - ORDINE_DESERTI.indexOf(y.stato_deserto) || String(y.data || "").localeCompare(String(x.data || "")));
   deserti.visibili = righe;
+  $("periodo-deserti").textContent = anno ? `anno ${anno}` : "tutti gli anni";
   $("des-stato-controllo").textContent = deserti.daControllare && !$("des-stato-controllo").textContent.startsWith("⏳")
     ? `${deserti.daControllare} sedi di bandi con graduatoria generale da controllare su SOL (premi «Controlla su SOL»)` : $("des-stato-controllo").textContent;
   const conta = (k) => deserti.righe.filter(a => a.stato_deserto === k).length;
@@ -1091,6 +1092,8 @@ function selezionaSchedaAtti(id) {
     $(`tab-${nome}`).setAttribute("aria-selected", String(attiva));
     $(`panel-${nome}`).hidden = !attiva;
   });
+  // Mese e Tipologia della barra valgono per le schede «del mese»: nella scheda deserti c'è il suo filtro Anno
+  [$("mese-solleciti"), $("tipologia-solleciti")].forEach(el => { el.closest("label").hidden = id === "deserti"; });
 }
 [["tab-stato-atti", "stato-atti"], ["tab-graduatorie-mese", "graduatorie-mese"], ["tab-scorrimenti-mese", "scorrimenti-mese"], ["tab-deserti", "deserti"]]
   .forEach(([tab, panel]) => $(tab).addEventListener("click", () => selezionaSchedaAtti(panel)));
