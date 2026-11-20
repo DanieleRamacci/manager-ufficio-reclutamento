@@ -152,7 +152,7 @@
     <div class="filtri">
       <label class="muted">Mese <input type="month" id="atti-mese"></label>
       <button type="button" id="atti-tutto" title="Dal 1° gennaio 2026 a oggi">Tutto il periodo</button>
-      <label class="muted">Anno <select id="atti-anno"><option value="">–</option></select></label>
+      <label class="muted">Anno <select id="atti-anno"><option value="">–</option><option value="tutti">Tutti gli anni</option></select></label>
       <label class="muted">Dal <input type="date" id="atti-dal"></label>
       <label class="muted">Al <input type="date" id="atti-al"></label>
       <select id="atti-tipo">
@@ -912,14 +912,22 @@ $("atti-azzera").onclick = (e) => {
   caricaAtti();
 };
 // spec 012: un anno intero come periodo (es. i concorsi deserti del 2026)
-(() => { const oggi = new Date().getFullYear(); for (let a = oggi; a >= 2016; a--) $("atti-anno").innerHTML += `<option value="${a}">${a}</option>`; })();
+(() => { const oggi = new Date().getFullYear(); for (let a = oggi; a >= 2014; a--) $("atti-anno").innerHTML += `<option value="${a}">${a}</option>`; })();
 $("atti-anno").onchange = () => {
   const a = $("atti-anno").value;
   $("atti-mese").value = "";
-  $("atti-dal").value = a ? `${a}-01-01` : "";
-  $("atti-al").value = a ? `${a}-12-31` : "";
+  $("atti-dal").value = a === "tutti" ? "2000-01-01" : a ? `${a}-01-01` : "";
+  $("atti-al").value = a && a !== "tutti" ? `${a}-12-31` : "";
   caricaAtti();
 };
+// deserti e revoche si cercano su tutti gli anni, se non è stato scelto un periodo: il monitoraggio parte dal 2026
+const TIPI_STORICI = ["deserto", "revocato", "probabile_deserto"];
+$("atti-tipo").addEventListener("change", () => {
+  if (TIPI_STORICI.includes($("atti-tipo").value) && !$("atti-anno").value && !$("atti-mese").value) {
+    $("atti-anno").value = "tutti";
+    $("atti-anno").onchange();
+  }
+});
 // spec 012: domande e punteggi su SOL dei concorsi senza esito (solo conteggi nel database)
 async function seguiControlloSenzaEsito() {
   const { corpo } = await json("/api/punteggi/avanzamento");

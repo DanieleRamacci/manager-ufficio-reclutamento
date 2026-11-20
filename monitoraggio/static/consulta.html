@@ -118,13 +118,13 @@
       <button type="button" role="tab" data-stato="scorrimento" aria-selected="${filtri.schedaStato === "scorrimento"}">Scorrimenti del mese (${scorrimenti})</button>
       <label class="muted">Mese <input type="month" id="mese-stato" value="${esc(mese)}"></label>
       <label class="muted">Tipologia <select id="tipologia-stato"><option value="">Tutte</option><option value="tempo_indeterminato"${filtri.tipologia === "tempo_indeterminato" ? " selected" : ""}>Tempo indeterminato</option><option value="reclutamento_speciale"${filtri.tipologia === "reclutamento_speciale" ? " selected" : ""}>Reclutamento speciale</option><option value="categorie_protette"${filtri.tipologia === "categorie_protette" ? " selected" : ""}>Categorie protette</option><option value="mobilita"${filtri.tipologia === "mobilita" ? " selected" : ""}>Mobilità</option><option value="comando"${filtri.tipologia === "comando" ? " selected" : ""}>Comando</option></select></label>
-      <label class="muted" title="Atti pubblicati nell'anno scelto (es. i concorsi deserti del 2026)">Anno <select id="anno-stato"><option value="">dal ${esc(dataIt(dati.dal))}</option>${Array.from({ length: new Date().getFullYear() - 2015 }, (_, i) => new Date().getFullYear() - i).map(a => `<option value="${a}"${filtri.anno === String(a) ? " selected" : ""}>${a}</option>`).join("")}</select></label>
+      <label class="muted" title="Atti pubblicati nell'anno scelto (es. i concorsi deserti del 2026)">Anno <select id="anno-stato"><option value="">dall'inizio del monitoraggio</option><option value="tutti"${filtri.anno === "tutti" ? " selected" : ""}>Tutti gli anni</option>${Array.from({ length: new Date().getFullYear() - 2013 }, (_, i) => new Date().getFullYear() - i).map(a => `<option value="${a}"${filtri.anno === String(a) ? " selected" : ""}>${a}</option>`).join("")}</select></label>
       <button type="button" class="piccolo" id="esporta-stato" title="Scarica in Excel le righe visibili, scegliendo le colonne">Esporta Excel</button></nav>`;
   }
   function disegnaStato() {
     const v = dati.visitatore;
     $("contenuto").innerHTML = `<section><h1>Stato complessivo</h1>${presentazione(v)}
-      <p class="muted small" style="margin:2px 0 0">Atti pubblicati dal ${esc(dataIt(dati.dal))}${dati.al ? ` al ${esc(dataIt(dati.al))}` : ""}${dati.in_attesa.length ? ` · aggiornamento in corso: ${dati.in_attesa.map(esc).join(", ")}` : ""}.</p></section>
+      <p class="muted small" style="margin:2px 0 0">Atti pubblicati ${filtri.anno === "tutti" ? "in tutti gli anni" : `dal ${esc(dataIt(dati.dal))}`}${dati.al ? ` al ${esc(dataIt(dati.al))}` : ""}${dati.in_attesa.length ? ` · aggiornamento in corso: ${dati.in_attesa.map(esc).join(", ")}` : ""}.</p></section>
       <section>${schedeStato()}</section>
       <section>${barraFiltri(v)}<div id="tabella"></div></section>`;
     const tabella = () => {
@@ -145,6 +145,10 @@
     $("mese-stato").onchange = e => { filtri.meseStato = e.target.value; disegnaStato(); };
     $("tipologia-stato").onchange = e => { filtri.tipologia = e.target.value; disegnaStato(); };
     $("anno-stato").onchange = e => { filtri.anno = e.target.value; carica(); };
+    // deserti e revoche: su tutti gli anni se non è stato scelto un anno (il monitoraggio parte dal 2026)
+    $("f-atto").addEventListener("change", e => {
+      if (["deserto", "revocato", "probabile_deserto"].includes(e.target.value) && !filtri.anno) { filtri.anno = "tutti"; carica(); }
+    });
     $("esporta-stato").onclick = () => App.esportaExcel({ colonne: App.colonneAtti(), righe: righeVisibili, nome: "stato-complessivo",
       url: `${API}/esporta-excel`, chiave: "stato-complessivo" });
     collegaFiltri(tabella); tabella();
@@ -277,7 +281,7 @@
 
   async function carica() {
     try {
-      const periodo = filtri.anno ? `?dal=${filtri.anno}-01-01&al=${filtri.anno}-12-31` : "";
+      const periodo = filtri.anno === "tutti" ? "?dal=2000-01-01" : filtri.anno ? `?dal=${filtri.anno}-01-01&al=${filtri.anno}-12-31` : "";
       dati = await chiama(vista === "stato" ? `${API}/stato${periodo}` : vista === "elenco" ? `${API}/monitoraggi` : `${API}/monitoraggi/${encodeURIComponent(parti[1])}`);
       if (AREA && !document.querySelector(".testata-area")) testataArea(dati.visitatore, vista === "stato" ? "stato" : "monitoraggi");
       ({ stato: disegnaStato, elenco: disegnaElenco, mese: disegnaMese })[vista]();
