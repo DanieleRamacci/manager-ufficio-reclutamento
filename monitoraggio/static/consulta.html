@@ -24,7 +24,7 @@
   const parti = location.pathname.slice(BASE.length).split("/").filter(Boolean);
   const vista = parti[0] === "monitoraggi" ? (parti[1] ? "mese" : "elenco") : "stato";
   if (!AREA) { const s = document.createElement("script"); s.src = "/monitoraggio/menu.js"; document.head.appendChild(s); }
-  const filtri = { q: "", atto: "", difformi: false, come: "", tipologia: "", schedaStato: "stato", schedaMese: "tutti", anno: "" };
+  const filtri = { q: "", atto: "", difformi: false, come: "", tipologia: "", schedaStato: "stato", schedaMese: "tutti", anno: "", statoDeserto: "" };
   if (new URLSearchParams(location.search).get("cerca")) filtri.q = new URLSearchParams(location.search).get("cerca");  // dal riepilogo dei totali
   let dati = null, righeVisibili = [];
 
@@ -116,6 +116,7 @@
       <button type="button" role="tab" data-stato="stato" aria-selected="${filtri.schedaStato === "stato"}">Tutti gli atti (${dati.righe.length})</button>
       <button type="button" role="tab" data-stato="graduatoria" aria-selected="${filtri.schedaStato === "graduatoria"}">Graduatorie pubbliche del mese (${graduatorie})</button>
       <button type="button" role="tab" data-stato="scorrimento" aria-selected="${filtri.schedaStato === "scorrimento"}">Scorrimenti del mese (${scorrimenti})</button>
+      <button type="button" role="tab" data-stato="deserti" aria-selected="${filtri.schedaStato === "deserti"}">Concorsi deserti (${dati.righe.filter(r => ["certo", "senza_provvedimento"].includes(r.stato_deserto)).length})</button>
       <label class="muted">Mese <input type="month" id="mese-stato" value="${esc(mese)}"></label>
       <label class="muted">Tipologia <select id="tipologia-stato"><option value="">Tutte</option><option value="tempo_indeterminato"${filtri.tipologia === "tempo_indeterminato" ? " selected" : ""}>Tempo indeterminato</option><option value="reclutamento_speciale"${filtri.tipologia === "reclutamento_speciale" ? " selected" : ""}>Reclutamento speciale</option><option value="categorie_protette"${filtri.tipologia === "categorie_protette" ? " selected" : ""}>Categorie protette</option><option value="mobilita"${filtri.tipologia === "mobilita" ? " selected" : ""}>Mobilità</option><option value="comando"${filtri.tipologia === "comando" ? " selected" : ""}>Comando</option></select></label>
       <label class="muted" title="Atti pubblicati nell'anno scelto (es. i concorsi deserti del 2026)">Anno <select id="anno-stato"><option value="">dall'inizio del monitoraggio</option><option value="tutti"${filtri.anno === "tutti" ? " selected" : ""}>Tutti gli anni</option>${Array.from({ length: new Date().getFullYear() - 2013 }, (_, i) => new Date().getFullYear() - i).map(a => `<option value="${a}"${filtri.anno === String(a) ? " selected" : ""}>${a}</option>`).join("")}</select></label>
@@ -130,18 +131,29 @@
     const tabella = () => {
       const mese = $("mese-stato")?.value || meseCorrente();
       let base = dati.righe;
-      if (filtri.schedaStato !== "stato") base = base.filter(r => r.atto === filtri.schedaStato && (r.data || "").startsWith(mese));
+      if (filtri.schedaStato === "deserti") base = base.filter(r => r.stato_deserto && (!filtri.statoDeserto || r.stato_deserto === filtri.statoDeserto));
+      else if (filtri.schedaStato !== "stato") base = base.filter(r => r.atto === filtri.schedaStato && (r.data || "").startsWith(mese));
       const righe = filtrate(base);
       righeVisibili = righe;
-      $("tabella").innerHTML = `<div class="muted small" style="margin-bottom:6px">${righe.length} atti su ${base.length}</div><div class="scroll"><table style="min-width:1150px"><thead><tr>
+      const STATI = App.STATI_DESERTO, ORDINE = ["certo", "senza_provvedimento", "graduatoria_mancante", "da_verificare", "in_corso"];
+      const filtroDeserti = filtri.schedaStato !== "deserti" ? "" : `<div class="riga" style="align-items:center;margin-bottom:8px">
+        <select id="stato-deserto" aria-label="Stato del concorso"><option value="">Tutti gli stati</option>${ORDINE.map(k => `<option value="${k}"${filtri.statoDeserto === k ? " selected" : ""}>${esc(STATI[k][1])}</option>`).join("")}</select></div>
+        <div class="muted small" style="margin-bottom:8px">${ORDINE.map(k => `<div>${App.pillolaDeserto({ stato_deserto: k })} ${esc(STATI[k][2])}</div>`).join("")}</div>`;
+      $("tabella").innerHTML = `${filtroDeserti}<div class="muted small" style="margin-bottom:6px">${righe.length} atti su ${base.length}</div><div class="scroll"><table style="min-width:1150px"><thead><tr>
         <th>Data</th><th>Bando</th><th>Tipologia</th><th>Atto</th><th>Prot.</th><th>SOL</th><th>URP</th><th>Segreteria</th><th>Note</th><th>RdP</th><th>Punteggi</th></tr></thead><tbody>
-        ${righe.map(r => `<tr><td>${esc(dataIt(r.data))}</td>${cellaBando(r)}<td>${chipTipologia(r.tipologia)}</td><td>${esc(ATTI[r.atto] || r.atto)}${chipSubentro(r)}</td><td class="mono small">${esc(r.protocollo || "")}</td>
+        ${righe.map(r => `<tr><td>${esc(dataIt(r.data))}</td>${cellaBando(r)}<td>${chipTipologia(r.tipologia)}</td><td>${esc(ATTI[r.atto] || r.atto)}${chipSubentro(r)}${r.stato_deserto ? `<div>${App.pillolaDeserto(r)}</div>` : ""}</td><td class="mono small">${esc(r.protocollo || "")}</td>
           ${cellaFonte(r, "sol")}${cellaFonte(r, "urp")}${cellaFonte(r, "segreteria")}
           <td>${r.note.length ? `<ul class="rilievi">${r.note.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}${r.avviso ? `<div class="small"><span class="pillola p-warn">da verificare</span> ${esc(r.avviso)}</div>` : ""}${App.chipControllo(r)}</td>${cellaRdp(r)}${cellaPunteggi(r)}</tr>${sottoRighe(r, r.note.map(testo => ({ testo })), 11)}`).join("")
           || `<tr><td colspan="11" class="muted">Nessun atto.</td></tr>`}</tbody></table></div>`;
       collegaRdp($("tabella")); collegaCandidati($("tabella"), 11);
+      if ($("stato-deserto")) $("stato-deserto").onchange = e => { filtri.statoDeserto = e.target.value; tabella(); };
     };
-    document.querySelectorAll("[data-stato]").forEach(b => b.onclick = () => { filtri.schedaStato = b.dataset.stato; disegnaStato(); });
+    document.querySelectorAll("[data-stato]").forEach(b => b.onclick = () => {
+      filtri.schedaStato = b.dataset.stato;
+      // i concorsi deserti si guardano su tutti gli anni (il monitoraggio parte dal 2026)
+      if (filtri.schedaStato === "deserti" && !filtri.anno) { filtri.anno = "tutti"; carica(); return; }
+      disegnaStato();
+    });
     $("mese-stato").onchange = e => { filtri.meseStato = e.target.value; disegnaStato(); };
     $("tipologia-stato").onchange = e => { filtri.tipologia = e.target.value; disegnaStato(); };
     $("anno-stato").onchange = e => { filtri.anno = e.target.value; carica(); };
@@ -212,7 +224,7 @@
       ["scorrimento", "Scorrimenti", conta(r => r.atto === "scorrimento"), contaD(r => r.atto === "scorrimento")],
       ["subentro", "di cui subentri", conta(r => r.sottotipo === "subentro"), contaD(r => r.sottotipo === "subentro")],
       ["rettifica", "Rettifiche di graduatoria", conta(r => r.atto === "rettifica"), contaD(r => r.atto === "rettifica")],
-      ...(conta(r => r.atto === "deserto") ? [["deserto", "Concorsi deserti", conta(r => r.atto === "deserto"), contaD(r => r.atto === "deserto")]] : []),
+      ["deserto", "Concorsi deserti", conta(r => r.atto === "deserto"), contaD(r => r.atto === "deserto")],
       ...(conta(r => r.atto === "revocato") ? [["revocato", "Bandi revocati", conta(r => r.atto === "revocato"), contaD(r => r.atto === "revocato")]] : []),
       ...(conta(r => !App.ATTI_CON_SCHEDA.includes(r.atto)) ? [["altro", "Altri atti", conta(r => !App.ATTI_CON_SCHEDA.includes(r.atto)), contaD(r => !App.ATTI_CON_SCHEDA.includes(r.atto))]] : [])];
     const elencoMesi = dati.monitoraggi || [];

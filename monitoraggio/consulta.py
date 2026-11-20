@@ -97,6 +97,7 @@ def _riga(r: dict, v: Visitatore, motivi: list[str]) -> dict:
         **{k: r.get(k) for k in ("numero_bando", "codice", "titolo_bando", "tipologia", "atto", "sottotipo", "data", "protocollo")},
         "fonti": {k: {x: c.get(x) for x in ("stato", "protocollo", "url", "testo")} for k, c in (r.get("fonti") or {}).items() if k in FONTI},
         "avviso": r.get("avviso"), "esito_verifica": r.get("esito_verifica"), "probabile_deserto": bool(r.get("probabile_deserto")),
+        "stato_deserto": r.get("stato_deserto"),
         "protocollo_diverso": bool(r.get("protocollo_diverso")), "note": list(r.get("note") or []), "difforme": bool(r.get("difforme")),
         "rdp": [{k: x.get(k) for k in ("nome", "cognome", "email")} for x in r.get("rdp") or []],
         "link_sol": r.get("link_codice") or sol.get("url"),

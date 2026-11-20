@@ -82,6 +82,10 @@ FUORI_FILE_SEGRETERIA = ("deserto", "revocato")
 CATEGORIE_ATTI = ("graduatoria", "scorrimento", "rettifica", "deserto", "revocato")
 ESITI = ("graduatoria", "scorrimento", "deserto", "revocato")  # un bando con uno di questi atti ha un esito
 MESI_SENZA_ESITO = 12
+MESI_ATTIVITA_RECENTE = 6  # un documento pubblicato negli ultimi 6 mesi: la procedura è in corso, non ferma
+# spec 012: stato del concorso nella scheda «Concorsi deserti»
+STATO_DESERTO = {"deserto": "senza_provvedimento", "graduatoria_mancante": "graduatoria_mancante", "in_corso": "in_corso",
+                 "non_determinabile": "da_verificare", "da_controllare": "da_verificare"}
 TIPOLOGIE_SENZA_ESITO = ("tempo_indeterminato",)  # concorsi pubblici
 
 
@@ -96,7 +100,20 @@ def _data_it(iso: str | None) -> str:
     return f"{iso[8:10]}/{iso[5:7]}/{iso[:4]}" if iso else ""
 
 
-def giudizio(v: dict | None, copertura_segreteria: str | None, scadenza: str) -> dict:
+def giudizio(v: dict | None, copertura_segreteria: str | None, scadenza: str, ultimo: dict | None = None,
+             oggi: date | None = None) -> dict:
+    """Come _giudizio_sol; se SOL non permette di concludere e c'è un documento recente (`ultimo`: data, titolo)
+    la procedura è in corso."""
+    g = _giudizio_sol(v, copertura_segreteria, scadenza)
+    recente = ((oggi or date.today()) - timedelta(days=round(MESI_ATTIVITA_RECENTE * 30.44))).isoformat()
+    if g["codice"] in ("da_controllare", "non_determinabile") and ultimo and (ultimo.get("data") or "") >= recente:
+        titolo = f" («{ultimo['titolo'][:80]}»)" if ultimo.get("titolo") else ""
+        g = {**g, "codice": "in_corso", "testo": f"procedura probabilmente in corso: ultimo documento pubblicato il {_data_it(ultimo['data'])}{titolo}",
+             "dettaglio_sol": g["testo"]}
+    return g
+
+
+def _giudizio_sol(v: dict | None, copertura_segreteria: str | None, scadenza: str) -> dict:
     """Spec 012: che cosa dice Selezioni Online di un concorso senza esito. «deserto» solo con una prova positiva
     (nessuna domanda valida, oppure punteggi di tutti i candidati e tutti non ammessi a una prova): punteggi mancanti
     o parziali possono essere dati non inseriti e non bastano."""
@@ -139,6 +156,18 @@ def senza_esito(conn, oggi: date | None = None) -> list[dict]:
     per_esterno = {s["id_esterno"]: s for s in schede}
     esiti_sol: dict[int, list] = defaultdict(list)  # scheda -> codici di sede degli esiti (None = tutto il bando)
     esiti_urp: dict[int, list] = defaultdict(list)  # bando -> codici di sede degli esiti
+    # ultimo documento pubblicato (qualunque tipo: convocazioni, commissione...) per scheda SOL e per bando su URP
+    ultimi_sol: dict[int, dict] = {}
+    ultimi_urp: dict[int, list] = defaultdict(list)
+    for d in conn.execute(
+            "SELECT s.id AS scheda_id, s.bando_id, s.fonte, d.titolo, d.data_protocollo AS data FROM documento d "
+            "JOIN scheda s ON s.id = d.scheda_id WHERE d.presente = 1 AND s.presente = 1 AND d.data_protocollo IS NOT NULL "
+            "AND d.categoria != 'bando'"):
+        if d["fonte"] == "sol":
+            if d["data"] > (ultimi_sol.get(d["scheda_id"]) or {}).get("data", ""):
+                ultimi_sol[d["scheda_id"]] = {"data": d["data"], "titolo": d["titolo"]}
+        else:
+            ultimi_urp[d["bando_id"]].append({"data": d["data"], "titolo": d["titolo"], "sede": codice_sotto(d["titolo"])})
     for d in conn.execute(
             "SELECT s.id AS scheda_id, s.bando_id, s.fonte, d.titolo FROM documento d JOIN scheda s ON s.id = d.scheda_id "
             f"WHERE d.presente = 1 AND s.presente = 1 AND d.categoria IN ({', '.join('?' * len(ESITI))})", ESITI):
@@ -167,7 +196,10 @@ def senza_esito(conn, oggi: date | None = None) -> list[dict]:
         if esiti_sol.get(s["id"]) or (padre is not None and vale(esiti_sol.get(padre["id"], []))) \
                 or vale(esiti_urp.get(s["bando_id"], [])) or vale(esiti_seg.get(s["numero_bando"], [])):
             continue
-        righe.append({"scheda": s, "scadenza": scadenza, "copertura_segreteria": copertura if versione else None})
+        candidati_ultimo = [x for x in (ultimi_sol.get(s["id"]), ultimi_sol.get(padre["id"]) if padre is not None else None) if x]
+        candidati_ultimo += [x for x in ultimi_urp.get(s["bando_id"], []) if x["sede"] is None or str(x["sede"]).lstrip("0") == sede]
+        ultimo = max(candidati_ultimo, key=lambda x: x["data"], default=None)
+        righe.append({"scheda": s, "scadenza": scadenza, "copertura_segreteria": copertura if versione else None, "ultimo": ultimo})
     return righe
 
 
@@ -385,7 +417,7 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None, con_senza_e
 
         for x in per_senza_esito.get(chiave, []):
             s = x["scheda"]
-            esito_verifica = giudizio(verifiche.get(s["id"]), x["copertura_segreteria"], x["scadenza"])
+            esito_verifica = giudizio(verifiche.get(s["id"]), x["copertura_segreteria"], x["scadenza"], x.get("ultimo"))
             urp = schede.get(chiave, {}).get("urp")
             righe.append({**base, "atto": "senza_esito", "sottotipo": None, "sottotipo_origine": None,
                           "codice_sotto": s["codice_sotto"], "data": x["scadenza"], "protocollo": None,
@@ -396,6 +428,7 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None, con_senza_e
                                                    else "file non caricato" if x["copertura_segreteria"] is None else "non copre il periodo"}},
                           "note": [], "_senza_esito": True, "scheda_sol_id": s["id"],
                           "esito_verifica": esito_verifica, "probabile_deserto": esito_verifica["codice"] == "deserto",
+                          "stato_deserto": STATO_DESERTO[esito_verifica["codice"]],
                           "avviso": f"domande scadute il {x['scadenza'][8:10]}/{x['scadenza'][5:7]}/{x['scadenza'][:4]}: nessuna graduatoria, "
                                     "deserto o revoca su Selezioni Online e su URP (verificare se manca il documento)"})
 
@@ -491,6 +524,8 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None, con_senza_e
         if versione and not r["fonti"]["segreteria"].get("url") and r["atto"] in FOGLIO_SEGRETERIA:
             r["fonti"]["segreteria"]["url"] = url_file_segreteria(foglio=FOGLIO_SEGRETERIA[r["atto"]])
         r.pop("_protocolli", None)
+        if r["atto"] == "deserto":
+            r["stato_deserto"] = "certo"  # c'è il provvedimento (su almeno una fonte)
         if r.pop("_senza_esito", False):  # non è una difformità tra fonti: è un elenco da verificare
             r.update(incompleto=False, difforme=False, protocollo_diverso=False)
             continue

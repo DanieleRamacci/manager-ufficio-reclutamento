@@ -9,4 +9,5 @@
 - [X] T007 [US2] Schede Deserti e Revocati nel monitoraggio (monitoraggi.html, consulta.html)
 - [X] T008 Suite di test, controllo JS, rilascio
 - [X] T010 [US5] Conteggio non ammessi (schema 35), giudizio sul concorso senza esito con file della segreteria e sua copertura; API di controllo e avanzamento; pulsante, filtro «Probabili deserti» ed esito nell'Excel; test
+- [X] T011 [US6] Stato del deserto sulle righe (certo, senza provvedimento, graduatoria mancante, da verificare, in corso con attività negli ultimi 6 mesi); richiesta ai referenti (schema 36, API, finestra); scheda «Concorsi deserti» nello stato complessivo e nell'area referenti; scheda sempre visibile nel monitoraggio; test
 - [ ] T009 Verifica nell'app con i dati reali (367.391, 367.455, 367.433)

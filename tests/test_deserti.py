@@ -235,3 +235,85 @@ def test_api_verifica_senza_esito_serve_sol(db):
     r = app.test_client().post("/api/punteggi/verifica-senza-esito")
     assert r.status_code == 401
     assert app.test_client().get("/api/punteggi/avanzamento").get_json()["in_corso"] is False
+
+
+# ----------------------------------------------------------------- scheda «Concorsi deserti» e richiesta ai referenti
+
+def test_in_corso_con_documento_recente():
+    oggi = date(2026, 11, 20)
+    ultimo = {"data": "2026-09-01", "titolo": "Avviso di convocazione prova orale"}
+    g = atti.giudizio(None, None, "2025-06-01", ultimo, oggi)
+    assert g["codice"] == "in_corso" and "01/09/2026" in g["testo"] and g["dettaglio_sol"]
+    assert atti.giudizio(None, None, "2025-06-01", {"data": "2025-12-01", "titolo": "x"}, oggi)["codice"] == "da_controllare"
+    # SOL dimostra il deserto: un documento recente non lo cambia
+    assert atti.giudizio(_v(domande=0, con_punteggi=0), None, "2025-06-01", ultimo, oggi)["codice"] == "deserto"
+
+
+def test_senza_esito_ricorda_ultimo_documento(db):
+    salva(db, "sol", [_concorso("a", "367.557 RIC ICB", "367.557", "2023-01-05",
+                                documenti=[{**doc("c", "altro", "9", "2026-07-20"), "titolo": "Avviso convocazione prova orale"}])])
+    collegamento.collega(db)
+    x = atti.senza_esito(db, date(2026, 11, 20))[0]
+    assert x["ultimo"]["data"] == "2026-07-20"
+
+
+def test_stato_deserto_nelle_righe(db):
+    salva(db, "sol", [_concorso("a", "367.391 CTER", "367.391", "2023-01-05"),
+                      scheda("sol", "b", "367.449 CTER", "367.449", data="2026-01-10", documenti=[_deserto("d", "402409", "2026-03-25")])])
+    collegamento.collega(db)
+    righe = [r for r in atti.elenco_atti(db, "2000-01-01", None, con_senza_esito=True) if r.get("stato_deserto")]
+    assert {(r["atto"], r["stato_deserto"]) for r in righe} == {("deserto", "certo"), ("senza_esito", "da_verificare")}
+
+
+def _con_rdp(db, id_esterno, email):
+    sid = db.execute("SELECT id FROM scheda WHERE id_esterno = ?", (id_esterno,)).fetchone()[0]
+    db.execute("INSERT INTO referente (scheda_id, chiave, nome, cognome, email, attivo, prima_rilevazione, ultima_rilevazione) "
+               "VALUES (?, 'k', 'Nome', 'Rdp', ?, 1, 'x', 'x')", (sid, email))
+    return sid
+
+
+def test_richiesta_ai_referenti(db, monkeypatch):
+    from monitoraggio import deserti, posta
+    salva(db, "sol", [_concorso("a", "367.391 CTER", "367.391", "2023-01-05")])
+    collegamento.collega(db)
+    sid = _con_rdp(db, "a", "rdp@cnr.it")
+    a = deserti.anteprima(db, sid)
+    assert a["destinatari"] == ["rdp@cnr.it"] and "367.391 CTER" in a["oggetto"] and "05/01/2023" in a["corpo"]
+    inviate = []
+    monkeypatch.setattr(posta, "invia", lambda d, o, c, modo=None, cc=None: inviate.append((d, o, modo, cc)) or modo == "prova")
+    assert deserti.invia(db, sid, a["oggetto"], a["corpo"], "admin", "prova") == {"ok": True, "prova": True}
+    assert inviate[0][0] == ["rdp@cnr.it"] and inviate[0][2] == "prova"
+    assert deserti.ultime(db)[sid]["esito"] == "prova"
+    with pytest.raises(ValueError):
+        deserti.invia(db, sid, a["oggetto"], a["corpo"] + " RSSMRA80A01H501U", "admin", "prova")  # codice fiscale: bloccato
+    with pytest.raises(ValueError):
+        deserti.invia(db, sid, a["oggetto"], a["corpo"], "admin", "altro")
+
+
+def test_richiesta_senza_rdp_o_concorso_con_esito(db):
+    from monitoraggio import deserti
+    salva(db, "sol", [_concorso("a", "367.391 CTER", "367.391", "2023-01-05"),
+                      _concorso("b", "367.392 CTER", "367.392", "2023-01-05", documenti=[doc("g", "graduatoria", "1", "2023-06-01")])])
+    collegamento.collega(db)
+    ids = {r["id_esterno"]: r["id"] for r in db.execute("SELECT id, id_esterno FROM scheda")}
+    with pytest.raises(ValueError, match="Nessuna email RdP"):
+        deserti.invia(db, ids["a"], "o", "c", "admin", "prova")
+    assert deserti.anteprima(db, ids["b"]) is None
+
+
+def test_api_richiesta_deserto(db, monkeypatch):
+    from monitoraggio import posta
+    salva(db, "sol", [_concorso("a", "367.391 CTER", "367.391", "2023-01-05")])
+    collegamento.collega(db)
+    sid = _con_rdp(db, "a", "rdp@cnr.it")
+    monkeypatch.setattr(posta, "invia", lambda d, o, c, modo=None, cc=None: True)
+    app = Flask(__name__)
+    app.register_blueprint(web.crea_blueprint(lambda f: f))
+    client = app.test_client()
+    a = client.get(f"/api/deserti/richiesta/{sid}").get_json()
+    assert a["destinatari"] == ["rdp@cnr.it"]
+    r = client.post(f"/api/deserti/richiesta/{sid}", json={"oggetto": a["oggetto"], "corpo": a["corpo"], "modo": "prova"})
+    assert r.status_code == 200 and r.get_json()["prova"] is True
+    riga = next(x for x in client.get("/api/atti?dal=2000-01-01").get_json()["atti"] if x["atto"] == "senza_esito")
+    assert riga["richiesta_deserto"]["esito"] == "prova" and riga["stato_deserto"] == "da_verificare"
+    assert client.get("/api/deserti/richiesta/999999").status_code == 404

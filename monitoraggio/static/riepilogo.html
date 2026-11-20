@@ -138,6 +138,7 @@
     <button type="button" role="tab" id="tab-stato-atti" aria-selected="true" aria-controls="panel-stato-atti">Tutti gli atti</button>
     <button type="button" role="tab" id="tab-graduatorie-mese" aria-selected="false" aria-controls="panel-graduatorie-mese">Graduatorie pubbliche del mese <span id="conteggio-graduatorie-mese"></span></button>
     <button type="button" role="tab" id="tab-scorrimenti-mese" aria-selected="false" aria-controls="panel-scorrimenti-mese">Scorrimenti del mese <span id="conteggio-scorrimenti-mese"></span></button>
+    <button type="button" role="tab" id="tab-deserti" aria-selected="false" aria-controls="panel-deserti">Concorsi deserti <span id="conteggio-deserti"></span></button>
     <label class="muted">Mese <input type="month" id="mese-solleciti"></label>
     <label class="muted">Tipologia <select id="tipologia-solleciti">
       <option value="">Tutte</option>
@@ -199,6 +200,21 @@
     <div class="scroll"><table id="atti-scorrimenti-mese"></table></div>
   </section>
 
+
+  <section id="panel-deserti" role="tabpanel" aria-labelledby="tab-deserti" hidden>
+    <h2>Concorsi deserti <span class="muted" id="conteggio-deserti-label"></span></h2>
+    <div class="muted small" id="legenda-deserti" style="margin-bottom:8px"></div>
+    <div class="filtri">
+      <select id="des-stato" aria-label="Stato"><option value="">Tutti gli stati</option></select>
+      <label class="muted">Anno <select id="des-anno"><option value="">Tutti gli anni</option></select></label>
+      <select id="des-tipologia" aria-label="Tipologia"><option value="">Tutte le tipologie</option></select>
+      <input type="search" id="des-q" placeholder="Codice, titolo, protocollo o RdP" size="30">
+      <button type="button" class="solo-admin" id="des-controlla" disabled title="Collega prima Selezioni Online dal menu in alto">Controlla su SOL i concorsi senza esito</button>
+      <button type="button" id="des-esporta">Esporta Excel</button>
+      <span class="muted small" id="des-stato-controllo" aria-live="polite"></span>
+    </div>
+    <div class="scroll"><table id="tabella-deserti"></table></div>
+  </section>
 
   <section>
     <h2>Mese per mese <span class="muted" id="dal"></span></h2>
@@ -863,6 +879,8 @@ document.addEventListener("sol-sessione", (e) => {
   if (appenaCollegato) caricaPunteggi().catch(() => {});
   $("punteggi-verifica").disabled = !collegato;
   $("controlla-senza-esito").disabled = !collegato || verificaInCorso;
+  $("des-controlla").disabled = !collegato || verificaInCorso;
+  $("des-controlla").title = collegato ? "Legge da Selezioni Online domande e punteggi dei concorsi senza esito" : "Collega prima Selezioni Online dal menu in alto";
   $("controlla-senza-esito").title = collegato ? "Legge da Selezioni Online domande e punteggi dei concorsi senza esito" : "Collega prima Selezioni Online dal menu in alto";
   $("punteggi-verifica").title = collegato ? "" : "Collega prima Selezioni Online dal menu in alto";
 });
@@ -933,13 +951,17 @@ async function seguiControlloSenzaEsito() {
   const { corpo } = await json("/api/punteggi/avanzamento");
   if (corpo.in_corso) {
     $("stato-senza-esito").textContent = `⏳ controllo su Selezioni Online: ${corpo.fatti} di ${corpo.totale}`;
+    $("des-stato-controllo").textContent = $("stato-senza-esito").textContent;
     setTimeout(seguiControlloSenzaEsito, 3000);
     return;
   }
   const u = corpo.ultima || {};
   $("stato-senza-esito").textContent = u.esito === "fallita" ? u.messaggio : u.dal === "senza-esito" && u.esito === "completata" ? `controllati ${u.graduatorie} concorsi${u.errore ? ` (${u.errore} non riusciti)` : ""}` : "";
   $("controlla-senza-esito").disabled = !solCollegato;
+  $("des-controlla").disabled = !solCollegato;
+  $("des-stato-controllo").textContent = $("stato-senza-esito").textContent;
   await caricaAtti();
+  if (deserti.caricati) await caricaDeserti();
 }
 $("controlla-senza-esito").onclick = async () => {
   $("controlla-senza-esito").disabled = true;
@@ -951,18 +973,101 @@ $("controlla-senza-esito").onclick = async () => {
   disegnaAtti();
   seguiControlloSenzaEsito();
 };
+// ---- spec 012: scheda «Concorsi deserti» (tutti gli anni): certi, senza provvedimento, da verificare, in corso
+const deserti = { righe: [], visibili: [], caricati: false };
+const ORDINE_DESERTI = ["certo", "senza_provvedimento", "graduatoria_mancante", "da_verificare", "in_corso"];
+$("des-stato").innerHTML += ORDINE_DESERTI.map(k => `<option value="${k}">${esc(App.STATI_DESERTO[k][1])}</option>`).join("");
+$("legenda-deserti").innerHTML = ORDINE_DESERTI.map(k => `<div>${App.pillolaDeserto({ stato_deserto: k })} ${esc(App.STATI_DESERTO[k][2])}</div>`).join("");
+$("des-tipologia").innerHTML += Object.entries(TIPOLOGIE).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+(() => { for (let a = new Date().getFullYear(); a >= 2014; a--) $("des-anno").innerHTML += `<option value="${a}">${a}</option>`; })();
+async function caricaDeserti() {
+  $("tabella-deserti").innerHTML = `<tbody><tr><td class="muted">Caricamento…</td></tr></tbody>`;
+  const { corpo } = await json("/api/atti?dal=2000-01-01");
+  deserti.righe = corpo.atti.filter(a => a.stato_deserto);
+  deserti.caricati = true;
+  const n = deserti.righe.filter(a => a.stato_deserto === "certo").length, s = deserti.righe.filter(a => a.stato_deserto === "senza_provvedimento").length;
+  $("conteggio-deserti").textContent = `(${n + s})`;
+  disegnaDeserti();
+}
+function disegnaDeserti() {
+  const stato = $("des-stato").value, anno = $("des-anno").value, tip = $("des-tipologia").value, q = $("des-q").value;
+  const righe = deserti.righe.filter(a => (!stato || a.stato_deserto === stato) && (!anno || (a.data || "").startsWith(anno)) && (!tip || a.tipologia === tip)
+    && contieneTesto(q, `${a.numero_bando} ${a.codice} ${a.titolo_bando || ""} ${a.protocollo || ""} ${(a.rdp || []).map(r => `${r.nome} ${r.cognome} ${r.email}`).join(" ")}`))
+    .sort((x, y) => ORDINE_DESERTI.indexOf(x.stato_deserto) - ORDINE_DESERTI.indexOf(y.stato_deserto) || String(y.data || "").localeCompare(String(x.data || "")));
+  deserti.visibili = righe;
+  const conta = (k) => deserti.righe.filter(a => a.stato_deserto === k).length;
+  $("conteggio-deserti-label").textContent = `(${righe.length} di ${deserti.righe.length}: ${ORDINE_DESERTI.map(k => `${conta(k)} ${App.STATI_DESERTO[k][1].toLowerCase()}`).join(", ")})`;
+  const cella = (c) => `<td class="f ${c.stato}${c.url ? " apribile" : ""}"${c.url ? ` data-url="${esc(c.url)}"` : ""}>${esc(c.testo || CELLE[c.stato])}${c.protocollo && c.stato === "presente" ? `<div class="muted" style="font-weight:400">${esc(c.protocollo)}</div>` : ""}</td>`;
+  const richiesta = (a) => {
+    if (a.atto !== "senza_esito" || a.stato_deserto === "in_corso" && !a.richiesta_deserto) return "<td></td>";
+    const r = a.richiesta_deserto;
+    return `<td>${r ? `<div class="small">${r.esito === "prova" ? "prova" : "inviata"} il ${esc(oraIt(r.quando))}</div>` : ""}<button type="button" class="solo-admin" data-richiesta="${a.scheda_sol_id}">${r ? "Scrivi di nuovo" : "Chiedi ai referenti"}</button></td>`;
+  };
+  $("tabella-deserti").innerHTML = `<thead><tr><th>Stato</th><th>Data</th><th>Bando</th><th>Tipologia</th><th>Protocollo</th><th>Selezioni Online</th><th>URP</th><th>File segreteria</th><th>Motivo</th><th>RdP</th><th>Richiesta ai referenti</th></tr></thead><tbody>` +
+    (righe.map(a => `<tr><td>${App.pillolaDeserto(a)}</td><td>${dataIt(a.data)}<div class="muted small">${a.atto === "deserto" ? "provvedimento" : "scadenza domande"}</div></td>
+      <td><b>${esc(a.codice || a.numero_bando || "")}</b><div class="muted small" style="max-width:260px">${esc(a.titolo_bando || "")}</div></td><td>${TIPOLOGIE[a.tipologia] || esc(a.tipologia || "")}</td>
+      <td class="mono">${esc(a.protocollo || "")}</td>${cella(a.fonti.sol)}${cella(a.fonti.urp)}${cella(a.fonti.segreteria)}
+      <td class="small" style="min-width:240px">${a.atto === "deserto" ? (a.difforme ? a.note.map(n => `<span class="chip err">${esc(n)}</span>`).join("") || `<span class="chip err">provvedimento non presente su tutte le fonti</span>` : "provvedimento su Selezioni Online e URP")
+        : `${esc(a.esito_verifica?.testo || "")}${a.esito_verifica?.dettaglio_sol ? `<div class="muted">${esc(a.esito_verifica.dettaglio_sol)}</div>` : ""}${a.esito_verifica?.segreteria ? `<div class="muted">${esc(a.esito_verifica.segreteria)}</div>` : ""}`}</td>
+      <td class="small">${(a.rdp || []).map(r => esc(nomeRdp(r))).join("<br>") || `<span class="muted">–</span>`}</td>${richiesta(a)}</tr>`).join("")
+      || `<tr><td colspan="11" class="muted">Nessun concorso con questi filtri.</td></tr>`) + "</tbody>";
+  document.querySelectorAll("#tabella-deserti td.f[data-url]").forEach(td => td.onclick = () => window.open(td.dataset.url, "_blank", "noopener"));
+  document.querySelectorAll("#tabella-deserti button[data-richiesta]").forEach(b => b.onclick = () => apriRichiestaDeserto(Number(b.dataset.richiesta)));
+}
+["des-stato", "des-anno", "des-tipologia", "des-q"].forEach(id => $(id).addEventListener("input", disegnaDeserti));
+$("des-esporta").onclick = () => App.esportaExcel({ colonne: App.colonneAtti(), righe: deserti.visibili, nome: "concorsi-deserti",
+  url: "/api/esporta-excel", chiave: "concorsi-deserti" });
+$("des-controlla").onclick = () => $("controlla-senza-esito").click();
+
+// email agli RdP: anteprima modificabile, prova o invio reale (come «Chiedi verifica»)
+async function apriRichiestaDeserto(schedaId) {
+  let a;
+  try { ({ corpo: a } = await json(`/api/deserti/richiesta/${schedaId}`)); } catch (e) { return alert(e.message); }
+  document.getElementById("finestra-deserto")?.remove();
+  const o = document.createElement("div");
+  o.id = "finestra-deserto";
+  o.style.cssText = "position:fixed;inset:0;background:rgba(20,28,40,.4);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px";
+  o.innerHTML = `<div role="dialog" aria-modal="true" aria-labelledby="fd-titolo" style="background:var(--card,#fff);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.25);width:100%;max-width:720px;max-height:92vh;display:flex;flex-direction:column">
+    <div style="padding:14px 18px;border-bottom:1px solid #e3e6ea"><b id="fd-titolo">Chiedi ai referenti: ${esc(a.codice)}</b></div>
+    <div style="padding:12px 18px;overflow:auto;display:flex;flex-direction:column;gap:8px">
+      <div class="small"><b>A:</b> ${esc(a.destinatari.join(", ")) || `<span class="chip err">nessuna email RdP: aggiorna i referenti</span>`}${a.cc.length ? `<br><b>Cc:</b> ${esc(a.cc.join(", "))}` : ""}</div>
+      ${a.posta?.prova ? `<div class="chip protdiv">Modalità di prova attiva: ${esc(a.posta.prova)}</div>` : ""}
+      <label class="small">Oggetto <input id="fd-oggetto" style="width:100%" value="${esc(a.oggetto)}"></label>
+      <label class="small">Testo <textarea id="fd-corpo" rows="14" style="width:100%">${esc(a.corpo)}</textarea></label>
+      ${a.storico.length ? `<div class="small muted">Già inviate: ${a.storico.map(x => `${x.esito === "prova" ? "prova" : "inviata"} il ${esc(oraIt(x.quando))}${x.utente ? ` da ${esc(x.utente)}` : ""}`).join(" · ")}</div>` : ""}
+    </div>
+    <div style="padding:12px 18px;border-top:1px solid #e3e6ea;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+      <button type="button" id="fd-annulla">Annulla</button><button type="button" id="fd-prova">Invia una prova</button><button type="button" class="primario" id="fd-invia"${a.destinatari.length ? "" : " disabled"}>Invia ai referenti</button></div></div>`;
+  document.body.appendChild(o);
+  const chiudi = () => o.remove();
+  o.addEventListener("mousedown", e => { if (e.target === o) chiudi(); });
+  $("fd-annulla").onclick = chiudi;
+  const invia = async (modo) => {
+    if (modo === "ufficiale" && !confirm(`Inviare l'email a ${a.destinatari.join(", ")}?`)) return;
+    const r = await fetch(`/api/deserti/richiesta/${schedaId}`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ oggetto: $("fd-oggetto").value, corpo: $("fd-corpo").value, modo }) });
+    const c = await r.json().catch(() => ({}));
+    if (!r.ok) return alert(c.error || `Errore ${r.status}`);
+    chiudi();
+    alert(c.prova ? "Email di prova inviata" : "Email inviata ai referenti");
+    await caricaDeserti();
+  };
+  $("fd-prova").onclick = () => invia("prova");
+  $("fd-invia").onclick = () => invia("ufficiale");
+}
 $("atti-esporta").onclick = () => App.esportaExcel({ colonne: App.colonneAtti(), righe: attiVisibili, nome: "stato-complessivo",
   url: "/api/esporta-excel", chiave: "stato-complessivo" });
 $("atti-tutto").onclick = () => { $("atti-anno").value = ""; $("atti-mese").value = ""; $("atti-dal").value = ""; $("atti-al").value = ""; caricaAtti(); };
 function selezionaSchedaAtti(id) {
-  const schede = ["stato-atti", "graduatorie-mese", "scorrimenti-mese"];
+  const schede = ["stato-atti", "graduatorie-mese", "scorrimenti-mese", "deserti"];
+  if (id === "deserti" && !deserti.caricati) caricaDeserti();
   schede.forEach(nome => {
     const attiva = nome === id;
     $(`tab-${nome}`).setAttribute("aria-selected", String(attiva));
     $(`panel-${nome}`).hidden = !attiva;
   });
 }
-[["tab-stato-atti", "stato-atti"], ["tab-graduatorie-mese", "graduatorie-mese"], ["tab-scorrimenti-mese", "scorrimenti-mese"]]
+[["tab-stato-atti", "stato-atti"], ["tab-graduatorie-mese", "graduatorie-mese"], ["tab-scorrimenti-mese", "scorrimenti-mese"], ["tab-deserti", "deserti"]]
   .forEach(([tab, panel]) => $(tab).addEventListener("click", () => selezionaSchedaAtti(panel)));
 $("mese-solleciti").value = parametri.get("mese") || meseDi(0);
 $("tipologia-solleciti").value = parametri.get("tipologia") || "";

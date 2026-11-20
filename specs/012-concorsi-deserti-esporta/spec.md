@@ -57,6 +57,18 @@ L'amministratore, collegato a Selezioni Online, preme «Controlla su SOL i conco
 
 Se il file della segreteria parte dopo la scadenza delle domande (mesi in cui il file non esisteva) la riga lo dice: il file non conferma né smentisce. Punteggi mancanti o parziali: «non si può dire» (dati forse non inseriti). Vincitori o idonei su SOL senza graduatoria pubblicata: «graduatoria mancante». Filtro «Probabili deserti (controllati su SOL)»; l'esito del controllo va anche nell'Excel.
 
+### User Story 6 - Scheda «Concorsi deserti» e richiesta ai referenti (Priority: P1, richiesta del 2026-11-20)
+
+Nello stato complessivo (amministratore e area referenti) una scheda «Concorsi deserti», su tutti gli anni, mostra insieme tutti i casi con uno stato e un filtro per stato:
+
+- **Deserto con provvedimento**: c'è il provvedimento su SOL e/o URP (certo);
+- **Deserto senza provvedimento**: SOL lo dimostra (US5) ma il provvedimento manca;
+- **Non deserto: manca la graduatoria**: vincitori o idonei su SOL senza graduatoria pubblicata;
+- **Da verificare con i referenti**: nessun esito su nessuna fonte e SOL non basta per concludere;
+- **Probabilmente in corso**: nessun esito ma documenti pubblicati negli ultimi 6 mesi (convocazioni, commissione...).
+
+Dalla scheda l'amministratore scrive agli RdP del concorso (in copia la segreteria, come per gli avvisi degli scorrimenti): «è andato deserto o mancano i dati?», con anteprima modificabile, prova o invio reale e registro degli invii. Nel monitoraggio del mese la scheda «Concorsi deserti» è sempre visibile.
+
 ## Requirements *(mandatory)*
 
 - **FR-001**: Nuove categorie di documento `deserto` e `revocato` (schema 34); i documenti già salvati vengono riclassificati.
@@ -65,6 +77,7 @@ Se il file della segreteria parte dopo la scadenza delle domande (mesi in cui il
 - **FR-004**: Righe "senza esito" (US3) solo nello stato complessivo, non nei monitoraggi mensili, indipendenti dal periodo scelto.
 - **FR-005**: Esportazione Excel delle righe visibili con le colonne scelte; per i soli utenti con accesso alla pagina (Principio IV); nessun dato dei candidati (Principio II).
 - **FR-007**: Controllo su SOL dei concorsi senza esito (US5): nuovo conteggio «non ammessi» nella verifica dei punteggi (schema 35), solo numeri.
+- **FR-008**: Tabella `richiesta_deserto` (schema 36) per il registro delle richieste; nessun dato dei candidati nel testo (blocco del codice fiscale).
 - **FR-006**: Nessuna scrittura sulle fonti (Principio III); nessuna correzione automatica: le difformità si mostrano (Principio I).
 
 ## Fuori ambito

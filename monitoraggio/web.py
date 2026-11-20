@@ -15,7 +15,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, redirect, request, send_file, send_from_directory
 from werkzeug.utils import secure_filename
 
-from . import accessibilita, atti, collegamento, compat, comunicazioni, config, db, difformita, esporta, impostazioni, notifiche, protocollo_email, punteggi, referenti, segreteria, sol_sessione, utenti
+from . import accessibilita, atti, collegamento, compat, comunicazioni, config, db, deserti, difformita, esporta, impostazioni, notifiche, posta, protocollo_email, punteggi, referenti, segreteria, sol_sessione, utenti
 
 # esito dell'ultima verifica dei punteggi (solo conteggi, in memoria)
 ULTIMA_VERIFICA: dict = {}
@@ -761,13 +761,35 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
         try:
             righe = atti.elenco_atti(conn, request.args.get("dal") or None, request.args.get("al") or None, con_senza_esito=True)
             per_atto = comunicazioni.per_atto(conn, request.args.get("dal") or None, request.args.get("al") or None)
+            richieste_deserti = deserti.ultime(conn)  # spec 012: ultima richiesta agli RdP per i concorsi senza esito
             for r in righe:  # la comunicazione come nel monitoraggio (spec 009): stato, protocollo dell'email, storico
                 r["comunicazione"] = comunicazioni.comunicazione_di(per_atto, r)
                 # senza monitoraggio si può comunque scrivere: il monitoraggio del mese si crea al primo invio
                 r["chiave"] = comunicazioni.chiave(r)
                 r["comunicabile"] = r["atto"] in difformita.ATTI_SEGUITI and config.nel_monitoraggio(r.get("tipologia")) and bool(r.get("data"))
+                if r["atto"] == "senza_esito":
+                    r["richiesta_deserto"] = richieste_deserti.get(r.get("scheda_sol_id"))
             return jsonify({"dal": request.args.get("dal") or config.monitoraggio_dal().isoformat(),
                             "totale": len(righe), "atti": righe, "fonti_in_attesa": atti.fonti_in_attesa(conn)})
+        finally:
+            conn.close()
+
+    @bp.route("/api/deserti/richiesta/<int:scheda_id>", methods=["GET", "POST"])
+    @protezione
+    @solo_admin
+    def api_richiesta_deserto(scheda_id: int):
+        """Spec 012: email agli RdP di un concorso senza esito: è andato deserto o mancano i dati?"""
+        conn = _conn()
+        try:
+            if request.method == "GET":
+                a = deserti.anteprima(conn, scheda_id)
+                return jsonify(a) if a else (jsonify({"error": "Il concorso non risulta senza esito"}), 404)
+            corpo = request.get_json(silent=True) or {}
+            try:
+                return jsonify(deserti.invia(conn, scheda_id, str(corpo.get("oggetto") or "").strip(), str(corpo.get("corpo") or ""),
+                                             utente_corrente(), corpo.get("modo") or None))
+            except (ValueError, posta.PostaErrore) as e:
+                return jsonify({"error": str(e)}), 400
         finally:
             conn.close()
 

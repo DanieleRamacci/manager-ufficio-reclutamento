@@ -120,7 +120,7 @@
         ["scorrimento", "Scorrimenti", conta(r => r.atto === "scorrimento"), contaD(r => r.atto === "scorrimento")],
         ["subentro", "di cui subentri", conta(r => r.sottotipo === "subentro"), contaD(r => r.sottotipo === "subentro")],
         ["rettifica", "Rettifiche di graduatoria", conta(r => r.atto === "rettifica"), contaD(r => r.atto === "rettifica")],
-        ...(conta(r => r.atto === "deserto") ? [["deserto", "Concorsi deserti", conta(r => r.atto === "deserto"), contaD(r => r.atto === "deserto")]] : []),
+        ["deserto", "Concorsi deserti", conta(r => r.atto === "deserto"), contaD(r => r.atto === "deserto")],
         ...(conta(r => r.atto === "revocato") ? [["revocato", "Bandi revocati", conta(r => r.atto === "revocato"), contaD(r => r.atto === "revocato")]] : []),
         ...(conta(r => !App.ATTI_CON_SCHEDA.includes(r.atto)) ? [["altro", "Altri atti", conta(r => !App.ATTI_CON_SCHEDA.includes(r.atto)), contaD(r => !App.ATTI_CON_SCHEDA.includes(r.atto))]] : []),
         ["correzioni", "Correzioni", null, 0], ["comunicazioni", "Comunicazioni", null, 0],

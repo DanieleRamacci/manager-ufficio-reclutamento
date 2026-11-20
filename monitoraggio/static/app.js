@@ -14,7 +14,17 @@ window.App = (() => {
     probabile_deserto: "Probabili deserti (controllati su SOL)" };
   // spec 012: esito del controllo su SOL di un concorso senza esito
   const ESITO_CONTROLLO = { deserto: ["p-ko", "probabile deserto"], graduatoria_mancante: ["p-ko", "graduatoria mancante"],
-    non_determinabile: ["p-warn", "non si può dire"], da_controllare: ["p-na", "da controllare su SOL"] };
+    non_determinabile: ["p-warn", "non si può dire"], da_controllare: ["p-na", "da controllare su SOL"],
+    in_corso: ["p-na", "probabilmente in corso"] };
+  // spec 012: stati della scheda «Concorsi deserti» (classe, etichetta, spiegazione)
+  const STATI_DESERTO = {
+    certo: ["p-ok", "Deserto con provvedimento", "il provvedimento di deserto o di esito negativo è pubblicato su Selezioni Online e/o su URP"],
+    senza_provvedimento: ["p-ko", "Deserto senza provvedimento", "Selezioni Online lo dimostra (nessuna domanda valida, o tutti i candidati non ammessi) ma il provvedimento non è pubblicato"],
+    graduatoria_mancante: ["p-ko", "Non deserto: manca la graduatoria", "su Selezioni Online ci sono vincitori o idonei ma la graduatoria non è pubblicata"],
+    da_verificare: ["p-warn", "Da verificare con i referenti", "nessun esito su SOL, URP e file della segreteria e i dati di SOL non bastano: può essere deserto o mancano i dati"],
+    in_corso: ["p-na", "Probabilmente in corso", "nessun esito ma ci sono documenti pubblicati negli ultimi 6 mesi (convocazioni, commissione...)"],
+  };
+  const pillolaDeserto = (r) => { const s = STATI_DESERTO[r.stato_deserto]; return s ? `<span class="pillola ${s[0]}" title="${esc(s[2])}">${esc(s[1])}</span>` : ""; };
   function chipControllo(r) {
     const e = r.esito_verifica;
     if (!e) return "";
@@ -317,9 +327,10 @@ window.App = (() => {
       ["difforme", "Con difformità", r => r.difforme ? "sì" : "no"], ["note", "Note e difformità", r => [...(r.note || []), ...(r.avviso ? [r.avviso] : [])].join("; ")],
       ["rdp", "RdP", r => persone(r.rdp)], ["rdp_email", "Email RdP", r => (r.rdp || []).map(p => p.email).filter(Boolean).join("; ")],
       ["coordinatore", "Coordinatore", r => r.coordinatore?.email || ""], ["persone", "Persone nel file segreteria", r => r.persone ?? ""],
+      ["stato_deserto", "Stato (concorsi deserti)", r => (STATI_DESERTO[r.stato_deserto] || [])[1] || ""],
       ["controllo_sol", "Controllo su SOL (senza esito)", r => r.esito_verifica ? `${(ESITO_CONTROLLO[r.esito_verifica.codice] || [, r.esito_verifica.codice])[1]}: ${r.esito_verifica.testo}; ${r.esito_verifica.segreteria || ""}` : ""],
     ];
   }
 
-  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, ATTI_CON_SCHEDA, esportaExcel, colonneAtti, chipControllo, chiama, json, toast, partiComunicazione, scomposizioneAtti, tabellaTotali, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati, contieneTesto, pannelloCandidati, testataArea, dividiPerSede, sediDellaRiga, elencoRilievi };
+  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, ATTI_CON_SCHEDA, esportaExcel, colonneAtti, chipControllo, STATI_DESERTO, pillolaDeserto, chiama, json, toast, partiComunicazione, scomposizioneAtti, tabellaTotali, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati, contieneTesto, pannelloCandidati, testataArea, dividiPerSede, sediDellaRiga, elencoRilievi };
 })();
