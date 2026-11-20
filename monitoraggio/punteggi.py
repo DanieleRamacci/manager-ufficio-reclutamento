@@ -53,11 +53,14 @@ def esito(domande: int, con_punteggi: int, senza_protocollo: int = 0) -> str:
 def conteggi_candidati(candidati: list[dict], protocollo_rif: str | None = None, data_rif: str | None = None) -> dict:
     """Conteggi per esito e difformità rispetto alla graduatoria nota (protocollo e data di riferimento)."""
     c = {"vincitori": 0, "idonei": 0, "scorrimento": 0, "senza_protocollo": 0, "senza_esito": 0,
-         "protocollo_diverso": 0, "data_diversa": 0}
+         "protocollo_diverso": 0, "data_diversa": 0, "non_ammessi": 0}
     date_diverse = set()
     rif = protocollo(protocollo_rif)
     for x in candidati:
         esito_x = (x.get("esito") or "").strip().upper()
+        # spec 012: non ammesso ad almeno una prova (solo il conteggio, per riconoscere un concorso deserto)
+        if any((p or {}).get("non_ammesso") for p in (x.get("prove") or {}).values()):
+            c["non_ammessi"] += 1
         # Conserviamo il conteggio delle posizioni senza esito, ma da solo non prova una difformità:
         # il totale atteso di V/I/S non è noto e una compilazione parziale può essere corretta.
         if not esito_x and str(x.get("graduatoria") or "").strip():
@@ -315,7 +318,7 @@ def verifica_schede(conn, schede: list, dal: str, al: str, intestazioni: dict, c
             ora = _adesso()
             rif = riferimento(conn, s, dal, al)
             c = dict.fromkeys(("vincitori", "idonei", "scorrimento", "senza_protocollo", "senza_esito",
-                               "protocollo_diverso", "data_diversa"))
+                               "protocollo_diverso", "data_diversa", "non_ammessi"))
             scorr = None
             try:
                 n = sol_auth.punteggi_bando(client, s["id_esterno"], intestazioni)
@@ -332,10 +335,10 @@ def verifica_schede(conn, schede: list, dal: str, al: str, intestazioni: dict, c
             conn.execute(
                 "INSERT INTO punteggi_verifica (scheda_id, verificato_il, domande, con_punteggi, vincitori, idonei, "
                 "scorrimento, senza_protocollo, senza_esito, protocollo_diverso, data_diversa, scorrimenti_sol, esito, "
-                "messaggio, date_candidati, data_allegato) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "messaggio, date_candidati, data_allegato, non_ammessi) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (s["id"], ora, n["domande"], n["con_punteggi"], c["vincitori"], c["idonei"], c["scorrimento"],
                  c["senza_protocollo"], c["senza_esito"], c["protocollo_diverso"], c["data_diversa"],
-                 json.dumps(scorr) if scorr is not None else None, e, msg, json.dumps(c.get("date_diverse") or []), rif["data"]))
+                 json.dumps(scorr) if scorr is not None else None, e, msg, json.dumps(c.get("date_diverse") or []), rif["data"], c["non_ammessi"]))
             _avanzamento["fatti"] += 1
         log.info("Verifica punteggi %s-%s: %s", dal, al, totali)
         return {**totali, "esito": "completata", "messaggio": None}

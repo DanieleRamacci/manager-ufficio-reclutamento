@@ -48,6 +48,15 @@ Lo stato complessivo elenca i concorsi pubblici (tempo indeterminato) con domand
 
 Dallo stato complessivo si scarica un file Excel delle righe filtrate scegliendo le colonne; la scelta resta memorizzata nel browser. È generico: funziona con qualunque filtro (deserti dell'anno, scorrimenti, difformità...).
 
+### User Story 5 - Controllo su SOL dei concorsi senza esito (Priority: P1, richiesta del 2026-11-20)
+
+L'amministratore, collegato a Selezioni Online, preme «Controlla su SOL i concorsi senza esito»: per ogni concorso senza esito si leggono domande e punteggi (nel database solo i conteggi). Il concorso è **probabile deserto** solo con una prova positiva, mai per la sola mancanza dei punteggi:
+
+- nessuna domanda valida su SOL, oppure punteggi inseriti per tutti i candidati e tutti non ammessi ad almeno una prova;
+- e nessuna graduatoria, deserto o revoca su SOL e URP, e nessuna graduatoria o scorrimento nel file della segreteria.
+
+Se il file della segreteria parte dopo la scadenza delle domande (mesi in cui il file non esisteva) la riga lo dice: il file non conferma né smentisce. Punteggi mancanti o parziali: «non si può dire» (dati forse non inseriti). Vincitori o idonei su SOL senza graduatoria pubblicata: «graduatoria mancante». Filtro «Probabili deserti (controllati su SOL)»; l'esito del controllo va anche nell'Excel.
+
 ## Requirements *(mandatory)*
 
 - **FR-001**: Nuove categorie di documento `deserto` e `revocato` (schema 34); i documenti già salvati vengono riclassificati.
@@ -55,9 +64,9 @@ Dallo stato complessivo si scarica un file Excel delle righe filtrate scegliendo
 - **FR-003**: Lo stato complessivo confronta deserti e revoche su SOL, URP e segreteria come gli altri atti; un deserto URP con titolo generico si riconosce dal protocollo del deserto SOL dello stesso bando.
 - **FR-004**: Righe "senza esito" (US3) solo nello stato complessivo, non nei monitoraggi mensili, indipendenti dal periodo scelto.
 - **FR-005**: Esportazione Excel delle righe visibili con le colonne scelte; per i soli utenti con accesso alla pagina (Principio IV); nessun dato dei candidati (Principio II).
+- **FR-007**: Controllo su SOL dei concorsi senza esito (US5): nuovo conteggio «non ammessi» nella verifica dei punteggi (schema 35), solo numeri.
 - **FR-006**: Nessuna scrittura sulle fonti (Principio III); nessuna correzione automatica: le difformità si mostrano (Principio I).
 
 ## Fuori ambito
 
-- Controllo delle domande e dei punteggi per i bandi senza esito (serve la sessione SOL): spec successiva.
 - Deserti e revoche nel file della segreteria.

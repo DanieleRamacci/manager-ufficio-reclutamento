@@ -160,6 +160,7 @@
         <option value="graduatoria">Graduatorie pubbliche</option><option value="scorrimento">Scorrimenti</option>
         <option value="rettifica">Rettifiche graduatoria</option>
         <option value="deserto">Concorsi deserti</option><option value="revocato">Bandi revocati</option>
+        <option value="probabile_deserto" title="Concorsi senza esito per cui Selezioni Online dice che non c'è nessuna domanda valida o che nessun candidato ha superato le prove">Probabili deserti (controllati su SOL)</option>
         <option value="senza_esito" title="Concorsi pubblici con le domande scadute da più di 12 mesi, senza graduatoria, deserto o revoca su SOL e URP (qualunque periodo)">Senza esito da oltre 12 mesi</option>
       </select>
       <select id="atti-tipologia"><option value="">Tutte le tipologie</option></select>
@@ -173,6 +174,8 @@
       <input type="search" id="atti-q" placeholder="Codice, titolo, protocollo, RdP o testo" size="34">
       <a href="#" id="atti-azzera" class="muted" style="font-size:12.5px">Azzera filtri</a>
       <button type="button" id="atti-esporta" title="Scarica in Excel le righe visibili, scegliendo le colonne">Esporta Excel</button>
+      <button type="button" class="solo-admin" id="controlla-senza-esito" disabled title="Collega prima Selezioni Online dal menu in alto">Controlla su SOL i concorsi senza esito</button>
+      <span class="muted small" id="stato-senza-esito" aria-live="polite"></span>
     </div>
     <div class="scroll"><table id="atti"></table></div>
   </section>
@@ -370,7 +373,7 @@ function disegnaAtti() {
   const tipo = $("atti-tipo").value, tip = $("atti-tipologia").value, manca = $("atti-manca").value;
   const inc = $("atti-incompleti").checked, pd = $("atti-protdiv").checked, q = $("atti-q").value;
   const rdp = $("atti-rdp").value;
-  const righe = atti.filter(a => (!tipo || a.atto === tipo) && (!tip || a.tipologia === tip)
+  const righe = atti.filter(a => (!tipo || a.atto === tipo || (tipo === "probabile_deserto" && a.probabile_deserto)) && (!tip || a.tipologia === tip)
     && (!manca || a.fonti[manca].stato === "mancante") && (!inc || a.difforme) && (!pd || a.protocollo_diverso)
     && (!rdp || (a.rdp || []).some(r => (r.email || nomeRdp(r)) === rdp))
     && contieneTesto(q, `${a.numero_bando} ${a.codice} ${a.protocollo} ${a.titolo} ${a.titolo_bando || ""} ${(a.note || []).join(" ")} ${(a.rdp || []).map(r => `${r.nome} ${r.cognome} ${r.email}`).join(" ")}`));
@@ -404,7 +407,7 @@ function renderTabellaAtti(id, righe, conSollecito) {
         ${linkPunteggi(a.url_punteggi)}</td>
       <td>${esc(a.protocollo || "")}</td>${cella(a.fonti.sol, "sol", a)}${cella(a.fonti.urp, "urp", a)}${cella(a.fonti.segreteria, "segreteria", a)}
       ${App.cellaRdp(a)}
-      <td class="difformita">${a.note.map(n => `<span class="chip ${/^protocollo/.test(n) ? "protdiv" : "err"}">${esc(n)}</span>`).join("")}${a.avviso ? `<span class="chip protdiv">${esc(a.avviso)}</span>` : ""}</td>${cellaComunicazione(a)}</tr>${sottoRighe(a)}`).join("");
+      <td class="difformita">${a.note.map(n => `<span class="chip ${/^protocollo/.test(n) ? "protdiv" : "err"}">${esc(n)}</span>`).join("")}${a.avviso ? `<span class="chip protdiv">${esc(a.avviso)}</span>` : ""}${App.chipControllo(a)}</td>${cellaComunicazione(a)}</tr>${sottoRighe(a)}`).join("");
   $(id).innerHTML = `<thead><tr><th>Data</th><th>N. bando</th><th>Codice</th><th>Tipologia</th><th>Atto</th><th>Protocollo</th>
       <th>Selezioni Online</th><th>URP</th><th>File segreteria</th><th>RdP</th><th>Note</th><th>Comunicazione</th></tr></thead><tbody>` +
     (righeHtml || `<tr><td colspan="12" class="muted">${conSollecito ? "Nessuna difformità rilevata per questo mese." : "Nessun atto nel periodo selezionato."}</td></tr>`) + "</tbody>" +
@@ -859,6 +862,8 @@ document.addEventListener("sol-sessione", (e) => {
   solCollegato = collegato;
   if (appenaCollegato) caricaPunteggi().catch(() => {});
   $("punteggi-verifica").disabled = !collegato;
+  $("controlla-senza-esito").disabled = !collegato || verificaInCorso;
+  $("controlla-senza-esito").title = collegato ? "Legge da Selezioni Online domande e punteggi dei concorsi senza esito" : "Collega prima Selezioni Online dal menu in alto";
   $("punteggi-verifica").title = collegato ? "" : "Collega prima Selezioni Online dal menu in alto";
 });
 // La verifica e il caricamento dei punteggi partono insieme alla tabella mensile.
@@ -914,6 +919,29 @@ $("atti-anno").onchange = () => {
   $("atti-dal").value = a ? `${a}-01-01` : "";
   $("atti-al").value = a ? `${a}-12-31` : "";
   caricaAtti();
+};
+// spec 012: domande e punteggi su SOL dei concorsi senza esito (solo conteggi nel database)
+async function seguiControlloSenzaEsito() {
+  const { corpo } = await json("/api/punteggi/avanzamento");
+  if (corpo.in_corso) {
+    $("stato-senza-esito").textContent = `⏳ controllo su Selezioni Online: ${corpo.fatti} di ${corpo.totale}`;
+    setTimeout(seguiControlloSenzaEsito, 3000);
+    return;
+  }
+  const u = corpo.ultima || {};
+  $("stato-senza-esito").textContent = u.esito === "fallita" ? u.messaggio : u.dal === "senza-esito" && u.esito === "completata" ? `controllati ${u.graduatorie} concorsi${u.errore ? ` (${u.errore} non riusciti)` : ""}` : "";
+  $("controlla-senza-esito").disabled = !solCollegato;
+  await caricaAtti();
+}
+$("controlla-senza-esito").onclick = async () => {
+  $("controlla-senza-esito").disabled = true;
+  const r = await fetch("/api/punteggi/verifica-senza-esito", { method: "POST" });
+  const corpo = await r.json().catch(() => ({}));
+  if (!r.ok && r.status !== 409) { alert(corpo.error || corpo.msg || `Errore ${r.status}`); $("controlla-senza-esito").disabled = !solCollegato; return; }
+  $("stato-senza-esito").textContent = corpo.msg || "";
+  $("atti-tipo").value = "senza_esito";
+  disegnaAtti();
+  seguiControlloSenzaEsito();
 };
 $("atti-esporta").onclick = () => App.esportaExcel({ colonne: App.colonneAtti(), righe: attiVisibili, nome: "stato-complessivo",
   url: "/api/esporta-excel", chiave: "stato-complessivo" });

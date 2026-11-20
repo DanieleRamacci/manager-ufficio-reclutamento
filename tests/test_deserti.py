@@ -171,3 +171,67 @@ def test_api_esporta_excel(db):
     assert "deserti 2026" in r.headers["Content-Disposition"]
     assert openpyxl.load_workbook(io.BytesIO(r.data)).active["A2"].value == "367.391"
     assert client.post("/api/esporta-excel", json={"colonne": [], "righe": []}).status_code == 400
+
+
+# ----------------------------------------------------------------- controllo su SOL dei concorsi senza esito
+
+def _v(**k):
+    return {"esito": "completi", "domande": 3, "con_punteggi": 3, "vincitori": 0, "idonei": 0, "scorrimento": 0, "non_ammessi": 0, **k}
+
+
+@pytest.mark.parametrize("verifica, attesa", [
+    (None, "da_controllare"),
+    (_v(esito="errore", domande=None, con_punteggi=None), "da_controllare"),
+    (_v(esito="nessuna_domanda", domande=0, con_punteggi=0), "deserto"),
+    (_v(non_ammessi=3), "deserto"),                         # tutti con punteggi, tutti non ammessi
+    (_v(con_punteggi=0, esito="mancanti"), "non_determinabile"),  # punteggi non inseriti: non basta
+    (_v(con_punteggi=2, non_ammessi=2, esito="parziali"), "non_determinabile"),
+    (_v(non_ammessi=1), "non_determinabile"),               # completi ma qualcuno ammesso: graduatoria forse da inserire
+    (_v(non_ammessi=None), "non_determinabile"),            # verifica precedente senza il conteggio
+    (_v(idonei=1, non_ammessi=2), "graduatoria_mancante"),
+])
+def test_giudizio(verifica, attesa):
+    assert atti.giudizio(verifica, "2022-01-01", "2023-01-05")["codice"] == attesa
+
+
+def test_giudizio_copertura_segreteria():
+    assert atti.giudizio(None, None, "2023-01-05")["segreteria"] == "file della segreteria non caricato"
+    assert atti.giudizio(None, "2022-01-01", "2023-01-05")["segreteria"].startswith("nessuna graduatoria")
+    assert "non copre" in atti.giudizio(None, "2026-01-01", "2023-01-05")["segreteria"]
+
+
+def test_non_ammessi_contati():
+    from monitoraggio import punteggi
+    cand = [{"esito": None, "prove": {"1": {"punteggio": 10, "non_ammesso": True}, "2": {"punteggio": None, "non_ammesso": False}}},
+            {"esito": None, "prove": {"1": {"punteggio": 25, "non_ammesso": False}}}]
+    assert punteggi.conteggi_candidati(cand)["non_ammessi"] == 1
+
+
+def test_senza_esito_escluso_se_graduatoria_nel_file_segreteria(db):
+    from datetime import datetime
+    from tests.test_atti import _carica_segreteria, _riga_bando, _riga_grad
+    salva(db, "sol", [_concorso("a", "367.391 CTER", "367.391", "2023-01-05"),
+                      _concorso("b", "367.392 CTER", "367.392", "2023-01-05")])
+    collegamento.collega(db)
+    _carica_segreteria(db, [_riga_bando("367.392", "1", "05/01/2022")], [_riga_grad("367.392 CTER", "0270086", datetime(2023, 6, 12))], [])
+    righe = atti.senza_esito(db, date(2026, 11, 20))
+    assert [x["scheda"]["codice_originale"] for x in righe] == ["367.391 CTER"]
+    assert righe[0]["copertura_segreteria"] == "2023-06-12"
+
+
+def test_probabile_deserto_nello_stato_complessivo(db):
+    salva(db, "sol", [_concorso("a", "367.391 CTER", "367.391", "2023-01-05")])
+    collegamento.collega(db)
+    sid = db.execute("SELECT id FROM scheda WHERE id_esterno = 'a'").fetchone()[0]
+    db.execute("INSERT INTO punteggi_verifica (scheda_id, verificato_il, domande, con_punteggi, vincitori, idonei, scorrimento, "
+               "non_ammessi, esito) VALUES (?, '2026-11-20', 0, 0, 0, 0, 0, 0, 'nessuna_domanda')", (sid,))
+    r = next(r for r in atti.elenco_atti(db, "2026-01-01", "2026-12-31", con_senza_esito=True) if r["atto"] == "senza_esito")
+    assert r["probabile_deserto"] and r["esito_verifica"]["testo"] == "nessuna domanda valida su Selezioni Online"
+
+
+def test_api_verifica_senza_esito_serve_sol(db):
+    app = Flask(__name__)
+    app.register_blueprint(web.crea_blueprint(lambda f: f))
+    r = app.test_client().post("/api/punteggi/verifica-senza-esito")
+    assert r.status_code == 401
+    assert app.test_client().get("/api/punteggi/avanzamento").get_json()["in_corso"] is False

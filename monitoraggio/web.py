@@ -301,6 +301,45 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
         threading.Thread(target=lavoro, daemon=True, name="punteggi").start()
         return jsonify({"ok": True, "msg": f"Verifica dei punteggi dal {dal} al {al} avviata"}), 202
 
+    @bp.post("/api/punteggi/verifica-senza-esito")
+    @protezione
+    @solo_admin
+    def api_punteggi_verifica_senza_esito():
+        """Spec 012: domande e punteggi su SOL dei concorsi senza esito, per riconoscere quelli davvero deserti."""
+        if punteggi.in_corso():
+            return jsonify({"ok": False, "msg": "Verifica dei punteggi già in corso"}), 409
+        intestazioni = _intestazioni_sol()
+        if not intestazioni:
+            messaggio = "Collega prima Selezioni Online dal menu" if login_sol or sessione_sol \
+                else "Selezioni Online non ha concesso la sessione: esci e rifai l'accesso SSO"
+            return jsonify({"error": messaggio}), 401
+        conn = _conn()
+        try:
+            schede = [x["scheda"] for x in atti.senza_esito(conn)]
+        finally:
+            conn.close()
+        if not schede:
+            return jsonify({"ok": True, "msg": "Nessun concorso senza esito da controllare"}), 200
+
+        def lavoro():
+            c = _conn()
+            try:
+                ULTIMA_VERIFICA.update(dal="senza-esito", al="senza-esito",
+                                       **punteggi.verifica_schede(c, schede, "0000-01-01", "9999-12-31", intestazioni))
+            except punteggi.VerificaInCorso:
+                pass
+            finally:
+                c.close()
+        ULTIMA_VERIFICA.clear()
+        ULTIMA_VERIFICA.update(dal="senza-esito", al="senza-esito", esito="in_corso")
+        threading.Thread(target=lavoro, daemon=True, name="punteggi-senza-esito").start()
+        return jsonify({"ok": True, "msg": f"Controllo su Selezioni Online di {len(schede)} concorsi senza esito avviato"}), 202
+
+    @bp.get("/api/punteggi/avanzamento")
+    @protezione
+    def api_punteggi_avanzamento():
+        return jsonify({"in_corso": punteggi.in_corso(), **punteggi.avanzamento(), "ultima": dict(ULTIMA_VERIFICA)})
+
     @bp.get("/api/punteggi")
     @protezione
     def api_punteggi():

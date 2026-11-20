@@ -10,7 +10,17 @@ window.App = (() => {
   const TIPOLOGIE = { TI: "Tempo indeterminato", MOB: "Mobilità" };
   const NOMI_TIPOLOGIA = { tempo_indeterminato: "Tempo indeterminato", reclutamento_speciale: "Reclutamento speciale", categorie_protette: "Categorie protette", mobilita: "Mobilità", comando: "Comando" };
   const ATTI = { bando: "Bando", graduatoria: "Graduatoria pubblica con i soli vincitori", scorrimento: "Scorrimento", rettifica: "Rettifica",
-    deserto: "Concorso deserto", revocato: "Bando revocato", senza_esito: "Senza esito da oltre 12 mesi" };
+    deserto: "Concorso deserto", revocato: "Bando revocato", senza_esito: "Senza esito da oltre 12 mesi",
+    probabile_deserto: "Probabili deserti (controllati su SOL)" };
+  // spec 012: esito del controllo su SOL di un concorso senza esito
+  const ESITO_CONTROLLO = { deserto: ["p-ko", "probabile deserto"], graduatoria_mancante: ["p-ko", "graduatoria mancante"],
+    non_determinabile: ["p-warn", "non si può dire"], da_controllare: ["p-na", "da controllare su SOL"] };
+  function chipControllo(r) {
+    const e = r.esito_verifica;
+    if (!e) return "";
+    const [classe, titolo] = ESITO_CONTROLLO[e.codice] || ["p-na", e.codice];
+    return `<div class="small" style="margin-top:3px"><span class="pillola ${classe}">${esc(titolo)}</span> ${esc(e.testo)}${e.segreteria ? ` · ${esc(e.segreteria)}` : ""}</div>`;
+  }
   // tipi di atto con una scheda propria (spec 012: deserti e revocati); gli altri vanno in «Altri atti»
   const ATTI_CON_SCHEDA = ["bando", "graduatoria", "scorrimento", "rettifica", "deserto", "revocato"];
 
@@ -307,8 +317,9 @@ window.App = (() => {
       ["difforme", "Con difformità", r => r.difforme ? "sì" : "no"], ["note", "Note e difformità", r => [...(r.note || []), ...(r.avviso ? [r.avviso] : [])].join("; ")],
       ["rdp", "RdP", r => persone(r.rdp)], ["rdp_email", "Email RdP", r => (r.rdp || []).map(p => p.email).filter(Boolean).join("; ")],
       ["coordinatore", "Coordinatore", r => r.coordinatore?.email || ""], ["persone", "Persone nel file segreteria", r => r.persone ?? ""],
+      ["controllo_sol", "Controllo su SOL (senza esito)", r => r.esito_verifica ? `${(ESITO_CONTROLLO[r.esito_verifica.codice] || [, r.esito_verifica.codice])[1]}: ${r.esito_verifica.testo}; ${r.esito_verifica.segreteria || ""}` : ""],
     ];
   }
 
-  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, ATTI_CON_SCHEDA, esportaExcel, colonneAtti, chiama, json, toast, partiComunicazione, scomposizioneAtti, tabellaTotali, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati, contieneTesto, pannelloCandidati, testataArea, dividiPerSede, sediDellaRiga, elencoRilievi };
+  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, ATTI_CON_SCHEDA, esportaExcel, colonneAtti, chipControllo, chiama, json, toast, partiComunicazione, scomposizioneAtti, tabellaTotali, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati, contieneTesto, pannelloCandidati, testataArea, dividiPerSede, sediDellaRiga, elencoRilievi };
 })();

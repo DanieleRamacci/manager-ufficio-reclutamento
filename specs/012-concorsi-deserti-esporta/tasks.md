@@ -8,4 +8,5 @@
 - [X] T006 [US2, US4] Filtri, Anno ed Esporta in riepilogo.html e consulta.html; App.esportaExcel in app.js
 - [X] T007 [US2] Schede Deserti e Revocati nel monitoraggio (monitoraggi.html, consulta.html)
 - [X] T008 Suite di test, controllo JS, rilascio
+- [X] T010 [US5] Conteggio non ammessi (schema 35), giudizio sul concorso senza esito con file della segreteria e sua copertura; API di controllo e avanzamento; pulsante, filtro «Probabili deserti» ed esito nell'Excel; test
 - [ ] T009 Verifica nell'app con i dati reali (367.391, 367.455, 367.433)

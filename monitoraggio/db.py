@@ -6,7 +6,7 @@ import sqlite3
 from . import config
 from .normalizza import AGGIUNTA_TIPOLOGIE, ANCORA_SCORRIMENTI, codice_sede, nota_sottotipo
 
-SCHEMA_VERSION = 34
+SCHEMA_VERSION = 35
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -192,6 +192,7 @@ CREATE TABLE IF NOT EXISTS punteggi_verifica (
     date_candidati TEXT,
     data_allegato TEXT,
     scorrimenti_sol TEXT,
+    non_ammessi INTEGER,
     esito TEXT NOT NULL CHECK (esito IN
         ('completi', 'parziali', 'mancanti', 'protocollo_mancante', 'nessuna_domanda', 'errore')),
     messaggio TEXT
@@ -717,6 +718,8 @@ def inizializza(conn: sqlite3.Connection) -> None:
             DROP TABLE utente_vecchia;
         """)
     _migra_categorie_documento(conn)
+    if "non_ammessi" not in {r[1] for r in conn.execute("PRAGMA table_info(punteggi_verifica)")}:  # versione 35 (spec 012)
+        conn.execute("ALTER TABLE punteggi_verifica ADD COLUMN non_ammessi INTEGER")
     if "coordinatore" not in {r[1] for r in conn.execute("PRAGMA table_info(comunicazione_indirizzi)")}:  # versione 25
         conn.execute("ALTER TABLE comunicazione_indirizzi ADD COLUMN coordinatore INTEGER NOT NULL DEFAULT 0")
     colonne_mese = {r[1] for r in conn.execute("PRAGMA table_info(monitoraggio_mese)")}

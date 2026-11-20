@@ -92,9 +92,46 @@ def _scadenza(scheda) -> str | None:
         return None
 
 
+def _data_it(iso: str | None) -> str:
+    return f"{iso[8:10]}/{iso[5:7]}/{iso[:4]}" if iso else ""
+
+
+def giudizio(v: dict | None, copertura_segreteria: str | None, scadenza: str) -> dict:
+    """Spec 012: che cosa dice Selezioni Online di un concorso senza esito. «deserto» solo con una prova positiva
+    (nessuna domanda valida, oppure punteggi di tutti i candidati e tutti non ammessi a una prova): punteggi mancanti
+    o parziali possono essere dati non inseriti e non bastano."""
+    if copertura_segreteria is None:
+        segr = "file della segreteria non caricato"
+    elif copertura_segreteria == "9999-12-31":
+        segr = "il file della segreteria non ha graduatorie: non copre questo concorso"
+    elif copertura_segreteria <= scadenza:
+        segr = "nessuna graduatoria nemmeno nel file della segreteria"
+    else:
+        segr = f"il file della segreteria parte dal {_data_it(copertura_segreteria)}: non copre questo concorso"
+    if not v:
+        return {"codice": "da_controllare", "testo": "domande e punteggi non ancora controllati su Selezioni Online", "segreteria": segr}
+    if v.get("esito") == "errore":
+        return {"codice": "da_controllare", "testo": f"lettura da Selezioni Online non riuscita: {v.get('messaggio') or ''}".strip(), "segreteria": segr}
+    domande, con_punteggi = v.get("domande") or 0, v.get("con_punteggi") or 0
+    positivi = (v.get("vincitori") or 0) + (v.get("idonei") or 0) + (v.get("scorrimento") or 0)
+    if domande == 0:
+        return {"codice": "deserto", "testo": "nessuna domanda valida su Selezioni Online", "segreteria": segr}
+    if positivi:
+        return {"codice": "graduatoria_mancante", "segreteria": segr,
+                "testo": f"su Selezioni Online {positivi} candidati risultano vincitori o idonei: il concorso ha un esito ma manca la graduatoria pubblicata"}
+    if con_punteggi < domande:
+        return {"codice": "non_determinabile", "segreteria": segr,
+                "testo": f"punteggi inseriti su Selezioni Online per {con_punteggi} candidati su {domande}: non si può dire se è deserto (dati forse non inseriti)"}
+    if v.get("non_ammessi") is not None and v["non_ammessi"] >= con_punteggi:
+        return {"codice": "deserto", "segreteria": segr,
+                "testo": f"nessuno dei {con_punteggi} candidati ha superato le prove (tutti non ammessi su Selezioni Online)"}
+    return {"codice": "non_determinabile", "segreteria": segr,
+            "testo": f"punteggi completi per {con_punteggi} candidati ma nessun vincitore o idoneo e non tutti non ammessi: graduatoria forse non ancora inserita"}
+
+
 def senza_esito(conn, oggi: date | None = None) -> list[dict]:
     """Spec 012: concorsi pubblici (sede per sede) con le domande scadute da più di 12 mesi e senza graduatoria,
-    scorrimento, deserto o revoca né su Selezioni Online né su URP: forse manca il documento."""
+    scorrimento, deserto o revoca su Selezioni Online, su URP e nel file della segreteria: forse manca il documento."""
     limite = ((oggi or date.today()) - timedelta(days=round(MESI_SENZA_ESITO * 30.44))).isoformat()
     schede = conn.execute("SELECT * FROM scheda WHERE fonte = 'sol' AND presente = 1 AND bando_id IS NOT NULL "
                           f"AND tipologia IN ({', '.join('?' * len(TIPOLOGIE_SENZA_ESITO))})", TIPOLOGIE_SENZA_ESITO).fetchall()
@@ -106,6 +143,17 @@ def senza_esito(conn, oggi: date | None = None) -> list[dict]:
             "SELECT s.id AS scheda_id, s.bando_id, s.fonte, d.titolo FROM documento d JOIN scheda s ON s.id = d.scheda_id "
             f"WHERE d.presente = 1 AND s.presente = 1 AND d.categoria IN ({', '.join('?' * len(ESITI))})", ESITI):
         (esiti_sol[d["scheda_id"]] if d["fonte"] == "sol" else esiti_urp[d["bando_id"]]).append(codice_sotto(d["titolo"]))
+    # file della segreteria (versione in uso): graduatorie e scorrimenti per numero di bando e sede
+    versione = segreteria.versione_in_uso(conn)
+    esiti_seg: dict[str, list] = defaultdict(list)
+    copertura = None  # prima data delle graduatorie nel file: prima di questa il file non dice niente
+    if versione:
+        for a in segreteria.atti_versione(conn, versione["id"]):
+            if a["categoria"] in ("graduatoria", "scorrimento"):
+                esiti_seg[a["numero_bando"]].append(a["codice_sotto"])
+            if a["categoria"] == "graduatoria" and a["data"] and a["in_ambito"]:
+                copertura = min(copertura or a["data"], a["data"])
+        copertura = copertura or "9999-12-31"
     righe = []
     for s in schede:
         scadenza = _scadenza(s)
@@ -117,9 +165,9 @@ def senza_esito(conn, oggi: date | None = None) -> list[dict]:
         def vale(codici):  # un esito vale per la sede se è del bando intero o di quella sede
             return any(c is None or str(c).lstrip("0") == sede for c in codici)
         if esiti_sol.get(s["id"]) or (padre is not None and vale(esiti_sol.get(padre["id"], []))) \
-                or vale(esiti_urp.get(s["bando_id"], [])):
+                or vale(esiti_urp.get(s["bando_id"], [])) or vale(esiti_seg.get(s["numero_bando"], [])):
             continue
-        righe.append({"scheda": s, "scadenza": scadenza})
+        righe.append({"scheda": s, "scadenza": scadenza, "copertura_segreteria": copertura if versione else None})
     return righe
 
 
@@ -337,14 +385,17 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None, con_senza_e
 
         for x in per_senza_esito.get(chiave, []):
             s = x["scheda"]
+            esito_verifica = giudizio(verifiche.get(s["id"]), x["copertura_segreteria"], x["scadenza"])
             urp = schede.get(chiave, {}).get("urp")
             righe.append({**base, "atto": "senza_esito", "sottotipo": None, "sottotipo_origine": None,
                           "codice_sotto": s["codice_sotto"], "data": x["scadenza"], "protocollo": None,
                           "titolo": s["codice_originale"], "persone": None,
                           "fonti": {"sol": {"stato": NON_APPLICABILE, "testo": "nessun esito", "url": s["url"]},
                                     "urp": {"stato": NON_APPLICABILE, "testo": "nessun esito", "url": pagina_urp(urp) if urp is not None else None},
-                                    "segreteria": {"stato": NON_APPLICABILE, "testo": "non nel file"}},
-                          "note": [], "_senza_esito": True,
+                                    "segreteria": {"stato": NON_APPLICABILE, "testo": "nessuna graduatoria" if esito_verifica["segreteria"].startswith("nessuna")
+                                                   else "file non caricato" if x["copertura_segreteria"] is None else "non copre il periodo"}},
+                          "note": [], "_senza_esito": True, "scheda_sol_id": s["id"],
+                          "esito_verifica": esito_verifica, "probabile_deserto": esito_verifica["codice"] == "deserto",
                           "avviso": f"domande scadute il {x['scadenza'][8:10]}/{x['scadenza'][5:7]}/{x['scadenza'][:4]}: nessuna graduatoria, "
                                     "deserto o revoca su Selezioni Online e su URP (verificare se manca il documento)"})
 

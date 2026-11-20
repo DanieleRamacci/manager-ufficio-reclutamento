@@ -64,7 +64,7 @@
   }
   const chipSubentro = (r) => !r.subentro_atteso ? "" : `<div><span class="pillola ${r.file_scorrimenti ? (r.file_scorrimenti.subentro_indicato ? "p-ok" : "p-ko") : "p-blu"}">${r.file_scorrimenti ? (r.file_scorrimenti.subentro_indicato ? "subentro indicato nel file" : "subentro non indicato nel file") : "subentro da indicare nel file scorrimenti"}</span></div>`;
   function filtrate(righe) {
-    return righe.filter(r => (!filtri.atto || r.atto === filtri.atto) && (!filtri.tipologia || r.tipologia === filtri.tipologia)
+    return righe.filter(r => (!filtri.atto || r.atto === filtri.atto || (filtri.atto === "probabile_deserto" && r.probabile_deserto)) && (!filtri.tipologia || r.tipologia === filtri.tipologia)
       && (!filtri.difformi || r.difforme) && (!filtri.come || (r.come || []).includes(filtri.come))
       && contieneTesto(filtri.q, `${r.numero_bando} ${r.codice} ${r.titolo_bando} ${r.protocollo} ${ATTI[r.atto] || r.atto} ${(r.note || []).join(" ")} ${(r.rilievi || []).map(x => x.testo).join(" ")} ${(r.rdp || []).map(p => `${p.nome} ${p.cognome} ${p.email}`).join(" ")}`));
   }
@@ -137,7 +137,7 @@
         <th>Data</th><th>Bando</th><th>Tipologia</th><th>Atto</th><th>Prot.</th><th>SOL</th><th>URP</th><th>Segreteria</th><th>Note</th><th>RdP</th><th>Punteggi</th></tr></thead><tbody>
         ${righe.map(r => `<tr><td>${esc(dataIt(r.data))}</td>${cellaBando(r)}<td>${chipTipologia(r.tipologia)}</td><td>${esc(ATTI[r.atto] || r.atto)}${chipSubentro(r)}</td><td class="mono small">${esc(r.protocollo || "")}</td>
           ${cellaFonte(r, "sol")}${cellaFonte(r, "urp")}${cellaFonte(r, "segreteria")}
-          <td>${r.note.length ? `<ul class="rilievi">${r.note.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}${r.avviso ? `<div class="small"><span class="pillola p-warn">da verificare</span> ${esc(r.avviso)}</div>` : ""}</td>${cellaRdp(r)}${cellaPunteggi(r)}</tr>${sottoRighe(r, r.note.map(testo => ({ testo })), 11)}`).join("")
+          <td>${r.note.length ? `<ul class="rilievi">${r.note.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}${r.avviso ? `<div class="small"><span class="pillola p-warn">da verificare</span> ${esc(r.avviso)}</div>` : ""}${App.chipControllo(r)}</td>${cellaRdp(r)}${cellaPunteggi(r)}</tr>${sottoRighe(r, r.note.map(testo => ({ testo })), 11)}`).join("")
           || `<tr><td colspan="11" class="muted">Nessun atto.</td></tr>`}</tbody></table></div>`;
       collegaRdp($("tabella")); collegaCandidati($("tabella"), 11);
     };
