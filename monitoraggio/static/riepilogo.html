@@ -415,6 +415,7 @@ function renderTabellaAtti(id, righe, conSollecito) {
             ? ` <span class="chip ok" title="dal file della segreteria">${SOTTOTIPI[a.sottotipo]}</span>`
             : ` <span class="muted" title="ricavato dal titolo: indicativo">(${SOTTOTIPI[a.sottotipo]}?)</span>`) : ""}
         ${a.persone ? `<div class="muted">${a.persone} ${a.persone === 1 ? "persona" : "persone"} nel file segreteria</div>` : ""}
+        ${a.stato_deserto ? `<div style="margin-top:3px">${App.pillolaDeserto(a)}</div>${a.sede_di ? `<div class="small">sede del bando <b>${esc(a.sede_di)}</b></div>` : ""}${a.segnato ? `<div class="muted small">segnato il ${esc(oraIt(a.segnato.quando))}${a.segnato.nota ? `: ${esc(a.segnato.nota)}` : ""}</div>` : ""}` : ""}
         ${a.atto === "graduatoria" && !(a.sedi || []).length ? chipPunteggi(a.punteggi) + riepilogoPunteggi(a.punteggi) +
           `<button type="button" class="btn-candidati btn-candidati-atto" data-scheda="${a.punteggi?.scheda_id || ""}">${a.punteggi?.candidati ? `👥 ${a.punteggi.con_punteggi ?? ""} candidati ▾` : "👥 Apri dettaglio punteggi ▾"}</button>`
           : a.punteggi ? chipPunteggi(a.punteggi) + (a.punteggi.candidati
