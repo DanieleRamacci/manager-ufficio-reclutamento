@@ -69,6 +69,12 @@ Nello stato complessivo (amministratore e area referenti) una scheda «Concorsi 
 
 Dalla scheda l'amministratore scrive agli RdP del concorso (in copia la segreteria, come per gli avvisi degli scorrimenti): «è andato deserto o mancano i dati?», con anteprima modificabile, prova o invio reale e registro degli invii. Nel monitoraggio del mese la scheda «Concorsi deserti» è sempre visibile.
 
+### User Story 7 - Sedi senza vincitori e esito segnato a mano (Priority: P1, richiesta del 2026-11-20)
+
+Nei bandi con più codici la graduatoria è spesso unica per tutto il bando e dichiara al suo interno i codici andati deserti (es. 367.501: cod. 03 e 07 «conclusione con esito negativo»). Per ogni sede con una graduatoria (o uno scorrimento) del bando intero ma non sua, senza limite di tempo: se su Selezioni Online la sede non ha vincitori né idonei, la scheda «Concorsi deserti» mostra «Possibile deserto: sede senza vincitori» con il bando padre; se non è ancora controllata su SOL si conta a parte («N sedi da controllare») e il controllo su SOL la include. Con domande valide zero o tutti non ammessi resta «deserto senza provvedimento».
+
+Dopo la risposta dei referenti l'amministratore segna a mano «Deserto» o «Non deserto», con una nota (tabella `esito_segnato`, schema 37): la segnatura vale sopra le regole, si vede con chi e quando, si può annullare. I PDF delle graduatorie non vengono letti dal sistema.
+
 ## Requirements *(mandatory)*
 
 - **FR-001**: Nuove categorie di documento `deserto` e `revocato` (schema 34); i documenti già salvati vengono riclassificati.

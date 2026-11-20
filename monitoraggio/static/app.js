@@ -15,7 +15,7 @@ window.App = (() => {
   // spec 012: esito del controllo su SOL di un concorso senza esito
   const ESITO_CONTROLLO = { deserto: ["p-ko", "probabile deserto"], graduatoria_mancante: ["p-ko", "graduatoria mancante"],
     non_determinabile: ["p-warn", "non si può dire"], da_controllare: ["p-na", "da controllare su SOL"],
-    in_corso: ["p-na", "probabilmente in corso"] };
+    in_corso: ["p-na", "probabilmente in corso"], sede_senza_esito: ["p-warn", "sede senza vincitori"] };
   // spec 012: stati della scheda «Concorsi deserti» (classe, etichetta, spiegazione)
   const STATI_DESERTO = {
     certo: ["p-ok", "Deserto con provvedimento", "il provvedimento di deserto o di esito negativo è pubblicato su Selezioni Online e/o su URP"],
@@ -23,7 +23,11 @@ window.App = (() => {
     graduatoria_mancante: ["p-ko", "Non deserto: manca la graduatoria", "su Selezioni Online ci sono vincitori o idonei ma la graduatoria non è pubblicata"],
     da_verificare: ["p-warn", "Da verificare con i referenti", "nessun esito su SOL, URP e file della segreteria e i dati di SOL non bastano: può essere deserto o mancano i dati"],
     in_corso: ["p-na", "Probabilmente in corso", "nessun esito ma ci sono documenti pubblicati negli ultimi 6 mesi (convocazioni, commissione...)"],
+    sede_senza_esito: ["p-warn", "Possibile deserto: sede senza vincitori", "il bando padre ha una graduatoria generale ma su Selezioni Online questo codice non ha vincitori né idonei"],
+    segnato_deserto: ["p-ok", "Deserto (segnato da noi)", "segnato a mano dopo la verifica con i referenti"],
+    segnato_non_deserto: ["p-na", "Non deserto (segnato da noi)", "segnato a mano dopo la verifica con i referenti"],
   };
+  const ORDINE_DESERTI = ["certo", "segnato_deserto", "senza_provvedimento", "sede_senza_esito", "graduatoria_mancante", "da_verificare", "in_corso", "segnato_non_deserto"];
   const pillolaDeserto = (r) => { const s = STATI_DESERTO[r.stato_deserto]; return s ? `<span class="pillola ${s[0]}" title="${esc(s[2])}">${esc(s[1])}</span>` : ""; };
   function chipControllo(r) {
     const e = r.esito_verifica;
@@ -332,5 +336,5 @@ window.App = (() => {
     ];
   }
 
-  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, ATTI_CON_SCHEDA, esportaExcel, colonneAtti, chipControllo, STATI_DESERTO, pillolaDeserto, chiama, json, toast, partiComunicazione, scomposizioneAtti, tabellaTotali, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati, contieneTesto, pannelloCandidati, testataArea, dividiPerSede, sediDellaRiga, elencoRilievi };
+  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, ATTI_CON_SCHEDA, esportaExcel, colonneAtti, chipControllo, STATI_DESERTO, ORDINE_DESERTI, pillolaDeserto, chiama, json, toast, partiComunicazione, scomposizioneAtti, tabellaTotali, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati, contieneTesto, pannelloCandidati, testataArea, dividiPerSede, sediDellaRiga, elencoRilievi };
 })();

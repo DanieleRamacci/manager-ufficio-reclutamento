@@ -975,7 +975,7 @@ $("controlla-senza-esito").onclick = async () => {
 };
 // ---- spec 012: scheda «Concorsi deserti» (tutti gli anni): certi, senza provvedimento, da verificare, in corso
 const deserti = { righe: [], visibili: [], caricati: false };
-const ORDINE_DESERTI = ["certo", "senza_provvedimento", "graduatoria_mancante", "da_verificare", "in_corso"];
+const ORDINE_DESERTI = App.ORDINE_DESERTI;
 $("des-stato").innerHTML += ORDINE_DESERTI.map(k => `<option value="${k}">${esc(App.STATI_DESERTO[k][1])}</option>`).join("");
 $("legenda-deserti").innerHTML = ORDINE_DESERTI.map(k => `<div>${App.pillolaDeserto({ stato_deserto: k })} ${esc(App.STATI_DESERTO[k][2])}</div>`).join("");
 $("des-tipologia").innerHTML += Object.entries(TIPOLOGIE).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
@@ -985,8 +985,8 @@ async function caricaDeserti() {
   const { corpo } = await json("/api/atti?dal=2000-01-01");
   deserti.righe = corpo.atti.filter(a => a.stato_deserto);
   deserti.caricati = true;
-  const n = deserti.righe.filter(a => a.stato_deserto === "certo").length, s = deserti.righe.filter(a => a.stato_deserto === "senza_provvedimento").length;
-  $("conteggio-deserti").textContent = `(${n + s})`;
+  deserti.daControllare = corpo.sedi_da_controllare || 0;
+  $("conteggio-deserti").textContent = `(${deserti.righe.filter(a => ["certo", "segnato_deserto", "senza_provvedimento"].includes(a.stato_deserto)).length})`;
   disegnaDeserti();
 }
 function disegnaDeserti() {
@@ -995,20 +995,28 @@ function disegnaDeserti() {
     && contieneTesto(q, `${a.numero_bando} ${a.codice} ${a.titolo_bando || ""} ${a.protocollo || ""} ${(a.rdp || []).map(r => `${r.nome} ${r.cognome} ${r.email}`).join(" ")}`))
     .sort((x, y) => ORDINE_DESERTI.indexOf(x.stato_deserto) - ORDINE_DESERTI.indexOf(y.stato_deserto) || String(y.data || "").localeCompare(String(x.data || "")));
   deserti.visibili = righe;
+  $("des-stato-controllo").textContent = deserti.daControllare && !$("des-stato-controllo").textContent.startsWith("⏳")
+    ? `${deserti.daControllare} sedi di bandi con graduatoria generale da controllare su SOL (premi «Controlla su SOL»)` : $("des-stato-controllo").textContent;
   const conta = (k) => deserti.righe.filter(a => a.stato_deserto === k).length;
   $("conteggio-deserti-label").textContent = `(${righe.length} di ${deserti.righe.length}: ${ORDINE_DESERTI.map(k => `${conta(k)} ${App.STATI_DESERTO[k][1].toLowerCase()}`).join(", ")})`;
   const cella = (c) => `<td class="f ${c.stato}${c.url ? " apribile" : ""}"${c.url ? ` data-url="${esc(c.url)}"` : ""}>${esc(c.testo || CELLE[c.stato])}${c.protocollo && c.stato === "presente" ? `<div class="muted" style="font-weight:400">${esc(c.protocollo)}</div>` : ""}</td>`;
   const richiesta = (a) => {
     // si scrive quando c'è qualcosa da chiedere: provvedimento mancante su una fonte, da caricare, graduatoria, verifica
-    const daChiedere = a.scheda_sol_id && (a.stato_deserto !== "certo" || a.difforme);
-    if (!daChiedere) return `<td class="muted small">${a.stato_deserto === "certo" ? "niente da chiedere" : "–"}</td>`;
     const r = a.richiesta_deserto;
-    const etichetta = { certo: "Chiedi di caricarlo dove manca", senza_provvedimento: "Chiedi il provvedimento", graduatoria_mancante: "Chiedi la graduatoria" }[a.stato_deserto] || "Chiedi verifica ai referenti";
-    return `<td>${r ? `<div class="small">${r.esito === "prova" ? "prova" : "inviata"} il ${esc(oraIt(r.quando))}</div>` : ""}<button type="button" class="solo-admin" data-richiesta="${a.scheda_sol_id}">${r ? "Scrivi di nuovo" : etichetta}</button></td>`;
+    const inviata = r ? `<div class="small">${r.esito === "prova" ? "prova" : "inviata"} il ${esc(oraIt(r.quando))}</div>` : "";
+    // dopo la risposta dei referenti: l'esito si segna qui (vale sopra le regole); si può annullare
+    const segna = a.atto !== "senza_esito" ? "" : a.segnato
+      ? `<div class="small" style="margin-top:4px">segnato ${a.segnato.esito === "deserto" ? "deserto" : "non deserto"} il ${esc(oraIt(a.segnato.quando))}${a.segnato.utente ? ` da ${esc(a.segnato.utente)}` : ""}${a.segnato.nota ? `: ${esc(a.segnato.nota)}` : ""}</div><button type="button" class="solo-admin" data-annulla="${a.scheda_sol_id}">Annulla</button>`
+      : `<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap"><button type="button" class="solo-admin" data-segna="${a.scheda_sol_id}" data-esito="deserto">Segna deserto</button><button type="button" class="solo-admin" data-segna="${a.scheda_sol_id}" data-esito="non_deserto">Segna non deserto</button></div>`;
+    const daChiedere = a.scheda_sol_id && !String(a.stato_deserto).startsWith("segnato_") && (a.stato_deserto !== "certo" || a.difforme);
+    if (!daChiedere) return `<td class="small">${inviata}${a.stato_deserto === "certo" ? `<span class="muted">niente da chiedere</span>` : ""}${segna}</td>`;
+    const etichetta = { certo: "Chiedi di caricarlo dove manca", senza_provvedimento: "Chiedi il provvedimento", graduatoria_mancante: "Chiedi la graduatoria",
+      sede_senza_esito: "Chiedi se il codice è deserto" }[a.stato_deserto] || "Chiedi verifica ai referenti";
+    return `<td>${inviata}<button type="button" class="solo-admin" data-richiesta="${a.scheda_sol_id}">${r ? "Scrivi di nuovo" : etichetta}</button>${segna}</td>`;
   };
   $("tabella-deserti").innerHTML = `<thead><tr><th>Stato</th><th>Data</th><th>Bando</th><th>Tipologia</th><th>Protocollo</th><th>Selezioni Online</th><th>URP</th><th>File segreteria</th><th>Motivo</th><th>RdP</th><th>Richiesta ai referenti</th></tr></thead><tbody>` +
     (righe.map(a => `<tr><td>${App.pillolaDeserto(a)}</td><td>${dataIt(a.data)}<div class="muted small">${a.atto === "deserto" ? "provvedimento" : "scadenza domande"}</div></td>
-      <td><b>${esc(a.codice || a.numero_bando || "")}</b><div class="muted small" style="max-width:260px">${esc(a.titolo_bando || "")}</div></td><td>${TIPOLOGIE[a.tipologia] || esc(a.tipologia || "")}</td>
+      <td><b>${esc(a.codice || a.numero_bando || "")}</b>${a.sede_di ? `<div class="small">sede del bando <b>${esc(a.sede_di)}</b></div>` : ""}<div class="muted small" style="max-width:260px">${esc(a.titolo_bando || "")}</div></td><td>${TIPOLOGIE[a.tipologia] || esc(a.tipologia || "")}</td>
       <td class="mono">${esc(a.protocollo || "")}</td>${cella(a.fonti.sol)}${cella(a.fonti.urp)}${cella(a.fonti.segreteria)}
       <td class="small" style="min-width:240px">${a.atto === "deserto" ? (a.difforme ? a.note.map(n => `<span class="chip err">${esc(n)}</span>`).join("") || `<span class="chip err">provvedimento non presente su tutte le fonti</span>` : "provvedimento su Selezioni Online e URP")
         : `${esc(a.esito_verifica?.testo || "")}${a.esito_verifica?.dettaglio_sol ? `<div class="muted">${esc(a.esito_verifica.dettaglio_sol)}</div>` : ""}${a.esito_verifica?.segreteria ? `<div class="muted">${esc(a.esito_verifica.segreteria)}</div>` : ""}`}</td>
@@ -1016,6 +1024,20 @@ function disegnaDeserti() {
       || `<tr><td colspan="11" class="muted">Nessun concorso con questi filtri.</td></tr>`) + "</tbody>";
   document.querySelectorAll("#tabella-deserti td.f[data-url]").forEach(td => td.onclick = () => window.open(td.dataset.url, "_blank", "noopener"));
   document.querySelectorAll("#tabella-deserti button[data-richiesta]").forEach(b => b.onclick = () => apriRichiestaDeserto(Number(b.dataset.richiesta)));
+  document.querySelectorAll("#tabella-deserti button[data-segna]").forEach(b => b.onclick = async () => {
+    const deserto = b.dataset.esito === "deserto";
+    const nota = prompt(deserto ? "Segna come DESERTO. Nota (es. «confermato dall'RdP via email il …»):" : "Segna come NON deserto. Nota (es. «procedura in corso, confermato dall'RdP»):", "");
+    if (nota === null) return;
+    const r = await fetch(`/api/deserti/segna/${b.dataset.segna}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ esito: b.dataset.esito, nota }) });
+    const c = await r.json().catch(() => ({}));
+    if (!r.ok) return alert(c.error || `Errore ${r.status}`);
+    await caricaDeserti();
+  });
+  document.querySelectorAll("#tabella-deserti button[data-annulla]").forEach(b => b.onclick = async () => {
+    if (!confirm("Annullare l'esito segnato a mano?")) return;
+    await fetch(`/api/deserti/segna/${b.dataset.annulla}`, { method: "DELETE" });
+    await caricaDeserti();
+  });
 }
 ["des-stato", "des-anno", "des-tipologia", "des-q"].forEach(id => $(id).addEventListener("input", disegnaDeserti));
 $("des-esporta").onclick = () => App.esportaExcel({ colonne: App.colonneAtti(), righe: deserti.visibili, nome: "concorsi-deserti",

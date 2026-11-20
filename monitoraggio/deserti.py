@@ -56,6 +56,15 @@ def _testo(r: dict) -> tuple[str, str] | None:
         return (f"Concorso {codice}: provvedimento di conclusione da caricare su {' e '.join(mancanti)}",
                 f"il provvedimento di conclusione del concorso {codice}{prot} risulta su {' e '.join(presenti) or 'una sola fonte'} "
                 f"ma non su {' e '.join(mancanti)}.\n\nVi chiediamo di caricarlo{su_sol}, così che le fonti siano allineate.")
+    if stato.startswith("segnato_"):
+        return None  # già deciso da noi
+    if stato == "sede_senza_esito":
+        return (f"Concorso {codice}: il codice è andato deserto?",
+                f"per il concorso {codice} (sede del bando {r.get('sede_di') or r.get('numero_bando')}) risulta la graduatoria generale del bando, "
+                "ma per questo codice su Selezioni Online non ci sono vincitori né idonei e non risulta un provvedimento di conclusione.\n\n"
+                "Vi chiediamo di indicarci, rispondendo a questa email, se per questo codice il concorso è andato deserto o si è concluso con esito "
+                "negativo (in questo caso vi chiediamo di caricare su Selezioni Online il provvedimento come allegato di tipo «deserto»), "
+                "oppure se mancano solo i dati su Selezioni Online (punteggi e graduatoria del codice).")
     scadenza = f"le domande sono scadute il {atti._data_it(r.get('data'))}"
     if stato == "senza_provvedimento":
         return (f"Concorso {codice}: provvedimento di concorso deserto da caricare",
@@ -109,3 +118,22 @@ def invia(conn, scheda_id: int, oggetto: str, corpo: str, utente: str | None, mo
     conn.execute("INSERT INTO richiesta_deserto (scheda_id, codice, destinatari, oggetto, esito, utente, quando) VALUES (?, ?, ?, ?, ?, ?, ?)",
                  (scheda_id, a["codice"], json.dumps(a["destinatari"]), oggetto, "prova" if prova else "inviata", utente, _adesso()))
     return {"ok": True, "prova": prova}
+
+
+def segna(conn, scheda_id: int, esito: str, nota: str | None, utente: str | None) -> dict:
+    """Segna a mano l'esito di un concorso senza esito (dopo la risposta dei referenti): vale sopra le regole."""
+    if esito not in atti.ESITI_SEGNATI:
+        raise ValueError("Esito non valido: deserto o non_deserto")
+    if not any(x["scheda"]["id"] == scheda_id for x in atti.senza_esito(conn)):
+        raise ValueError("Il concorso ha già un esito sulle fonti: non serve segnarlo")
+    if comunicazioni.contiene_dati_candidati(nota or ""):
+        raise ValueError("La nota sembra contenere un codice fiscale")
+    conn.execute("INSERT INTO esito_segnato (scheda_id, esito, nota, utente, quando) VALUES (?, ?, ?, ?, ?) "
+                 "ON CONFLICT (scheda_id) DO UPDATE SET esito = excluded.esito, nota = excluded.nota, utente = excluded.utente, quando = excluded.quando",
+                 (scheda_id, esito, (nota or "").strip()[:1000] or None, utente, _adesso()))
+    return {"ok": True}
+
+
+def annulla_segno(conn, scheda_id: int) -> dict:
+    conn.execute("DELETE FROM esito_segnato WHERE scheda_id = ?", (scheda_id,))
+    return {"ok": True}

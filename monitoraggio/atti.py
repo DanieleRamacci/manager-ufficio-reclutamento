@@ -85,7 +85,27 @@ MESI_SENZA_ESITO = 12
 MESI_ATTIVITA_RECENTE = 6  # un documento pubblicato negli ultimi 6 mesi: la procedura è in corso, non ferma
 # spec 012: stato del concorso nella scheda «Concorsi deserti»
 STATO_DESERTO = {"deserto": "senza_provvedimento", "graduatoria_mancante": "graduatoria_mancante", "in_corso": "in_corso",
-                 "non_determinabile": "da_verificare", "da_controllare": "da_verificare"}
+                 "non_determinabile": "da_verificare", "da_controllare": "da_verificare", "sede_senza_esito": "sede_senza_esito"}
+ESITI_SEGNATI = ("deserto", "non_deserto")  # segnati a mano dopo la verifica con i referenti
+
+
+def segnati(conn) -> dict[int, dict]:
+    return {r["scheda_id"]: dict(r) for r in conn.execute("SELECT * FROM esito_segnato")}
+
+
+def giudizio_sede(v: dict | None, generale: dict, padre: str, copertura_segreteria: str | None, scadenza: str) -> dict | None:
+    """Sede di un bando con più codici: il bando padre ha una graduatoria generale, nessuna per questo codice.
+    None se su SOL la sede ha vincitori o idonei (la graduatoria generale vale anche per lei)."""
+    g = _giudizio_sol(v, copertura_segreteria, scadenza or "")
+    if g["codice"] in ("graduatoria_mancante",):
+        return None
+    if g["codice"] in ("deserto", "da_controllare"):
+        return g
+    gen = f"prot. {generale['prot']} del {_data_it(generale['data'])}" if generale.get("prot") else f"del {_data_it(generale.get('data'))}"
+    return {**g, "codice": "sede_senza_esito",
+            "testo": f"il bando {padre} ha una graduatoria generale ({gen}) ma su Selezioni Online per questo codice non ci sono vincitori né idonei "
+                     f"({v.get('con_punteggi') or 0} candidati con punteggi su {v.get('domande') or 0} domande): potrebbe essere andato deserto",
+            "dettaglio_sol": g["testo"]}
 TIPOLOGIE_SENZA_ESITO = ("tempo_indeterminato",)  # concorsi pubblici
 
 
@@ -169,9 +189,10 @@ def senza_esito(conn, oggi: date | None = None) -> list[dict]:
         else:
             ultimi_urp[d["bando_id"]].append({"data": d["data"], "titolo": d["titolo"], "sede": codice_sotto(d["titolo"])})
     for d in conn.execute(
-            "SELECT s.id AS scheda_id, s.bando_id, s.fonte, d.titolo FROM documento d JOIN scheda s ON s.id = d.scheda_id "
+            "SELECT s.id AS scheda_id, s.bando_id, s.fonte, d.titolo, d.protocollo, d.data_protocollo FROM documento d JOIN scheda s ON s.id = d.scheda_id "
             f"WHERE d.presente = 1 AND s.presente = 1 AND d.categoria IN ({', '.join('?' * len(ESITI))})", ESITI):
-        (esiti_sol[d["scheda_id"]] if d["fonte"] == "sol" else esiti_urp[d["bando_id"]]).append(codice_sotto(d["titolo"]))
+        (esiti_sol[d["scheda_id"]] if d["fonte"] == "sol" else esiti_urp[d["bando_id"]]).append(
+            {"sede": codice_sotto(d["titolo"]), "prot": d["protocollo"], "data": d["data_protocollo"]})
     # file della segreteria (versione in uso): graduatorie e scorrimenti per numero di bando e sede
     versione = segreteria.versione_in_uso(conn)
     esiti_seg: dict[str, list] = defaultdict(list)
@@ -179,28 +200,43 @@ def senza_esito(conn, oggi: date | None = None) -> list[dict]:
     if versione:
         for a in segreteria.atti_versione(conn, versione["id"]):
             if a["categoria"] in ("graduatoria", "scorrimento"):
-                esiti_seg[a["numero_bando"]].append(a["codice_sotto"])
+                esiti_seg[a["numero_bando"]].append({"sede": a["codice_sotto"], "prot": a["protocollo"], "data": a["data"]})
             if a["categoria"] == "graduatoria" and a["data"] and a["in_ambito"]:
                 copertura = min(copertura or a["data"], a["data"])
         copertura = copertura or "9999-12-31"
     righe = []
     for s in schede:
         scadenza = _scadenza(s)
-        if s["id_esterno"] in padri or not scadenza or scadenza >= limite or s["data_pubbl_graduatoria"]:
+        if s["id_esterno"] in padri or s["data_pubbl_graduatoria"]:
             continue
         padre = per_esterno.get(s["id_padre"]) if s["id_padre"] else None
         sede = str(s["codice_sotto"] or "").lstrip("0")
-
-        def vale(codici):  # un esito vale per la sede se è del bando intero o di quella sede
-            return any(c is None or str(c).lstrip("0") == sede for c in codici)
-        if esiti_sol.get(s["id"]) or (padre is not None and vale(esiti_sol.get(padre["id"], []))) \
-                or vale(esiti_urp.get(s["bando_id"], [])) or vale(esiti_seg.get(s["numero_bando"], [])):
+        altri = (esiti_sol.get(padre["id"], []) if padre is not None else []) + esiti_urp.get(s["bando_id"], []) + esiti_seg.get(s["numero_bando"], [])
+        # esito di questa sede (documento suo, o di un altro documento che cita il suo codice): niente da verificare
+        if esiti_sol.get(s["id"]) or any(e["sede"] is not None and str(e["sede"]).lstrip("0") == sede for e in altri):
             continue
+        generali = [e for e in altri if e["sede"] is None]  # graduatoria o scorrimento del bando intero
+        if generali:
+            if padre is None:
+                continue  # bando senza sedi: la graduatoria è la sua
+            tipo = "sede"  # sede di un bando con graduatoria generale: si guarda se ha vincitori (senza limite di tempo)
+        else:
+            if not scadenza or scadenza >= limite:
+                continue
+            tipo = "bando"
         candidati_ultimo = [x for x in (ultimi_sol.get(s["id"]), ultimi_sol.get(padre["id"]) if padre is not None else None) if x]
         candidati_ultimo += [x for x in ultimi_urp.get(s["bando_id"], []) if x["sede"] is None or str(x["sede"]).lstrip("0") == sede]
         ultimo = max(candidati_ultimo, key=lambda x: x["data"], default=None)
-        righe.append({"scheda": s, "scadenza": scadenza, "copertura_segreteria": copertura if versione else None, "ultimo": ultimo})
+        righe.append({"scheda": s, "scadenza": scadenza, "copertura_segreteria": copertura if versione else None, "ultimo": ultimo,
+                      "tipo": tipo, "generale": max(generali, key=lambda e: e["data"] or "") if generali else None,
+                      "padre": (padre["codice_originale"] or padre["numero_bando"]) if padre is not None else None})
     return righe
+
+
+def sedi_da_controllare(conn) -> int:
+    """Sedi di bandi con graduatoria generale non ancora controllate su SOL (non compaiono finché non si controllano)."""
+    verifiche = punteggi.ultime_verifiche(conn)
+    return sum(1 for x in senza_esito(conn) if x["tipo"] == "sede" and not verifiche.get(x["scheda"]["id"]))
 
 
 def elenco_atti(conn, dal: str | None = None, al: str | None = None, con_senza_esito: bool = False) -> list[dict]:
@@ -369,6 +405,7 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None, con_senza_e
     chiavi_bando = list(bandi) + [k for k in solo_file if k not in bandi]
     # spec 012: concorsi senza esito, indipendenti dal periodo (la data è la scadenza delle domande)
     per_senza_esito = defaultdict(list)
+    esiti_segnati = segnati(conn) if con_senza_esito else {}
     if con_senza_esito:
         for x in senza_esito(conn):
             per_senza_esito[x["scheda"]["bando_id"]].append(x)
@@ -417,7 +454,17 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None, con_senza_e
 
         for x in per_senza_esito.get(chiave, []):
             s = x["scheda"]
-            esito_verifica = giudizio(verifiche.get(s["id"]), x["copertura_segreteria"], x["scadenza"], x.get("ultimo"))
+            segnato = esiti_segnati.get(s["id"])
+            if x["tipo"] == "sede":
+                esito_verifica = giudizio_sede(verifiche.get(s["id"]), x["generale"], x["padre"], x["copertura_segreteria"], x["scadenza"])
+                # sede con vincitori, o non ancora controllata su SOL: non è un dubbio (le seconde si contano a parte)
+                if esito_verifica is None or (esito_verifica["codice"] == "da_controllare" and not segnato):
+                    continue
+            else:
+                esito_verifica = giudizio(verifiche.get(s["id"]), x["copertura_segreteria"], x["scadenza"], x.get("ultimo"))
+            stato = STATO_DESERTO[esito_verifica["codice"]]
+            if segnato:
+                stato = f"segnato_{segnato['esito']}"
             urp = schede.get(chiave, {}).get("urp")
             righe.append({**base, "atto": "senza_esito", "sottotipo": None, "sottotipo_origine": None,
                           "codice_sotto": s["codice_sotto"], "data": x["scadenza"], "protocollo": None,
@@ -428,9 +475,10 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None, con_senza_e
                                                    else "file non caricato" if x["copertura_segreteria"] is None else "non copre il periodo"}},
                           "note": [], "_senza_esito": True, "scheda_sol_id": s["id"],
                           "esito_verifica": esito_verifica, "probabile_deserto": esito_verifica["codice"] == "deserto",
-                          "stato_deserto": STATO_DESERTO[esito_verifica["codice"]],
-                          "avviso": f"domande scadute il {x['scadenza'][8:10]}/{x['scadenza'][5:7]}/{x['scadenza'][:4]}: nessuna graduatoria, "
-                                    "deserto o revoca su Selezioni Online e su URP (verificare se manca il documento)"})
+                          "stato_deserto": stato, "segnato": segnato, "sede_di": x.get("padre"),
+                          "avviso": (f"sede del bando {x['padre']}: c'è una graduatoria generale ma nessun esito per questo codice" if x["tipo"] == "sede" else
+                                     f"domande scadute il {_data_it(x['scadenza'])}: nessuna graduatoria, "
+                                     "deserto o revoca su Selezioni Online e su URP (verificare se manca il documento)")})
 
         # documenti
         for gruppo in _unisci(voci.get(chiave, {})):

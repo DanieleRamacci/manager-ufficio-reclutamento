@@ -352,3 +352,82 @@ def test_richiesta_graduatoria_mancante(db):
     db.execute("INSERT INTO punteggi_verifica (scheda_id, verificato_il, domande, con_punteggi, vincitori, idonei, scorrimento, "
                "non_ammessi, esito) VALUES (?, '2026-11-20', 3, 3, 1, 1, 0, 1, 'completi')", (sid,))
     assert deserti.anteprima(db, sid)["oggetto"] == "Concorso 367.391 CTER: graduatoria da pubblicare"
+
+
+# ----------------------------------------------------------------- sedi di bandi con graduatoria generale (es. 367.501)
+
+def _bando_con_sedi(db):
+    salva(db, "sol", [
+        _concorso("p", "367.501 CTER", "367.501", "2025-08-22"),
+        _concorso("c1", "367.501 CTER - CODICE 01 AR MI4", "367.501", "2025-08-22", sotto="1", id_padre="p"),
+        _concorso("c3", "367.501 CTER - CODICE 03 IBSBC MI", "367.501", "2025-08-22", sotto="3", id_padre="p"),
+        _concorso("c4", "367.501 CTER - CODICE 04 ITC MI", "367.501", "2025-08-22", sotto="4", id_padre="p"),
+    ])
+    salva(db, "urp", [scheda("urp", "/node/501", "367.501 CTER", "367.501", data="2025-07-23",
+                             documenti=[{**doc("g", "graduatoria", "284411", "2026-06-22"), "titolo": "Graduatoria"}])])
+    collegamento.collega(db)
+    ids = {r["id_esterno"]: r["id"] for r in db.execute("SELECT id, id_esterno FROM scheda")}
+    for chiave, (domande, punti, v) in {"c1": (2, 2, 1), "c3": (3, 0, 0)}.items():  # c4: non ancora controllata su SOL
+        db.execute("INSERT INTO punteggi_verifica (scheda_id, verificato_il, domande, con_punteggi, vincitori, idonei, scorrimento, "
+                   "non_ammessi, esito) VALUES (?, '2026-11-20', ?, ?, ?, 0, 0, 0, 'completi')", (ids[chiave], domande, punti, v))
+    return ids
+
+
+def test_sede_senza_vincitori_con_graduatoria_generale(db):
+    ids = _bando_con_sedi(db)
+    tipi = {x["scheda"]["id_esterno"]: x["tipo"] for x in atti.senza_esito(db, date(2026, 11, 20))}
+    assert tipi == {"c1": "sede", "c3": "sede", "c4": "sede"}  # niente limite dei 12 mesi: la graduatoria generale c'è
+    righe = {r["codice"]: r for r in atti.elenco_atti(db, "2000-01-01", None, con_senza_esito=True) if r["atto"] == "senza_esito"}
+    assert set(righe) == {"367.501 CTER - CODICE 03 IBSBC MI"}  # c1 ha un vincitore, c4 non è ancora controllata
+    r = righe["367.501 CTER - CODICE 03 IBSBC MI"]
+    assert r["stato_deserto"] == "sede_senza_esito" and r["sede_di"] == "367.501 CTER" and "284411" in r["esito_verifica"]["testo"]
+    assert atti.sedi_da_controllare(db) == 1
+
+
+def test_sede_con_graduatoria_specifica_non_e_un_dubbio(db):
+    ids = _bando_con_sedi(db)
+    salva(db, "urp", [scheda("urp", "/node/501", "367.501 CTER", "367.501", data="2025-07-23",
+                             documenti=[{**doc("g", "graduatoria", "284411", "2026-06-22"), "titolo": "Graduatoria"},
+                                        {**doc("g3", "graduatoria", "9", "2026-06-22"), "titolo": "Graduatoria cod. 03"}])])
+    assert "c3" not in {x["scheda"]["id_esterno"] for x in atti.senza_esito(db, date(2026, 11, 20))}
+
+
+def test_segna_deserto_e_annulla(db):
+    from monitoraggio import deserti
+    ids = _bando_con_sedi(db)
+    deserti.segna(db, ids["c3"], "deserto", "confermato dall'RdP", "admin")
+    r = next(r for r in atti.elenco_atti(db, "2000-01-01", None, con_senza_esito=True) if r.get("scheda_sol_id") == ids["c3"])
+    assert r["stato_deserto"] == "segnato_deserto" and r["segnato"]["nota"] == "confermato dall'RdP"
+    assert deserti.anteprima(db, ids["c3"]) is None  # già deciso: niente email
+    deserti.segna(db, ids["c4"], "non_deserto", "", "admin")  # anche una sede non controllata, se segnata, compare
+    assert any(r.get("scheda_sol_id") == ids["c4"] and r["stato_deserto"] == "segnato_non_deserto"
+               for r in atti.elenco_atti(db, "2000-01-01", None, con_senza_esito=True))
+    deserti.annulla_segno(db, ids["c3"])
+    r = next(r for r in atti.elenco_atti(db, "2000-01-01", None, con_senza_esito=True) if r.get("scheda_sol_id") == ids["c3"])
+    assert r["stato_deserto"] == "sede_senza_esito"
+    with pytest.raises(ValueError):
+        deserti.segna(db, ids["c3"], "forse", "", "admin")
+    with pytest.raises(ValueError, match="già un esito"):
+        deserti.segna(db, ids["c1"] + 999, "deserto", "", "admin")
+
+
+def test_email_sede_senza_vincitori(db):
+    from monitoraggio import deserti
+    ids = _bando_con_sedi(db)
+    _con_rdp(db, "c3", "rdp@cnr.it")
+    a = deserti.anteprima(db, ids["c3"])
+    assert a["oggetto"] == "Concorso 367.501 CTER - CODICE 03 IBSBC MI: il codice è andato deserto?"
+    assert "sede del bando 367.501 CTER" in a["corpo"]
+
+
+def test_api_segna(db):
+    ids = _bando_con_sedi(db)
+    app = Flask(__name__)
+    app.register_blueprint(web.crea_blueprint(lambda f: f))
+    c = app.test_client()
+    assert c.post(f"/api/deserti/segna/{ids['c3']}", json={"esito": "deserto", "nota": "ok"}).status_code == 200
+    corpo = c.get("/api/atti?dal=2000-01-01").get_json()
+    assert corpo["sedi_da_controllare"] == 1
+    assert any(x["stato_deserto"] == "segnato_deserto" for x in corpo["atti"] if x.get("stato_deserto"))
+    assert c.delete(f"/api/deserti/segna/{ids['c3']}").status_code == 200
+    assert c.post(f"/api/deserti/segna/{ids['c3']}", json={"esito": "x"}).status_code == 400

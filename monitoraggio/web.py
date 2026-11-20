@@ -770,7 +770,8 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
                 if r.get("stato_deserto"):
                     r["richiesta_deserto"] = richieste_deserti.get(r.get("scheda_sol_id"))
             return jsonify({"dal": request.args.get("dal") or config.monitoraggio_dal().isoformat(),
-                            "totale": len(righe), "atti": righe, "fonti_in_attesa": atti.fonti_in_attesa(conn)})
+                            "totale": len(righe), "atti": righe, "fonti_in_attesa": atti.fonti_in_attesa(conn),
+                            "sedi_da_controllare": atti.sedi_da_controllare(conn)})
         finally:
             conn.close()
 
@@ -789,6 +790,23 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
                 return jsonify(deserti.invia(conn, scheda_id, str(corpo.get("oggetto") or "").strip(), str(corpo.get("corpo") or ""),
                                              utente_corrente(), corpo.get("modo") or None))
             except (ValueError, posta.PostaErrore) as e:
+                return jsonify({"error": str(e)}), 400
+        finally:
+            conn.close()
+
+    @bp.route("/api/deserti/segna/<int:scheda_id>", methods=["POST", "DELETE"])
+    @protezione
+    @solo_admin
+    def api_segna_deserto(scheda_id: int):
+        """Spec 012: esito segnato a mano (deserto / non deserto) dopo la verifica con i referenti."""
+        conn = _conn()
+        try:
+            if request.method == "DELETE":
+                return jsonify(deserti.annulla_segno(conn, scheda_id))
+            corpo = request.get_json(silent=True) or {}
+            try:
+                return jsonify(deserti.segna(conn, scheda_id, str(corpo.get("esito") or ""), corpo.get("nota"), utente_corrente()))
+            except ValueError as e:
                 return jsonify({"error": str(e)}), 400
         finally:
             conn.close()

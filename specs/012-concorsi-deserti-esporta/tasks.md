@@ -10,4 +10,5 @@
 - [X] T008 Suite di test, controllo JS, rilascio
 - [X] T010 [US5] Conteggio non ammessi (schema 35), giudizio sul concorso senza esito con file della segreteria e sua copertura; API di controllo e avanzamento; pulsante, filtro «Probabili deserti» ed esito nell'Excel; test
 - [X] T011 [US6] Stato del deserto sulle righe (certo, senza provvedimento, graduatoria mancante, da verificare, in corso con attività negli ultimi 6 mesi); richiesta ai referenti (schema 36, API, finestra); scheda «Concorsi deserti» nello stato complessivo e nell'area referenti; scheda sempre visibile nel monitoraggio; test
+- [X] T012 [US7] Sedi con graduatoria generale e senza vincitori su SOL; conteggio delle sedi da controllare; esito segnato a mano (schema 37, API, pulsanti); email per la sede; test
 - [ ] T009 Verifica nell'app con i dati reali (367.391, 367.455, 367.433)

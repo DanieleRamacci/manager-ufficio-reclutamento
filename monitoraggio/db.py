@@ -6,7 +6,7 @@ import sqlite3
 from . import config
 from .normalizza import AGGIUNTA_TIPOLOGIE, ANCORA_SCORRIMENTI, codice_sede, nota_sottotipo
 
-SCHEMA_VERSION = 36
+SCHEMA_VERSION = 37
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -362,6 +362,14 @@ CREATE TABLE IF NOT EXISTS programma_pc (
 );
 
 -- spec 011: richieste di verifica dei file agli RdP di un bando
+CREATE TABLE IF NOT EXISTS esito_segnato (
+    scheda_id INTEGER PRIMARY KEY REFERENCES scheda (id),
+    esito TEXT NOT NULL CHECK (esito IN ('deserto', 'non_deserto')),
+    nota TEXT,
+    utente TEXT,
+    quando TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS richiesta_deserto (
     id INTEGER PRIMARY KEY,
     scheda_id INTEGER NOT NULL REFERENCES scheda (id),

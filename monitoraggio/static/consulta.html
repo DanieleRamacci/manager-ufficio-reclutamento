@@ -116,7 +116,7 @@
       <button type="button" role="tab" data-stato="stato" aria-selected="${filtri.schedaStato === "stato"}">Tutti gli atti (${dati.righe.length})</button>
       <button type="button" role="tab" data-stato="graduatoria" aria-selected="${filtri.schedaStato === "graduatoria"}">Graduatorie pubbliche del mese (${graduatorie})</button>
       <button type="button" role="tab" data-stato="scorrimento" aria-selected="${filtri.schedaStato === "scorrimento"}">Scorrimenti del mese (${scorrimenti})</button>
-      <button type="button" role="tab" data-stato="deserti" aria-selected="${filtri.schedaStato === "deserti"}">Concorsi deserti (${dati.righe.filter(r => ["certo", "senza_provvedimento"].includes(r.stato_deserto)).length})</button>
+      <button type="button" role="tab" data-stato="deserti" aria-selected="${filtri.schedaStato === "deserti"}">Concorsi deserti (${dati.righe.filter(r => ["certo", "segnato_deserto", "senza_provvedimento"].includes(r.stato_deserto)).length})</button>
       <label class="muted">Mese <input type="month" id="mese-stato" value="${esc(mese)}"></label>
       <label class="muted">Tipologia <select id="tipologia-stato"><option value="">Tutte</option><option value="tempo_indeterminato"${filtri.tipologia === "tempo_indeterminato" ? " selected" : ""}>Tempo indeterminato</option><option value="reclutamento_speciale"${filtri.tipologia === "reclutamento_speciale" ? " selected" : ""}>Reclutamento speciale</option><option value="categorie_protette"${filtri.tipologia === "categorie_protette" ? " selected" : ""}>Categorie protette</option><option value="mobilita"${filtri.tipologia === "mobilita" ? " selected" : ""}>Mobilità</option><option value="comando"${filtri.tipologia === "comando" ? " selected" : ""}>Comando</option></select></label>
       <label class="muted" title="Atti pubblicati nell'anno scelto (es. i concorsi deserti del 2026)">Anno <select id="anno-stato"><option value="">dall'inizio del monitoraggio</option><option value="tutti"${filtri.anno === "tutti" ? " selected" : ""}>Tutti gli anni</option>${Array.from({ length: new Date().getFullYear() - 2013 }, (_, i) => new Date().getFullYear() - i).map(a => `<option value="${a}"${filtri.anno === String(a) ? " selected" : ""}>${a}</option>`).join("")}</select></label>
@@ -135,7 +135,7 @@
       else if (filtri.schedaStato !== "stato") base = base.filter(r => r.atto === filtri.schedaStato && (r.data || "").startsWith(mese));
       const righe = filtrate(base);
       righeVisibili = righe;
-      const STATI = App.STATI_DESERTO, ORDINE = ["certo", "senza_provvedimento", "graduatoria_mancante", "da_verificare", "in_corso"];
+      const STATI = App.STATI_DESERTO, ORDINE = App.ORDINE_DESERTI;
       const filtroDeserti = filtri.schedaStato !== "deserti" ? "" : `<div class="riga" style="align-items:center;margin-bottom:8px">
         <select id="stato-deserto" aria-label="Stato del concorso"><option value="">Tutti gli stati</option>${ORDINE.map(k => `<option value="${k}"${filtri.statoDeserto === k ? " selected" : ""}>${esc(STATI[k][1])}</option>`).join("")}</select></div>
         <div class="muted small" style="margin-bottom:8px">${ORDINE.map(k => `<div>${App.pillolaDeserto({ stato_deserto: k })} ${esc(STATI[k][2])}</div>`).join("")}</div>`;
