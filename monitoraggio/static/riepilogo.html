@@ -999,9 +999,12 @@ function disegnaDeserti() {
   $("conteggio-deserti-label").textContent = `(${righe.length} di ${deserti.righe.length}: ${ORDINE_DESERTI.map(k => `${conta(k)} ${App.STATI_DESERTO[k][1].toLowerCase()}`).join(", ")})`;
   const cella = (c) => `<td class="f ${c.stato}${c.url ? " apribile" : ""}"${c.url ? ` data-url="${esc(c.url)}"` : ""}>${esc(c.testo || CELLE[c.stato])}${c.protocollo && c.stato === "presente" ? `<div class="muted" style="font-weight:400">${esc(c.protocollo)}</div>` : ""}</td>`;
   const richiesta = (a) => {
-    if (a.atto !== "senza_esito" || a.stato_deserto === "in_corso" && !a.richiesta_deserto) return "<td></td>";
+    // si scrive quando c'è qualcosa da chiedere: provvedimento mancante su una fonte, da caricare, graduatoria, verifica
+    const daChiedere = a.scheda_sol_id && (a.stato_deserto !== "certo" || a.difforme);
+    if (!daChiedere) return `<td class="muted small">${a.stato_deserto === "certo" ? "niente da chiedere" : "–"}</td>`;
     const r = a.richiesta_deserto;
-    return `<td>${r ? `<div class="small">${r.esito === "prova" ? "prova" : "inviata"} il ${esc(oraIt(r.quando))}</div>` : ""}<button type="button" class="solo-admin" data-richiesta="${a.scheda_sol_id}">${r ? "Scrivi di nuovo" : "Chiedi ai referenti"}</button></td>`;
+    const etichetta = { certo: "Chiedi di caricarlo dove manca", senza_provvedimento: "Chiedi il provvedimento", graduatoria_mancante: "Chiedi la graduatoria" }[a.stato_deserto] || "Chiedi verifica ai referenti";
+    return `<td>${r ? `<div class="small">${r.esito === "prova" ? "prova" : "inviata"} il ${esc(oraIt(r.quando))}</div>` : ""}<button type="button" class="solo-admin" data-richiesta="${a.scheda_sol_id}">${r ? "Scrivi di nuovo" : etichetta}</button></td>`;
   };
   $("tabella-deserti").innerHTML = `<thead><tr><th>Stato</th><th>Data</th><th>Bando</th><th>Tipologia</th><th>Protocollo</th><th>Selezioni Online</th><th>URP</th><th>File segreteria</th><th>Motivo</th><th>RdP</th><th>Richiesta ai referenti</th></tr></thead><tbody>` +
     (righe.map(a => `<tr><td>${App.pillolaDeserto(a)}</td><td>${dataIt(a.data)}<div class="muted small">${a.atto === "deserto" ? "provvedimento" : "scadenza domande"}</div></td>
@@ -1028,7 +1031,7 @@ async function apriRichiestaDeserto(schedaId) {
   o.id = "finestra-deserto";
   o.style.cssText = "position:fixed;inset:0;background:rgba(20,28,40,.4);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px";
   o.innerHTML = `<div role="dialog" aria-modal="true" aria-labelledby="fd-titolo" style="background:var(--card,#fff);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.25);width:100%;max-width:720px;max-height:92vh;display:flex;flex-direction:column">
-    <div style="padding:14px 18px;border-bottom:1px solid #e3e6ea"><b id="fd-titolo">Chiedi ai referenti: ${esc(a.codice)}</b></div>
+    <div style="padding:14px 18px;border-bottom:1px solid #e3e6ea"><b id="fd-titolo">Email ai referenti: ${esc(a.codice)}</b> ${App.pillolaDeserto({ stato_deserto: a.stato })}</div>
     <div style="padding:12px 18px;overflow:auto;display:flex;flex-direction:column;gap:8px">
       <div class="small"><b>A:</b> ${esc(a.destinatari.join(", ")) || `<span class="chip err">nessuna email RdP: aggiorna i referenti</span>`}${a.cc.length ? `<br><b>Cc:</b> ${esc(a.cc.join(", "))}` : ""}</div>
       ${a.posta?.prova ? `<div class="chip protdiv">Modalità di prova attiva: ${esc(a.posta.prova)}</div>` : ""}

@@ -317,3 +317,38 @@ def test_api_richiesta_deserto(db, monkeypatch):
     riga = next(x for x in client.get("/api/atti?dal=2000-01-01").get_json()["atti"] if x["atto"] == "senza_esito")
     assert riga["richiesta_deserto"]["esito"] == "prova" and riga["stato_deserto"] == "da_verificare"
     assert client.get("/api/deserti/richiesta/999999").status_code == 404
+
+
+def test_richiesta_provvedimento_su_urp_ma_non_su_sol(db):
+    """367.455: deserto su URP, su SOL manca: l'email chiede di caricarlo su Selezioni Online."""
+    from monitoraggio import deserti
+    salva(db, "sol", [scheda("sol", "s1", "367.455 TEC SAC", "367.455", data="2024-01-10")])
+    salva(db, "urp", [scheda("urp", "/node/1", "367.455 TEC SAC", "367.455", data="2024-01-10",
+                             documenti=[{**doc("u1", "deserto", "505707", "2024-12-20"), "titolo": "Decreto esito negativo bando"}])])
+    collegamento.collega(db)
+    sid = _con_rdp(db, "s1", "rdp@cnr.it")
+    r = next(x for x in atti.elenco_atti(db, "2000-01-01", None, con_senza_esito=True) if x["atto"] == "deserto")
+    assert r["stato_deserto"] == "certo" and r["scheda_sol_id"] == sid and r["difforme"]
+    a = deserti.anteprima(db, sid)
+    assert a["oggetto"] == "Concorso 367.455 TEC SAC: provvedimento di conclusione da caricare su Selezioni Online"
+    assert "505707" in a["corpo"] and "allegato di tipo «deserto»" in a["corpo"] and a["stato"] == "certo"
+
+
+def test_niente_da_chiedere_se_provvedimento_su_entrambe(db):
+    from monitoraggio import deserti
+    salva(db, "sol", [scheda("sol", "s1", "367.449 CTER", "367.449", data="2024-01-10", documenti=[_deserto("d", "402409", "2024-10-25")])])
+    salva(db, "urp", [scheda("urp", "/node/1", "367.449 CTER", "367.449", data="2024-01-10",
+                             documenti=[{**doc("u1", "deserto", "402409", "2024-10-25"), "titolo": "Conclusione con esito negativo"}])])
+    collegamento.collega(db)
+    sid = db.execute("SELECT id FROM scheda WHERE id_esterno = 's1'").fetchone()[0]
+    assert deserti.anteprima(db, sid) is None
+
+
+def test_richiesta_graduatoria_mancante(db):
+    from monitoraggio import deserti
+    salva(db, "sol", [_concorso("a", "367.391 CTER", "367.391", "2023-01-05")])
+    collegamento.collega(db)
+    sid = _con_rdp(db, "a", "rdp@cnr.it")
+    db.execute("INSERT INTO punteggi_verifica (scheda_id, verificato_il, domande, con_punteggi, vincitori, idonei, scorrimento, "
+               "non_ammessi, esito) VALUES (?, '2026-11-20', 3, 3, 1, 1, 0, 1, 'completi')", (sid,))
+    assert deserti.anteprima(db, sid)["oggetto"] == "Concorso 367.391 CTER: graduatoria da pubblicare"

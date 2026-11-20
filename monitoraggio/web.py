@@ -767,7 +767,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
                 # senza monitoraggio si può comunque scrivere: il monitoraggio del mese si crea al primo invio
                 r["chiave"] = comunicazioni.chiave(r)
                 r["comunicabile"] = r["atto"] in difformita.ATTI_SEGUITI and config.nel_monitoraggio(r.get("tipologia")) and bool(r.get("data"))
-                if r["atto"] == "senza_esito":
+                if r.get("stato_deserto"):
                     r["richiesta_deserto"] = richieste_deserti.get(r.get("scheda_sol_id"))
             return jsonify({"dal": request.args.get("dal") or config.monitoraggio_dal().isoformat(),
                             "totale": len(righe), "atti": righe, "fonti_in_attesa": atti.fonti_in_attesa(conn)})
@@ -783,7 +783,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
         try:
             if request.method == "GET":
                 a = deserti.anteprima(conn, scheda_id)
-                return jsonify(a) if a else (jsonify({"error": "Il concorso non risulta senza esito"}), 404)
+                return jsonify(a) if a else (jsonify({"error": "Per questo concorso non c'è niente da chiedere ai referenti"}), 404)
             corpo = request.get_json(silent=True) or {}
             try:
                 return jsonify(deserti.invia(conn, scheda_id, str(corpo.get("oggetto") or "").strip(), str(corpo.get("corpo") or ""),

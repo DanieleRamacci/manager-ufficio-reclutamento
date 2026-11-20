@@ -498,6 +498,8 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None, con_senza_e
                 if persone_sedi:
                     r["rdp"], r["rdp_origine"] = list(persone_sedi.values()), "codice" if unica else "bando"
             s = unica if info else scheda_sol(r["bando_id"], r.get("codice_sotto"))
+            if r["atto"] == "deserto" and s is not None:
+                r["scheda_sol_id"] = s["id"]  # spec 012: per la richiesta ai referenti
             if r["atto"] in ("graduatoria", "scorrimento") and s is not None:
                 r["punteggi"] = punteggi_riga(s)
                 r["scheda_sol_id"] = s["id"]
