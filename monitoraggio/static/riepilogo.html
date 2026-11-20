@@ -152,12 +152,15 @@
     <div class="filtri">
       <label class="muted">Mese <input type="month" id="atti-mese"></label>
       <button type="button" id="atti-tutto" title="Dal 1° gennaio 2026 a oggi">Tutto il periodo</button>
+      <label class="muted">Anno <select id="atti-anno"><option value="">–</option></select></label>
       <label class="muted">Dal <input type="date" id="atti-dal"></label>
       <label class="muted">Al <input type="date" id="atti-al"></label>
       <select id="atti-tipo">
         <option value="">Tutti gli atti</option><option value="bando">Bandi pubblicati</option>
         <option value="graduatoria">Graduatorie pubbliche</option><option value="scorrimento">Scorrimenti</option>
         <option value="rettifica">Rettifiche graduatoria</option>
+        <option value="deserto">Concorsi deserti</option><option value="revocato">Bandi revocati</option>
+        <option value="senza_esito" title="Concorsi pubblici con le domande scadute da più di 12 mesi, senza graduatoria, deserto o revoca su SOL e URP (qualunque periodo)">Senza esito da oltre 12 mesi</option>
       </select>
       <select id="atti-tipologia"><option value="">Tutte le tipologie</option></select>
       <select id="atti-manca">
@@ -169,6 +172,7 @@
       <select id="atti-rdp"><option value="">Tutti gli RdP</option></select>
       <input type="search" id="atti-q" placeholder="Codice, titolo, protocollo, RdP o testo" size="34">
       <a href="#" id="atti-azzera" class="muted" style="font-size:12.5px">Azzera filtri</a>
+      <button type="button" id="atti-esporta" title="Scarica in Excel le righe visibili, scegliendo le colonne">Esporta Excel</button>
     </div>
     <div class="scroll"><table id="atti"></table></div>
   </section>
@@ -333,9 +337,10 @@ function disegnaBandi() {
   document.querySelectorAll("#bandi tr[data-id]").forEach(tr => tr.onclick = () => apriDettaglio(tr.dataset.id));
 }
 
-const ATTI = { bando: "Bando pubblicato", graduatoria: "Graduatoria", scorrimento: "Scorrimento", rettifica: "Rettifica graduatoria" };
+const ATTI = { bando: "Bando pubblicato", graduatoria: "Graduatoria", scorrimento: "Scorrimento", rettifica: "Rettifica graduatoria",
+  deserto: "Concorso deserto", revocato: "Bando revocato", senza_esito: "Senza esito da oltre 12 mesi" };
 const CELLE = { presente: "presente", mancante: "mancante", non_applicabile: "fuori periodo", non_caricato: "non caricato", in_attesa: "in attesa" };
-let atti = [], fontiInAttesa = [];
+let atti = [], fontiInAttesa = [], attiVisibili = [];
 
 async function caricaAtti() {
   const p = new URLSearchParams();
@@ -369,6 +374,7 @@ function disegnaAtti() {
     && (!manca || a.fonti[manca].stato === "mancante") && (!inc || a.difforme) && (!pd || a.protocollo_diverso)
     && (!rdp || (a.rdp || []).some(r => (r.email || nomeRdp(r)) === rdp))
     && contieneTesto(q, `${a.numero_bando} ${a.codice} ${a.protocollo} ${a.titolo} ${a.titolo_bando || ""} ${(a.note || []).join(" ")} ${(a.rdp || []).map(r => `${r.nome} ${r.cognome} ${r.email}`).join(" ")}`));
+  attiVisibili = righe;
   $("conteggio-atti").textContent = `(${righe.length} di ${atti.length} · ${fontiInAttesa.length ? "difformità sospese" : `${atti.filter(a => a.difforme).length} con difformità`})`;
   renderTabellaAtti("atti", righe, true);
 }
@@ -377,7 +383,7 @@ function renderTabellaAtti(id, righe, conSollecito) {
   const DOVE = { sol: "Apri il bando su Selezioni Online (tutti gli allegati)", urp: "Apri su URP la pagina con tutti i documenti del bando",
     segreteria: "Apri il file della segreteria" };
   const diverso = (c, a) => c.stato === "presente" && a.protocollo_diverso && c.protocollo && a.protocollo && String(c.protocollo) !== String(a.protocollo);
-  const cella = (c, fonte, a) => `<td class="f ${diverso(c, a) ? "diverso" : c.stato}${c.url ? " apribile" : ""}"${c.url ? ` data-url="${esc(c.url)}" title="${DOVE[fonte]}"` : ""}>${diverso(c, a) ? "protocollo diverso" : CELLE[c.stato]}${c.protocollo && c.stato === "presente" ? `<div class="muted" style="font-weight:400">${esc(c.protocollo)}</div>` : ""}${c.automatico ? `<div class="muted small" style="font-weight:400" title="Protocollo approvato dalle email di Titulus, non ancora nel file caricato">aggiunto automaticamente</div>` : ""}</td>`;
+  const cella = (c, fonte, a) => `<td class="f ${diverso(c, a) ? "diverso" : c.stato}${c.url ? " apribile" : ""}"${c.url ? ` data-url="${esc(c.url)}" title="${DOVE[fonte]}"` : ""}>${diverso(c, a) ? "protocollo diverso" : esc(c.testo || CELLE[c.stato])}${c.protocollo && c.stato === "presente" ? `<div class="muted" style="font-weight:400">${esc(c.protocollo)}</div>` : ""}${c.automatico ? `<div class="muted small" style="font-weight:400" title="Protocollo approvato dalle email di Titulus, non ancora nel file caricato">aggiunto automaticamente</div>` : ""}</td>`;
   const sottoRighe = (a) => (a.sedi || []).length > 1 ? a.sedi.map((s, j) => `<tr class="sotto-sede" data-riga-sede="${righe.indexOf(a)}:${j}"><td></td>
       <td colspan="2"><div class="sede">↳ <b>${esc(s.codice)}</b>${s.link_sol ? `<div><a class="punteggi-sol" href="${esc(s.link_sol)}" target="_blank" rel="noopener">Selezioni Online ↗</a></div>` : ""}</div></td><td></td>
       <td>${s.punteggi ? chipPunteggi(s.punteggi) : ""}${s.punteggi?.scheda_id || s.scheda_id ? `<button type="button" class="btn-candidati btn-candidati-sede" data-scheda="${s.punteggi?.scheda_id || s.scheda_id}">${s.punteggi?.candidati ? `👥 ${s.punteggi.con_punteggi ?? ""} candidati ▾` : "👥 Apri dettaglio punteggi ▾"}</button>` : ""}${linkPunteggi(s.url_punteggi)}</td>
@@ -398,7 +404,7 @@ function renderTabellaAtti(id, righe, conSollecito) {
         ${linkPunteggi(a.url_punteggi)}</td>
       <td>${esc(a.protocollo || "")}</td>${cella(a.fonti.sol, "sol", a)}${cella(a.fonti.urp, "urp", a)}${cella(a.fonti.segreteria, "segreteria", a)}
       ${App.cellaRdp(a)}
-      <td class="difformita">${a.note.map(n => `<span class="chip ${/^protocollo/.test(n) ? "protdiv" : "err"}">${esc(n)}</span>`).join("")}</td>${cellaComunicazione(a)}</tr>${sottoRighe(a)}`).join("");
+      <td class="difformita">${a.note.map(n => `<span class="chip ${/^protocollo/.test(n) ? "protdiv" : "err"}">${esc(n)}</span>`).join("")}${a.avviso ? `<span class="chip protdiv">${esc(a.avviso)}</span>` : ""}</td>${cellaComunicazione(a)}</tr>${sottoRighe(a)}`).join("");
   $(id).innerHTML = `<thead><tr><th>Data</th><th>N. bando</th><th>Codice</th><th>Tipologia</th><th>Atto</th><th>Protocollo</th>
       <th>Selezioni Online</th><th>URP</th><th>File segreteria</th><th>RdP</th><th>Note</th><th>Comunicazione</th></tr></thead><tbody>` +
     (righeHtml || `<tr><td colspan="12" class="muted">${conSollecito ? "Nessuna difformità rilevata per questo mese." : "Nessun atto nel periodo selezionato."}</td></tr>`) + "</tbody>" +
@@ -880,11 +886,12 @@ $("aggiorna-rdp").onclick = async () => {
 };
 caricaStatoRdp().catch(() => {});
 ["atti-tipo", "atti-tipologia", "atti-manca", "atti-incompleti", "atti-protdiv", "atti-q"].forEach(id => $(id).addEventListener("input", disegnaAtti));
-["atti-dal", "atti-al"].forEach(id => $(id).addEventListener("change", () => { $("atti-mese").value = ""; caricaAtti(); }));
+["atti-dal", "atti-al"].forEach(id => $(id).addEventListener("change", () => { $("atti-mese").value = ""; $("atti-anno").value = ""; caricaAtti(); }));
 
 // Mese: dal 1° all'ultimo giorno del mese scelto
 function impostaMese(mese) {
   $("atti-mese").value = mese;
+  $("atti-anno").value = "";
   if (!mese) return;
   const [a, m] = mese.split("-").map(Number);
   const ultimo = new Date(a, m, 0).getDate();
@@ -895,11 +902,22 @@ function impostaMese(mese) {
 $("atti-mese").addEventListener("change", () => impostaMese($("atti-mese").value));
 $("atti-azzera").onclick = (e) => {
   e.preventDefault();
-  ["atti-mese", "atti-dal", "atti-al", "atti-tipo", "atti-tipologia", "atti-manca", "atti-rdp", "atti-q"].forEach(id => { $(id).value = ""; });
+  ["atti-mese", "atti-anno", "atti-dal", "atti-al", "atti-tipo", "atti-tipologia", "atti-manca", "atti-rdp", "atti-q"].forEach(id => { $(id).value = ""; });
   $("atti-incompleti").checked = false; $("atti-protdiv").checked = false;
   caricaAtti();
 };
-$("atti-tutto").onclick = () => { $("atti-mese").value = ""; $("atti-dal").value = ""; $("atti-al").value = ""; caricaAtti(); };
+// spec 012: un anno intero come periodo (es. i concorsi deserti del 2026)
+(() => { const oggi = new Date().getFullYear(); for (let a = oggi; a >= 2016; a--) $("atti-anno").innerHTML += `<option value="${a}">${a}</option>`; })();
+$("atti-anno").onchange = () => {
+  const a = $("atti-anno").value;
+  $("atti-mese").value = "";
+  $("atti-dal").value = a ? `${a}-01-01` : "";
+  $("atti-al").value = a ? `${a}-12-31` : "";
+  caricaAtti();
+};
+$("atti-esporta").onclick = () => App.esportaExcel({ colonne: App.colonneAtti(), righe: attiVisibili, nome: "stato-complessivo",
+  url: "/api/esporta-excel", chiave: "stato-complessivo" });
+$("atti-tutto").onclick = () => { $("atti-anno").value = ""; $("atti-mese").value = ""; $("atti-dal").value = ""; $("atti-al").value = ""; caricaAtti(); };
 function selezionaSchedaAtti(id) {
   const schede = ["stato-atti", "graduatorie-mese", "scorrimenti-mese"];
   schede.forEach(nome => {

@@ -9,7 +9,10 @@ window.App = (() => {
   const MESI = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
   const TIPOLOGIE = { TI: "Tempo indeterminato", MOB: "Mobilità" };
   const NOMI_TIPOLOGIA = { tempo_indeterminato: "Tempo indeterminato", reclutamento_speciale: "Reclutamento speciale", categorie_protette: "Categorie protette", mobilita: "Mobilità", comando: "Comando" };
-  const ATTI = { bando: "Bando", graduatoria: "Graduatoria pubblica con i soli vincitori", scorrimento: "Scorrimento", rettifica: "Rettifica" };
+  const ATTI = { bando: "Bando", graduatoria: "Graduatoria pubblica con i soli vincitori", scorrimento: "Scorrimento", rettifica: "Rettifica",
+    deserto: "Concorso deserto", revocato: "Bando revocato", senza_esito: "Senza esito da oltre 12 mesi" };
+  // tipi di atto con una scheda propria (spec 012: deserti e revocati); gli altri vanno in «Altri atti»
+  const ATTI_CON_SCHEDA = ["bando", "graduatoria", "scorrimento", "rettifica", "deserto", "revocato"];
 
   async function chiama(url, opzioni) {
     const r = await fetch(url, { cache: "no-store", ...opzioni });
@@ -57,9 +60,10 @@ window.App = (() => {
   function cellaFonte(riga, chiave) {
     const c = riga.fonti?.[chiave] || {};
     const diverso = c.stato === "presente" && riga.protocollo_diverso && c.protocollo && riga.protocollo && String(c.protocollo) !== String(riga.protocollo);
-    const [classe, testo] = diverso ? ["f-diverso", "protocollo diverso"] : c.stato === "presente" ? ["f-presente", "presente"]
+    const [classe, testoStato] = diverso ? ["f-diverso", "protocollo diverso"] : c.stato === "presente" ? ["f-presente", "presente"]
       : c.stato === "mancante" ? ["f-mancante", "mancante"] : c.stato === "non_applicabile" ? ["f-na", "fuori periodo"] : c.stato === "in_attesa" ? ["f-nonprev", "in attesa"] : ["f-nonprev", "non caricato"];
-    const contenuto = `${testo}${c.stato === "presente" ? `<small>${esc(c.protocollo || "")}</small>` : ""}${c.automatico ? `<small title="Protocollo approvato dalle email di Titulus, non ancora nel file caricato">aggiunto automaticamente</small>` : ""}`;
+    const testo = c.testo || testoStato;  // spec 012: «non nel file», «nessun esito»
+    const contenuto = `${esc(testo)}${c.stato === "presente" ? `<small>${esc(c.protocollo || "")}</small>` : ""}${c.automatico ? `<small title="Protocollo approvato dalle email di Titulus, non ancora nel file caricato">aggiunto automaticamente</small>` : ""}`;
     return `<td class="cella-fonte ${classe}">${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener" title="${DOVE_FONTE[chiave]}">${contenuto}<span class="freccia"> ↗</span></a>` : contenuto}</td>`;
   }
 
@@ -212,8 +216,11 @@ window.App = (() => {
     const n = (f) => righe.filter(f).length, plurale = (k, uno, molti) => `${k} ${k === 1 ? uno : molti}`;
     const parti = [plurale(n(r => r.atto === "bando"), "bando pubblicato", "bandi pubblicati"), plurale(n(r => r.atto === "graduatoria"), "graduatoria", "graduatorie"),
       `${plurale(n(r => r.atto === "scorrimento"), "scorrimento", "scorrimenti")} (di cui ${plurale(n(r => r.sottotipo === "subentro"), "subentro", "subentri")})`];
-    const rettifiche = n(r => r.atto === "rettifica"), altri = n(r => !["bando", "graduatoria", "scorrimento", "rettifica"].includes(r.atto));
+    const rettifiche = n(r => r.atto === "rettifica"), altri = n(r => !ATTI_CON_SCHEDA.includes(r.atto));
+    const deserti = n(r => r.atto === "deserto"), revocati = n(r => r.atto === "revocato");
     if (rettifiche) parti.push(plurale(rettifiche, "rettifica di graduatoria", "rettifiche di graduatoria"));
+    if (deserti) parti.push(plurale(deserti, "concorso deserto", "concorsi deserti"));
+    if (revocati) parti.push(plurale(revocati, "bando revocato", "bandi revocati"));
     if (altri) parti.push(plurale(altri, "altro atto", "altri atti"));
     return `${plurale(righe.length, "atto", "atti")}: ${parti.join(", ")}.`;
   }
@@ -240,5 +247,68 @@ window.App = (() => {
       azionabile: !["in_attesa", "in_regola"].includes(c.stato), inviata: ["inviata", "inviata_a_mano"].includes(c.stato) };
   }
 
-  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, chiama, json, toast, partiComunicazione, scomposizioneAtti, tabellaTotali, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati, contieneTesto, pannelloCandidati, testataArea, dividiPerSede, sediDellaRiga, elencoRilievi };
+  // Spec 012: esporta in Excel le righe visibili. colonne: [[chiave, titolo, (riga) => valore], ...]; la scelta delle colonne
+  // resta nel browser per pagina. url: l'API che fa il file (amministrazione o area referenti).
+  function esportaExcel({ colonne, righe, nome, url, chiave }) {
+    const memoria = `esporta-colonne:${chiave || location.pathname}`;
+    let scelte = null;
+    try { scelte = JSON.parse(localStorage.getItem(memoria) || "null"); } catch { scelte = null; }
+    const attive = new Set(Array.isArray(scelte) ? scelte : colonne.map(c => c[0]));
+    document.getElementById("esporta-finestra")?.remove();
+    const o = document.createElement("div");
+    o.id = "esporta-finestra";
+    o.style.cssText = "position:fixed;inset:0;background:rgba(20,28,40,.4);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px";
+    o.innerHTML = `<div role="dialog" aria-modal="true" aria-labelledby="esporta-titolo" style="background:var(--surface,#fff);color:inherit;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.25);width:100%;max-width:560px;max-height:90vh;display:flex;flex-direction:column">
+      <div style="padding:14px 18px;border-bottom:1px solid #e3e6ea"><b id="esporta-titolo">Esporta in Excel</b><div style="font-size:12.5px;opacity:.75;margin-top:2px">${righe.length} ${righe.length === 1 ? "riga" : "righe"}, con i filtri attivi. Scegli le colonne.</div></div>
+      <div style="padding:12px 18px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px">
+        ${colonne.map(([k, t]) => `<label style="display:flex;gap:6px;align-items:center;font-size:13.5px"><input type="checkbox" value="${esc(k)}"${attive.has(k) ? " checked" : ""}> ${esc(t)}</label>`).join("")}</div>
+      <div style="padding:12px 18px;border-top:1px solid #e3e6ea;display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap">
+        <span><button type="button" data-tutte="1">Tutte</button> <button type="button" data-tutte="0">Nessuna</button></span>
+        <span><button type="button" id="esporta-annulla">Annulla</button> <button type="button" class="primario" id="esporta-scarica">Scarica Excel</button></span></div></div>`;
+    document.body.appendChild(o);
+    const caselle = () => [...o.querySelectorAll("input[type=checkbox]")];
+    o.querySelectorAll("[data-tutte]").forEach(b => b.onclick = () => caselle().forEach(c => { c.checked = b.dataset.tutte === "1"; }));
+    const chiudi = () => o.remove();
+    o.addEventListener("mousedown", (e) => { if (e.target === o) chiudi(); });
+    o.querySelector("#esporta-annulla").onclick = chiudi;
+    o.querySelector("#esporta-scarica").onclick = async (e) => {
+      const scelte = caselle().filter(c => c.checked).map(c => c.value);
+      if (!scelte.length) return toast("Scegli almeno una colonna");
+      try { localStorage.setItem(memoria, JSON.stringify(scelte)); } catch { /* solo comodità */ }
+      const usate = colonne.filter(c => scelte.includes(c[0]));
+      const valore = (v) => v === null || v === undefined ? "" : typeof v === "number" ? v : String(v);
+      e.target.disabled = true;
+      try {
+        const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store",
+          body: JSON.stringify({ nome, colonne: usate.map(c => c[1]), righe: righe.map(x => usate.map(c => valore(c[2](x)))) }) });
+        if (!r.ok) { const c = await r.json().catch(() => ({})); throw new Error(c.error || `Errore ${r.status}`); }
+        const blob = await r.blob();
+        const nomeFile = (/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(r.headers.get("Content-Disposition") || "") || [])[1] || `${nome || "esportazione"}.xlsx`;
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob); a.download = decodeURIComponent(nomeFile);
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        chiudi();
+      } catch (err) { toast(err.message); e.target.disabled = false; }
+    };
+  }
+  // Colonne comuni delle righe degli atti (stato complessivo): valori come li vede la pagina
+  function colonneAtti() {
+    const fonte = (k) => (r) => { const c = r.fonti?.[k] || {}; return c.testo || { presente: "presente", mancante: "mancante", non_applicabile: "fuori periodo", non_caricato: "non caricato", in_attesa: "in attesa" }[c.stato] || c.stato || ""; };
+    const persone = (l) => (l || []).map(p => [p.nome, p.cognome].filter(Boolean).join(" ") || p.email).join("; ");
+    return [
+      ["data", "Data", r => dataIt(r.data)], ["numero_bando", "N. bando", r => r.numero_bando], ["codice", "Codice", r => r.codice],
+      ["titolo_bando", "Titolo del bando", r => r.titolo_bando], ["tipologia", "Tipologia", r => NOMI_TIPOLOGIA[r.tipologia] || r.tipologia],
+      ["atto", "Atto", r => ATTI[r.atto] || r.atto], ["sottotipo", "Sottotipo", r => r.sottotipo && r.sottotipo !== "non_specificato" ? r.sottotipo : ""],
+      ["protocollo", "Protocollo", r => r.protocollo], ["titolo", "Titolo del documento", r => r.titolo],
+      ["sol", "Selezioni Online", fonte("sol")], ["prot_sol", "Protocollo SOL", r => r.fonti?.sol?.protocollo], ["link_sol", "Link SOL", r => r.fonti?.sol?.url || r.link_sol],
+      ["urp", "URP", fonte("urp")], ["prot_urp", "Protocollo URP", r => r.fonti?.urp?.protocollo], ["link_urp", "Link URP", r => r.fonti?.urp?.url],
+      ["segreteria", "File segreteria", fonte("segreteria")], ["prot_segreteria", "Protocollo segreteria", r => r.fonti?.segreteria?.protocollo],
+      ["difforme", "Con difformità", r => r.difforme ? "sì" : "no"], ["note", "Note e difformità", r => [...(r.note || []), ...(r.avviso ? [r.avviso] : [])].join("; ")],
+      ["rdp", "RdP", r => persone(r.rdp)], ["rdp_email", "Email RdP", r => (r.rdp || []).map(p => p.email).filter(Boolean).join("; ")],
+      ["coordinatore", "Coordinatore", r => r.coordinatore?.email || ""], ["persone", "Persone nel file segreteria", r => r.persone ?? ""],
+    ];
+  }
+
+  return { $, esc, ora, dataIt, MESI, TIPOLOGIE, ATTI, ATTI_CON_SCHEDA, esportaExcel, colonneAtti, chiama, json, toast, partiComunicazione, scomposizioneAtti, tabellaTotali, apriFinestra, chiudiFinestra, avvisoAttesa, chipTipologia, cellaFonte, cellaRdp, collegaRdp, copia, celleCandidati, collegaCandidati, contieneTesto, pannelloCandidati, testataArea, dividiPerSede, sediDellaRiga, elencoRilievi };
 })();

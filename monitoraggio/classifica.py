@@ -13,6 +13,15 @@ import re
 REGOLE_CATEGORIA = [
     # anche modifica / rimodulazione / riformulazione della graduatoria (indicazione dell'utente, 2026-10-29)
     ("rettifica", [r"rettific", r"errata\s*corrige", r"\b(?:modific|rimodul|riformul)\w*\b.{0,30}graduatori"]),
+    # spec 012: revoca del bando (non della nomina di una commissione o di una convocazione)
+    ("revocato", [r"^(?!.*\b(?:commission|nomin|convoca|incaric|component|segretari))(?=.*\bbando\b|^\W*(?:provvedimento|decreto)\s+(?:di\s+)?revoca\b).*\brevoc\w*"]),
+    # spec 012: concorso deserto / concluso senza esito (non l'esito negativo di una prova)
+    ("deserto", [
+        r"desert",
+        r"^(?!.*\bprov[ae]\b).*esito\s+negativ",
+        r"senza\s+(?:vincitor|candidat|graduatori|idone)",
+        r"nessun\w*\s+(?:candidat|vincitor|idone)",
+    ]),
     ("scorrimento", [
         r"scorriment",
         r"subentr",
@@ -31,6 +40,7 @@ REGOLE_CATEGORIA = [
 
 # Categoria dal tipo di allegato SOL, usata quando il titolo non dice niente
 CATEGORIA_TIPO_SOL = {
+    "call_deserto": "deserto",
     "call_recruitment_provision": "scorrimento",
     "call_classification": "graduatoria",
     "call_correction_classification": "rettifica",
@@ -75,6 +85,8 @@ def _testo(titolo: str | None) -> str:
 def categoria(titolo: str | None, tipo_fonte: str | None = None) -> str:
     testo = _testo(titolo)
     tipo = (tipo_fonte or "").split(":")[-1]
+    if tipo == "call_deserto":  # spec 012: su SOL il tipo di allegato dice con certezza che il concorso è deserto
+        return "deserto"
     for nome, patterns in REGOLE_CATEGORIA:
         # Un documento SOL call_generic con "graduatoria" nel titolo può essere la lista
         # completa privata. La graduatoria pubblica è identificata dal tipo call_classification.

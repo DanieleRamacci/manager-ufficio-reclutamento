@@ -1,0 +1,173 @@
+"""Spec 012: concorsi deserti, bandi revocati, concorsi senza esito, esportazione Excel."""
+import io
+import json
+from datetime import date
+
+import openpyxl
+import pytest
+from flask import Flask
+
+from monitoraggio import atti, collegamento, db as dbmod, esporta, web
+from monitoraggio.classifica import categoria
+from tests.test_collegamento import doc, salva, scheda
+
+
+# ----------------------------------------------------------------- classificazione
+
+@pytest.mark.parametrize("titolo, tipo, attesa", [
+    ("conclusione del procedimento con esito negativo - Prot. n. 196365", None, "deserto"),
+    ("364.304 CONCORSO DESERTO_signed.pdf", None, "deserto"),
+    ("SELEZIONE DESERTA 365.145", None, "deserto"),
+    ("Provvedimento di conclusione senza candidati", None, "deserto"),
+    ("Graduatoria - esito negativo - cod. 07", None, "deserto"),
+    ("Provv di Graduatoria deserta", "D:jconon_attachment:call_classification", "deserto"),
+    ("Provv-approvazione-atti-bando-IR_signed.pdf", "D:jconon_attachment:call_deserto", "deserto"),
+    ("Esito negativo prova asincrona del 29 aprile 2026", None, "altro"),
+    ("Esito prova orale", None, "altro"),
+    ("Esito - Prot. 14107 del 17/01/2024", None, "altro"),
+    ("Errata corrige Bando deserto", None, "rettifica"),
+    ("Revoca bando - Prot. n. 166639", None, "revocato"),
+    ("Provvedimento di revoca - prot. AMMCEN n. 0016708/2022", None, "revocato"),
+    ("Decreto revoca bando", None, "revocato"),
+    ("Revoca della nomina della commissione", None, "altro"),
+    ("Graduatoria - cod. 04", None, "graduatoria"),
+])
+def test_classifica_deserti_e_revoche(titolo, tipo, attesa):
+    assert categoria(titolo, tipo) == attesa
+
+
+def test_migrazione_categorie_documento(db):
+    """Da schema 33: la tabella documento con il vecchio CHECK si ricrea, i dati restano, i deserti si riclassificano."""
+    db.executescript("""
+        DROP TABLE documento;
+        CREATE TABLE documento (id INTEGER PRIMARY KEY, scheda_id INTEGER NOT NULL REFERENCES scheda (id), id_esterno TEXT NOT NULL,
+            titolo TEXT, categoria TEXT NOT NULL CHECK (categoria IN ('bando', 'graduatoria', 'scorrimento', 'rettifica', 'criteri', 'tracce', 'altro')),
+            sottotipo TEXT, sottotipo_ordinale INTEGER, sottotipo_origine TEXT, tipo_fonte TEXT, protocollo TEXT, protocollo_originale TEXT,
+            data_protocollo TEXT, url TEXT, accessibilita TEXT, prima_rilevazione TEXT NOT NULL, ultima_rilevazione TEXT NOT NULL,
+            presente INTEGER NOT NULL DEFAULT 1, UNIQUE (scheda_id, id_esterno));
+        INSERT INTO scheda (id, fonte, id_esterno, sezione, prima_rilevazione, ultima_rilevazione) VALUES (1, 'sol', 's1', 'x', 'o', 'o');
+    """)
+    righe = [(1, "a", "BANDO DESERTO", "altro", "D:jconon_attachment:call_deserto"), (2, "b", "Revoca bando", "altro", None),
+             (3, "c", "Graduatoria", "graduatoria", "D:jconon_attachment:call_classification"),
+             (4, "d", "Bando N. 367.1 deserto", "bando", None)]  # documento principale URP: resta bando
+    for i, e, t, c, tp in righe:
+        db.execute("INSERT INTO documento (id, scheda_id, id_esterno, titolo, categoria, tipo_fonte, prima_rilevazione, ultima_rilevazione) "
+                   "VALUES (?, 1, ?, ?, ?, ?, 'o', 'o')", (i, e, t, c, tp))
+    dbmod.inizializza(db)
+    assert {r["id"]: r["categoria"] for r in db.execute("SELECT id, categoria FROM documento")} == {
+        1: "deserto", 2: "revocato", 3: "graduatoria", 4: "bando"}
+    assert {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE tbl_name = 'documento' AND type = 'index'")} >= {
+        "idx_documento_protocollo", "idx_documento_categoria"}
+    dbmod.inizializza(db)  # una seconda volta non cambia niente
+    assert db.execute("SELECT COUNT(*) FROM documento").fetchone()[0] == 4
+
+
+# ----------------------------------------------------------------- stato complessivo
+
+def _deserto(id_esterno, protocollo, data, titolo="Concorso deserto", tipo="D:jconon_attachment:call_deserto"):
+    return {**doc(id_esterno, "deserto", protocollo, data), "titolo": titolo, "tipo_fonte": tipo}
+
+
+def test_deserto_su_sol_e_urp_con_titolo_generico(db):
+    salva(db, "sol", [scheda("sol", "s1", "367.372 TEC SAC", "367.372", data="2026-01-10",
+                             documenti=[_deserto("x1", "14107", "2026-06-17")])])
+    salva(db, "urp", [scheda("urp", "/node/1", "367.372 TEC SAC", "367.372", data="2026-01-10",
+                             documenti=[{**doc("u1", "altro", "14107", "2026-06-17"), "titolo": "Esito - Prot. 14107"}])])
+    collegamento.collega(db)
+    righe = [r for r in atti.elenco_atti(db, "2026-01-01", "2026-12-31") if r["atto"] == "deserto"]
+    assert len(righe) == 1
+    r = righe[0]
+    assert (r["fonti"]["sol"]["stato"], r["fonti"]["urp"]["stato"]) == ("presente", "presente")
+    assert (r["fonti"]["segreteria"]["stato"], r["fonti"]["segreteria"]["testo"]) == ("non_applicabile", "non nel file")
+    assert not r["difforme"]
+
+
+def test_deserto_solo_su_urp_e_mancante_su_sol(db):
+    salva(db, "sol", [scheda("sol", "s1", "367.455 TEC SAC", "367.455", data="2026-01-10")])
+    salva(db, "urp", [scheda("urp", "/node/1", "367.455 TEC SAC", "367.455", data="2026-01-10",
+                             documenti=[{**doc("u1", "deserto", "505707", "2026-03-20"), "titolo": "Decreto esito negativo bando"}])])
+    collegamento.collega(db)
+    r = next(r for r in atti.elenco_atti(db, "2026-01-01", "2026-12-31") if r["atto"] == "deserto")
+    assert (r["fonti"]["sol"]["stato"], r["fonti"]["urp"]["stato"]) == ("mancante", "presente")
+    assert r["difforme"]
+
+
+def test_altro_urp_senza_deserto_sol_non_compare(db):
+    salva(db, "sol", [scheda("sol", "s1", "367.1 RIC", "367.1", data="2026-01-10")])
+    salva(db, "urp", [scheda("urp", "/node/1", "367.1 RIC", "367.1", data="2026-01-10",
+                             documenti=[doc("u1", "altro", "999", "2026-03-20")])])
+    collegamento.collega(db)
+    assert {r["atto"] for r in atti.elenco_atti(db, "2026-01-01", "2026-12-31")} == {"bando"}
+
+
+def _concorso(id_esterno, codice, numero, scadenza, sotto=None, documenti=(), id_padre=None):
+    s = scheda("sol", id_esterno, codice, numero, sotto=sotto, data="2024-01-10", documenti=documenti)
+    s["dati_extra"] = json.dumps({"data_fine_invio_domande": f"{scadenza}T00:00:00Z"})
+    s["id_padre"] = id_padre
+    return s
+
+
+def test_senza_esito(db):
+    oggi = date(2026, 11, 20)
+    salva(db, "sol", [
+        _concorso("a", "367.391 CTER", "367.391", "2023-01-05"),  # scaduto, nessun esito: da verificare
+        _concorso("b", "367.392 CTER", "367.392", "2023-01-05", documenti=[doc("g", "graduatoria", "1", "2023-06-01")]),
+        _concorso("c", "367.393 CTER", "367.393", "2023-01-05", documenti=[_deserto("d", "2", "2023-06-01")]),
+        _concorso("d", "367.394 CTER", "367.394", "2026-06-01"),  # scaduto da meno di 12 mesi: in corso
+        _concorso("e", "367.395 CTER", "367.395", "2023-01-05"),  # graduatoria solo su URP
+    ])
+    salva(db, "urp", [scheda("urp", "/node/5", "367.395 CTER", "367.395", data="2024-01-10",
+                             documenti=[doc("ug", "graduatoria", "5", "2023-06-01")])])
+    collegamento.collega(db)
+    assert [x["scheda"]["codice_originale"] for x in atti.senza_esito(db, oggi)] == ["367.391 CTER"]
+
+
+def test_senza_esito_per_sede(db):
+    """Bando con più sedi: la graduatoria URP di una sede («cod. 01») non vale per le altre."""
+    oggi = date(2026, 11, 20)
+    salva(db, "sol", [
+        _concorso("p", "367.433 FA", "367.433", "2023-01-05"),
+        _concorso("f1", "367.433 FA - CODICE 01", "367.433", "2023-01-05", sotto="1", id_padre="p"),
+        _concorso("f2", "367.433 FA - CODICE 02", "367.433", "2023-01-05", sotto="2", id_padre="p"),
+    ])
+    salva(db, "urp", [scheda("urp", "/node/9", "367.433 FA", "367.433", data="2024-01-10",
+                             documenti=[{**doc("ug", "graduatoria", "5", "2023-06-01"), "titolo": "Graduatoria - cod. 01"}])])
+    collegamento.collega(db)
+    assert [x["scheda"]["codice_originale"] for x in atti.senza_esito(db, oggi)] == ["367.433 FA - CODICE 02"]
+
+
+def test_senza_esito_nello_stato_complessivo(db):
+    salva(db, "sol", [_concorso("a", "367.391 CTER", "367.391", "2023-01-05")])
+    collegamento.collega(db)
+    assert not [r for r in atti.elenco_atti(db, "2026-01-01", "2026-12-31") if r["atto"] == "senza_esito"]
+    r = next(r for r in atti.elenco_atti(db, "2026-01-01", "2026-12-31", con_senza_esito=True) if r["atto"] == "senza_esito")
+    assert r["data"] == "2023-01-05" and not r["difforme"] and "nessuna graduatoria" in r["avviso"]
+    assert r["fonti"]["sol"]["testo"] == "nessun esito"
+
+
+# ----------------------------------------------------------------- esportazione
+
+def test_xlsx_colonne_righe_e_niente_formule():
+    contenuto = esporta.xlsx(["Codice", "Protocollo", "Note"], [["367.391", 196365, "=HYPERLINK(\"x\")"], ["367.455", None, True]])
+    ws = openpyxl.load_workbook(io.BytesIO(contenuto)).active
+    assert [c.value for c in ws[1]] == ["Codice", "Protocollo", "Note"]
+    assert ws["B2"].value == 196365
+    assert ws["C2"].value == "=HYPERLINK(\"x\")" and ws["C2"].data_type == "s"
+    assert (ws["B3"].value, ws["C3"].value) == (None, "sì")
+
+
+@pytest.mark.parametrize("colonne, righe", [([], []), (["A"], [["x", "y"]]), (["A"], [[{"x": 1}]]), (["A"], "testo")])
+def test_xlsx_dati_non_validi(colonne, righe):
+    with pytest.raises(esporta.DatiNonValidi):
+        esporta.xlsx(colonne, righe)
+
+
+def test_api_esporta_excel(db):
+    app = Flask(__name__)
+    app.register_blueprint(web.crea_blueprint(lambda f: f))
+    client = app.test_client()
+    r = client.post("/api/esporta-excel", json={"nome": "deserti 2026", "colonne": ["Codice"], "righe": [["367.391"]]})
+    assert r.status_code == 200
+    assert "deserti 2026" in r.headers["Content-Disposition"]
+    assert openpyxl.load_workbook(io.BytesIO(r.data)).active["A2"].value == "367.391"
+    assert client.post("/api/esporta-excel", json={"colonne": [], "righe": []}).status_code == 400

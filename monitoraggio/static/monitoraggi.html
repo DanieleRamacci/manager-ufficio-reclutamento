@@ -120,7 +120,9 @@
         ["scorrimento", "Scorrimenti", conta(r => r.atto === "scorrimento"), contaD(r => r.atto === "scorrimento")],
         ["subentro", "di cui subentri", conta(r => r.sottotipo === "subentro"), contaD(r => r.sottotipo === "subentro")],
         ["rettifica", "Rettifiche di graduatoria", conta(r => r.atto === "rettifica"), contaD(r => r.atto === "rettifica")],
-        ...(conta(r => !["bando", "graduatoria", "scorrimento", "rettifica"].includes(r.atto)) ? [["altro", "Altri atti", conta(r => !["bando", "graduatoria", "scorrimento", "rettifica"].includes(r.atto)), contaD(r => !["bando", "graduatoria", "scorrimento", "rettifica"].includes(r.atto))]] : []),
+        ...(conta(r => r.atto === "deserto") ? [["deserto", "Concorsi deserti", conta(r => r.atto === "deserto"), contaD(r => r.atto === "deserto")]] : []),
+        ...(conta(r => r.atto === "revocato") ? [["revocato", "Bandi revocati", conta(r => r.atto === "revocato"), contaD(r => r.atto === "revocato")]] : []),
+        ...(conta(r => !App.ATTI_CON_SCHEDA.includes(r.atto)) ? [["altro", "Altri atti", conta(r => !App.ATTI_CON_SCHEDA.includes(r.atto)), contaD(r => !App.ATTI_CON_SCHEDA.includes(r.atto))]] : []),
         ["correzioni", "Correzioni", null, 0], ["comunicazioni", "Comunicazioni", null, 0],
         ...(m.segnalazioni.totali || m.posta.portale_referenti ? [["segnalazioni", "Segnalazioni", m.segnalazioni.totali, m.segnalazioni.aperte]] : []),
         ["riepilogo", "Riepilogo e revisione", null, 0], ["preparazione", "File ed email", null, 0], ["versioni", chiuso ? "Dati salvati" : "Versioni", m.fotografia.versioni.length, 0]];
@@ -163,7 +165,7 @@
     function disegnaScheda() {
       const s = stato.scheda;
       $("filtri-atti").innerHTML = "";
-      if (["tutti", "difformita", "bando", "graduatoria", "scorrimento", "subentro", "rettifica", "altro"].includes(s)) return schedaAtti();
+      if (["tutti", "difformita", "bando", "graduatoria", "scorrimento", "subentro", "rettifica", "deserto", "revocato", "altro"].includes(s)) return schedaAtti();
       if (s === "correzioni") return schedaCorrezioni();
       if (s === "comunicazioni") return schedaComunicazioni();
       if (s === "segnalazioni") return schedaSegnalazioni();
@@ -227,7 +229,7 @@
       const f = stato.filtri, s = stato.scheda;
       return stato.atti.righe.filter(r => {
         if (s === "difformita" && !r.con_difformita && !r.registro) return false;
-        if (s === "altro" ? ["bando", "graduatoria", "scorrimento", "rettifica"].includes(r.atto) : s === "subentro" ? r.sottotipo !== "subentro" : (!["tutti", "difformita"].includes(s) && r.atto !== s)) return false;
+        if (s === "altro" ? App.ATTI_CON_SCHEDA.includes(r.atto) : s === "subentro" ? r.sottotipo !== "subentro" : (!["tutti", "difformita"].includes(s) && r.atto !== s)) return false;
         if (f.tipologia && r.gruppo_tipologia && r.gruppo_tipologia !== f.tipologia) return false;
         if (f.solo && !r.con_difformita) return false;
         if (f.comunicazione === "da_inviare" && r.comunicazione.stato !== "da_inviare") return false;

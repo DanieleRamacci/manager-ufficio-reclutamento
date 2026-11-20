@@ -11,7 +11,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, redirect, request, send_from_directory
 
-from . import atti, comunicazioni, config, difformita, mensile, portale, profili, punteggi, revisione, utenti
+from . import atti, comunicazioni, config, difformita, esporta, mensile, portale, profili, punteggi, revisione, utenti
 
 _STATIC = Path(__file__).resolve().parent / "static"
 PAGINE_SITO = "/monitoraggio/consulta"
@@ -95,7 +95,8 @@ def _riga(r: dict, v: Visitatore, motivi: list[str]) -> dict:
     sol = (r.get("fonti") or {}).get("sol") or {}
     return {
         **{k: r.get(k) for k in ("numero_bando", "codice", "titolo_bando", "tipologia", "atto", "sottotipo", "data", "protocollo")},
-        "fonti": {k: {x: c.get(x) for x in ("stato", "protocollo", "url")} for k, c in (r.get("fonti") or {}).items() if k in FONTI},
+        "fonti": {k: {x: c.get(x) for x in ("stato", "protocollo", "url", "testo")} for k, c in (r.get("fonti") or {}).items() if k in FONTI},
+        "avviso": r.get("avviso"),
         "protocollo_diverso": bool(r.get("protocollo_diverso")), "note": list(r.get("note") or []), "difforme": bool(r.get("difforme")),
         "rdp": [{k: x.get(k) for k in ("nome", "cognome", "email")} for x in r.get("rdp") or []],
         "link_sol": r.get("link_codice") or sol.get("url"),
@@ -115,15 +116,17 @@ def _in_attesa(conn) -> list[str]:
     return [f["nome"] for f in atti.fonti_in_attesa(conn)]
 
 
-def stato(conn, v: Visitatore) -> dict:
+def stato(conn, v: Visitatore, dal: str | None = None, al: str | None = None) -> dict:
     pb = _profili_bandi(conn)
     righe = []
     if not v.senza_bandi:
-        for r in atti.elenco_atti(conn):
+        # spec 012: periodo a scelta (es. un anno) e concorsi senza esito
+        for r in atti.elenco_atti(conn, dal, al, con_senza_esito=True):
             motivi = come(v, r, pb)
             if v.tutto or motivi:
                 righe.append(_riga(r, v, motivi))
-    return {"visitatore": v.descrizione(), "dal": config.monitoraggio_dal().isoformat(), "in_attesa": _in_attesa(conn), "righe": righe}
+    return {"visitatore": v.descrizione(), "dal": dal or config.monitoraggio_dal().isoformat(), "al": al,
+            "in_attesa": _in_attesa(conn), "righe": righe}
 
 
 def monitoraggi(conn, v: Visitatore) -> dict:
@@ -200,6 +203,13 @@ def monitoraggio(conn, v: Visitatore, mese: str) -> dict | None:
     return base
 
 
+def _periodo() -> tuple[str | None, str | None]:
+    """Dal/al della richiesta, solo date valide (AAAA-MM-GG)."""
+    import re
+    return tuple(x if x and re.fullmatch(r"\d{4}-\d{2}-\d{2}", x) else None
+                 for x in (request.args.get("dal"), request.args.get("al")))
+
+
 def _rispondi(v: Visitatore | None, funzione, *argomenti):
     if v is None:
         return jsonify({"error": "Accesso non consentito"}), 403
@@ -238,7 +248,14 @@ def crea_blueprint_consulta(protezione=lambda f: f, intestazioni_sol=lambda: Non
     @bp.get("/api/consulta/stato")
     @protezione
     def api_stato():
-        return _rispondi(chi(), stato)
+        return _rispondi(chi(), stato, *_periodo())
+
+    @bp.post("/api/consulta/esporta-excel")
+    @protezione
+    def api_esporta_excel():
+        if chi() is None:
+            return jsonify({"error": "Accesso non consentito"}), 403
+        return esporta.risposta(request.get_json(silent=True))
 
     @bp.get("/api/consulta/monitoraggi")
     @protezione
@@ -311,7 +328,16 @@ def _visitatore_area():
 @portale.solo_se_attiva
 @portale.serve_referente
 def api_area_stato():
-    return _rispondi(_visitatore_area(), stato)
+    return _rispondi(_visitatore_area(), stato, *_periodo())
+
+
+@bp_area.post("/api/area-referenti/consulta/esporta-excel")
+@portale.solo_se_attiva
+@portale.serve_referente
+def api_area_esporta_excel():
+    if _visitatore_area() is None:
+        return jsonify({"error": "Accesso non consentito"}), 403
+    return esporta.risposta(request.get_json(silent=True))
 
 
 @bp_area.get("/api/area-referenti/consulta/monitoraggi")

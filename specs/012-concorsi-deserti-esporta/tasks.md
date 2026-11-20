@@ -1,0 +1,11 @@
+# Tasks: Concorsi deserti, revocati, senza esito ed esportazione Excel
+
+- [X] T001 [US1] Regole deserto/revocato e tipo call_deserto in monitoraggio/classifica.py; test
+- [X] T002 [US1] Schema 34: documento con le nuove categorie e riclassificazione in monitoraggio/db.py; test di migrazione
+- [X] T003 [US1] Deserti e revoche nello stato complessivo, deserto URP dal protocollo SOL, segreteria non applicabile in monitoraggio/atti.py; test
+- [X] T004 [US3] Righe senza esito (concorsi pubblici, scadenza > 12 mesi) in monitoraggio/atti.py; test
+- [X] T005 [US4] API esporta-excel (amministrazione e area referenti); test
+- [X] T006 [US2, US4] Filtri, Anno ed Esporta in riepilogo.html e consulta.html; App.esportaExcel in app.js
+- [X] T007 [US2] Schede Deserti e Revocati nel monitoraggio (monitoraggi.html, consulta.html)
+- [X] T008 Suite di test, controllo JS, rilascio
+- [ ] T009 Verifica nell'app con i dati reali (367.391, 367.455, 367.433)

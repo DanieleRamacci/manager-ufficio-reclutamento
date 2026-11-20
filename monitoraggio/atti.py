@@ -2,7 +2,9 @@
 graduatoria, scorrimento o rettifica compare una sola volta, con lo stato su ogni fonte
 (Selezioni Online, URP, file della segreteria).
 """
+import json
 from collections import defaultdict
+from datetime import date, timedelta
 
 from . import config, profili, protocollo_email, punteggi, referenti, segreteria
 from .collegamento import _da_confrontare
@@ -75,9 +77,54 @@ def url_file_segreteria(atto: int | None = None, foglio: str | None = None) -> s
 
 
 FOGLIO_SEGRETERIA = {"bando": "bandi", "graduatoria": "graduatorie", "scorrimento": "scorrimento"}
+# spec 012: atti che il file della segreteria non ha (ancora): la colonna segreteria non è una difformità
+FUORI_FILE_SEGRETERIA = ("deserto", "revocato")
+CATEGORIE_ATTI = ("graduatoria", "scorrimento", "rettifica", "deserto", "revocato")
+ESITI = ("graduatoria", "scorrimento", "deserto", "revocato")  # un bando con uno di questi atti ha un esito
+MESI_SENZA_ESITO = 12
+TIPOLOGIE_SENZA_ESITO = ("tempo_indeterminato",)  # concorsi pubblici
 
 
-def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dict]:
+def _scadenza(scheda) -> str | None:
+    try:
+        return (json.loads(scheda["dati_extra"] or "{}").get("data_fine_invio_domande") or "")[:10] or None
+    except ValueError:
+        return None
+
+
+def senza_esito(conn, oggi: date | None = None) -> list[dict]:
+    """Spec 012: concorsi pubblici (sede per sede) con le domande scadute da più di 12 mesi e senza graduatoria,
+    scorrimento, deserto o revoca né su Selezioni Online né su URP: forse manca il documento."""
+    limite = ((oggi or date.today()) - timedelta(days=round(MESI_SENZA_ESITO * 30.44))).isoformat()
+    schede = conn.execute("SELECT * FROM scheda WHERE fonte = 'sol' AND presente = 1 AND bando_id IS NOT NULL "
+                          f"AND tipologia IN ({', '.join('?' * len(TIPOLOGIE_SENZA_ESITO))})", TIPOLOGIE_SENZA_ESITO).fetchall()
+    padri = {s["id_padre"] for s in schede if s["id_padre"]}
+    per_esterno = {s["id_esterno"]: s for s in schede}
+    esiti_sol: dict[int, list] = defaultdict(list)  # scheda -> codici di sede degli esiti (None = tutto il bando)
+    esiti_urp: dict[int, list] = defaultdict(list)  # bando -> codici di sede degli esiti
+    for d in conn.execute(
+            "SELECT s.id AS scheda_id, s.bando_id, s.fonte, d.titolo FROM documento d JOIN scheda s ON s.id = d.scheda_id "
+            f"WHERE d.presente = 1 AND s.presente = 1 AND d.categoria IN ({', '.join('?' * len(ESITI))})", ESITI):
+        (esiti_sol[d["scheda_id"]] if d["fonte"] == "sol" else esiti_urp[d["bando_id"]]).append(codice_sotto(d["titolo"]))
+    righe = []
+    for s in schede:
+        scadenza = _scadenza(s)
+        if s["id_esterno"] in padri or not scadenza or scadenza >= limite or s["data_pubbl_graduatoria"]:
+            continue
+        padre = per_esterno.get(s["id_padre"]) if s["id_padre"] else None
+        sede = str(s["codice_sotto"] or "").lstrip("0")
+
+        def vale(codici):  # un esito vale per la sede se è del bando intero o di quella sede
+            return any(c is None or str(c).lstrip("0") == sede for c in codici)
+        if esiti_sol.get(s["id"]) or (padre is not None and vale(esiti_sol.get(padre["id"], []))) \
+                or vale(esiti_urp.get(s["bando_id"], [])):
+            continue
+        righe.append({"scheda": s, "scadenza": scadenza})
+    return righe
+
+
+def elenco_atti(conn, dal: str | None = None, al: str | None = None, con_senza_esito: bool = False) -> list[dict]:
+    """`con_senza_esito`: aggiunge i concorsi senza esito (spec 012), solo per lo stato complessivo."""
     dal = dal or config.monitoraggio_dal().isoformat()
     al = al or "9999-12-31"
     bandi = {b["id"]: dict(b) for b in conn.execute("SELECT * FROM bando WHERE stato_collegamento IS NOT NULL")}
@@ -100,14 +147,24 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
     coordinatori = profili.titolari(conn)
     testi_sede = sedi.testi_sede(conn)
 
+    deserti_sol = {(r["bando_id"], r["protocollo"]) for r in conn.execute(
+        "SELECT s.bando_id, d.protocollo FROM documento d JOIN scheda s ON s.id = d.scheda_id "
+        "WHERE s.fonte = 'sol' AND d.categoria = 'deserto' AND d.presente = 1 AND d.protocollo IS NOT NULL")}
     # --- URP e SOL: documenti per bando
     voci = defaultdict(lambda: defaultdict(dict))  # chiave bando -> fonte -> (categoria, protocollo) -> voce
     for d in conn.execute(
             "SELECT s.bando_id, s.fonte, s.url AS url_scheda, s.sezione AS sezione_scheda, s.titolo AS titolo_scheda, s.codice_sotto AS sotto_scheda, d.* "
             "FROM documento d JOIN scheda s ON s.id = d.scheda_id "
             "WHERE d.presente = 1 AND s.presente = 1 AND d.protocollo IS NOT NULL "
-            "AND d.categoria IN ('graduatoria', 'scorrimento', 'rettifica') AND d.data_protocollo BETWEEN ? AND ?",
-            (dal, al)):
+            f"AND (d.categoria IN ({', '.join('?' * len(CATEGORIE_ATTI))}) OR (d.categoria = 'altro' AND s.fonte = 'urp')) "
+            "AND d.data_protocollo BETWEEN ? AND ?",
+            (*CATEGORIE_ATTI, dal, al)):
+        if d["categoria"] == "altro":
+            # spec 012: su URP il deserto ha spesso un titolo generico («Esito», «Conclusione procedura»):
+            # vale come deserto se ha il protocollo del documento di deserto SOL dello stesso bando
+            if (d["bando_id"], d["protocollo"]) not in deserti_sol:
+                continue
+            d = {**dict(d), "categoria": "deserto"}
         if d["bando_id"] in bandi and _da_confrontare(d):
             # pagina del bando (o del sotto-bando) con tutti gli allegati
             url = config.pagina_documenti_urp(d["sezione_scheda"], d["url_scheda"], d["titolo_scheda"]) if d["fonte"] == "urp" else d["url_scheda"]
@@ -153,6 +210,8 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
             return {"stato": PRESENTE, "url": voce.get("url"), "protocollo": voce.get("protocollo"),
                     **({"automatico": True} if voce.get("aggiunto_automaticamente") else {})}
         if fonte == "segreteria":
+            if categoria in FUORI_FILE_SEGRETERIA:
+                return {"stato": NON_APPLICABILE, "testo": "non nel file"}
             if not versione:
                 return {"stato": NON_CARICATO}
             inizio = periodo.get(categoria)
@@ -228,6 +287,11 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
         if s["id"] not in con_graduatoria:
             senza_documento[s["bando_id"]].append(s)
     chiavi_bando = list(bandi) + [k for k in solo_file if k not in bandi]
+    # spec 012: concorsi senza esito, indipendenti dal periodo (la data è la scadenza delle domande)
+    per_senza_esito = defaultdict(list)
+    if con_senza_esito:
+        for x in senza_esito(conn):
+            per_senza_esito[x["scheda"]["bando_id"]].append(x)
     for chiave in chiavi_bando:
         b = bandi.get(chiave)
         if b:
@@ -270,6 +334,19 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
                           "fonti": {"sol": {"stato": MANCANTE, "url": s["url"]}, "urp": {"stato": NON_APPLICABILE},
                                     "segreteria": {"stato": NON_APPLICABILE}},
                           "note": ["data della graduatoria pubblica con i soli vincitori su SOL senza documento pubblico"]})
+
+        for x in per_senza_esito.get(chiave, []):
+            s = x["scheda"]
+            urp = schede.get(chiave, {}).get("urp")
+            righe.append({**base, "atto": "senza_esito", "sottotipo": None, "sottotipo_origine": None,
+                          "codice_sotto": s["codice_sotto"], "data": x["scadenza"], "protocollo": None,
+                          "titolo": s["codice_originale"], "persone": None,
+                          "fonti": {"sol": {"stato": NON_APPLICABILE, "testo": "nessun esito", "url": s["url"]},
+                                    "urp": {"stato": NON_APPLICABILE, "testo": "nessun esito", "url": pagina_urp(urp) if urp is not None else None},
+                                    "segreteria": {"stato": NON_APPLICABILE, "testo": "non nel file"}},
+                          "note": [], "_senza_esito": True,
+                          "avviso": f"domande scadute il {x['scadenza'][8:10]}/{x['scadenza'][5:7]}/{x['scadenza'][:4]}: nessuna graduatoria, "
+                                    "deserto o revoca su Selezioni Online e su URP (verificare se manca il documento)"})
 
         # documenti
         for gruppo in _unisci(voci.get(chiave, {})):
@@ -363,6 +440,9 @@ def elenco_atti(conn, dal: str | None = None, al: str | None = None) -> list[dic
         if versione and not r["fonti"]["segreteria"].get("url") and r["atto"] in FOGLIO_SEGRETERIA:
             r["fonti"]["segreteria"]["url"] = url_file_segreteria(foglio=FOGLIO_SEGRETERIA[r["atto"]])
         r.pop("_protocolli", None)
+        if r.pop("_senza_esito", False):  # non è una difformità tra fonti: è un elenco da verificare
+            r.update(incompleto=False, difforme=False, protocollo_diverso=False)
+            continue
         r["incompleto"] = any(c["stato"] == MANCANTE for c in r["fonti"].values())
         r["difforme"] = r["incompleto"] or bool(r["note"]) or any(s["note"] for s in r.get("sedi") or [])
         r["protocollo_diverso"] = any(n.startswith("protocollo diverso") for n in r["note"])

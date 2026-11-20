@@ -24,9 +24,9 @@
   const parti = location.pathname.slice(BASE.length).split("/").filter(Boolean);
   const vista = parti[0] === "monitoraggi" ? (parti[1] ? "mese" : "elenco") : "stato";
   if (!AREA) { const s = document.createElement("script"); s.src = "/monitoraggio/menu.js"; document.head.appendChild(s); }
-  const filtri = { q: "", atto: "", difformi: false, come: "", tipologia: "", schedaStato: "stato", schedaMese: "tutti" };
+  const filtri = { q: "", atto: "", difformi: false, come: "", tipologia: "", schedaStato: "stato", schedaMese: "tutti", anno: "" };
   if (new URLSearchParams(location.search).get("cerca")) filtri.q = new URLSearchParams(location.search).get("cerca");  // dal riepilogo dei totali
-  let dati = null;
+  let dati = null, righeVisibili = [];
 
   const errore = (err) => { $("contenuto").innerHTML = `<div class="errore" role="alert">${esc(err.message || err)}</div>`; };
   const COMUNICAZIONE = { in_regola: ["p-ok", "nessuna difformità"], da_inviare: ["p-ko", "da inviare"], in_attesa: ["p-na", "in attesa delle fonti"] };
@@ -117,12 +117,14 @@
       <button type="button" role="tab" data-stato="graduatoria" aria-selected="${filtri.schedaStato === "graduatoria"}">Graduatorie pubbliche del mese (${graduatorie})</button>
       <button type="button" role="tab" data-stato="scorrimento" aria-selected="${filtri.schedaStato === "scorrimento"}">Scorrimenti del mese (${scorrimenti})</button>
       <label class="muted">Mese <input type="month" id="mese-stato" value="${esc(mese)}"></label>
-      <label class="muted">Tipologia <select id="tipologia-stato"><option value="">Tutte</option><option value="tempo_indeterminato"${filtri.tipologia === "tempo_indeterminato" ? " selected" : ""}>Tempo indeterminato</option><option value="reclutamento_speciale"${filtri.tipologia === "reclutamento_speciale" ? " selected" : ""}>Reclutamento speciale</option><option value="categorie_protette"${filtri.tipologia === "categorie_protette" ? " selected" : ""}>Categorie protette</option><option value="mobilita"${filtri.tipologia === "mobilita" ? " selected" : ""}>Mobilità</option><option value="comando"${filtri.tipologia === "comando" ? " selected" : ""}>Comando</option></select></label></nav>`;
+      <label class="muted">Tipologia <select id="tipologia-stato"><option value="">Tutte</option><option value="tempo_indeterminato"${filtri.tipologia === "tempo_indeterminato" ? " selected" : ""}>Tempo indeterminato</option><option value="reclutamento_speciale"${filtri.tipologia === "reclutamento_speciale" ? " selected" : ""}>Reclutamento speciale</option><option value="categorie_protette"${filtri.tipologia === "categorie_protette" ? " selected" : ""}>Categorie protette</option><option value="mobilita"${filtri.tipologia === "mobilita" ? " selected" : ""}>Mobilità</option><option value="comando"${filtri.tipologia === "comando" ? " selected" : ""}>Comando</option></select></label>
+      <label class="muted" title="Atti pubblicati nell'anno scelto (es. i concorsi deserti del 2026)">Anno <select id="anno-stato"><option value="">dal ${esc(dataIt(dati.dal))}</option>${Array.from({ length: new Date().getFullYear() - 2015 }, (_, i) => new Date().getFullYear() - i).map(a => `<option value="${a}"${filtri.anno === String(a) ? " selected" : ""}>${a}</option>`).join("")}</select></label>
+      <button type="button" class="piccolo" id="esporta-stato" title="Scarica in Excel le righe visibili, scegliendo le colonne">Esporta Excel</button></nav>`;
   }
   function disegnaStato() {
     const v = dati.visitatore;
     $("contenuto").innerHTML = `<section><h1>Stato complessivo</h1>${presentazione(v)}
-      <p class="muted small" style="margin:2px 0 0">Atti pubblicati dal ${esc(dataIt(dati.dal))}${dati.in_attesa.length ? ` · aggiornamento in corso: ${dati.in_attesa.map(esc).join(", ")}` : ""}.</p></section>
+      <p class="muted small" style="margin:2px 0 0">Atti pubblicati dal ${esc(dataIt(dati.dal))}${dati.al ? ` al ${esc(dataIt(dati.al))}` : ""}${dati.in_attesa.length ? ` · aggiornamento in corso: ${dati.in_attesa.map(esc).join(", ")}` : ""}.</p></section>
       <section>${schedeStato()}</section>
       <section>${barraFiltri(v)}<div id="tabella"></div></section>`;
     const tabella = () => {
@@ -130,17 +132,21 @@
       let base = dati.righe;
       if (filtri.schedaStato !== "stato") base = base.filter(r => r.atto === filtri.schedaStato && (r.data || "").startsWith(mese));
       const righe = filtrate(base);
+      righeVisibili = righe;
       $("tabella").innerHTML = `<div class="muted small" style="margin-bottom:6px">${righe.length} atti su ${base.length}</div><div class="scroll"><table style="min-width:1150px"><thead><tr>
         <th>Data</th><th>Bando</th><th>Tipologia</th><th>Atto</th><th>Prot.</th><th>SOL</th><th>URP</th><th>Segreteria</th><th>Note</th><th>RdP</th><th>Punteggi</th></tr></thead><tbody>
         ${righe.map(r => `<tr><td>${esc(dataIt(r.data))}</td>${cellaBando(r)}<td>${chipTipologia(r.tipologia)}</td><td>${esc(ATTI[r.atto] || r.atto)}${chipSubentro(r)}</td><td class="mono small">${esc(r.protocollo || "")}</td>
           ${cellaFonte(r, "sol")}${cellaFonte(r, "urp")}${cellaFonte(r, "segreteria")}
-          <td>${r.note.length ? `<ul class="rilievi">${r.note.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}</td>${cellaRdp(r)}${cellaPunteggi(r)}</tr>${sottoRighe(r, r.note.map(testo => ({ testo })), 11)}`).join("")
+          <td>${r.note.length ? `<ul class="rilievi">${r.note.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}${r.avviso ? `<div class="small"><span class="pillola p-warn">da verificare</span> ${esc(r.avviso)}</div>` : ""}</td>${cellaRdp(r)}${cellaPunteggi(r)}</tr>${sottoRighe(r, r.note.map(testo => ({ testo })), 11)}`).join("")
           || `<tr><td colspan="11" class="muted">Nessun atto.</td></tr>`}</tbody></table></div>`;
       collegaRdp($("tabella")); collegaCandidati($("tabella"), 11);
     };
     document.querySelectorAll("[data-stato]").forEach(b => b.onclick = () => { filtri.schedaStato = b.dataset.stato; disegnaStato(); });
     $("mese-stato").onchange = e => { filtri.meseStato = e.target.value; disegnaStato(); };
     $("tipologia-stato").onchange = e => { filtri.tipologia = e.target.value; disegnaStato(); };
+    $("anno-stato").onchange = e => { filtri.anno = e.target.value; carica(); };
+    $("esporta-stato").onclick = () => App.esportaExcel({ colonne: App.colonneAtti(), righe: righeVisibili, nome: "stato-complessivo",
+      url: `${API}/esporta-excel`, chiave: "stato-complessivo" });
     collegaFiltri(tabella); tabella();
   }
 
@@ -202,7 +208,9 @@
       ["scorrimento", "Scorrimenti", conta(r => r.atto === "scorrimento"), contaD(r => r.atto === "scorrimento")],
       ["subentro", "di cui subentri", conta(r => r.sottotipo === "subentro"), contaD(r => r.sottotipo === "subentro")],
       ["rettifica", "Rettifiche di graduatoria", conta(r => r.atto === "rettifica"), contaD(r => r.atto === "rettifica")],
-      ...(conta(r => !["bando", "graduatoria", "scorrimento", "rettifica"].includes(r.atto)) ? [["altro", "Altri atti", conta(r => !["bando", "graduatoria", "scorrimento", "rettifica"].includes(r.atto)), contaD(r => !["bando", "graduatoria", "scorrimento", "rettifica"].includes(r.atto))]] : [])];
+      ...(conta(r => r.atto === "deserto") ? [["deserto", "Concorsi deserti", conta(r => r.atto === "deserto"), contaD(r => r.atto === "deserto")]] : []),
+      ...(conta(r => r.atto === "revocato") ? [["revocato", "Bandi revocati", conta(r => r.atto === "revocato"), contaD(r => r.atto === "revocato")]] : []),
+      ...(conta(r => !App.ATTI_CON_SCHEDA.includes(r.atto)) ? [["altro", "Altri atti", conta(r => !App.ATTI_CON_SCHEDA.includes(r.atto)), contaD(r => !App.ATTI_CON_SCHEDA.includes(r.atto))]] : [])];
     const elencoMesi = dati.monitoraggi || [];
     $("contenuto").innerHTML = `<section><div class="tra"><div><h1>Monitoraggio di ${esc(dati.titolo)} <span class="pillola ${chiuso ? "p-na" : "p-blu"}">${chiuso ? "chiuso" : "in corso"}</span></h1>${presentazione(v)}</div>
         <div class="riga"><label class="muted">Mese <select id="mese-monitoraggio">${elencoMesi.map(m => `<option value="${esc(m.mese)}"${m.mese === dati.mese ? " selected" : ""}>${esc(m.titolo)}</option>`).join("")}</select></label><a href="${BASE}/monitoraggi">Tutti i monitoraggi</a></div></div>
@@ -216,7 +224,7 @@
       if (filtri.schedaMese === "tutti") base = dati.righe;
       else if (filtri.schedaMese === "difformita") base = base.filter(r => r.difforme);
       else if (filtri.schedaMese === "subentro") base = base.filter(r => r.sottotipo === "subentro");
-      else if (filtri.schedaMese === "altro") base = base.filter(r => !["bando", "graduatoria", "scorrimento", "rettifica"].includes(r.atto));
+      else if (filtri.schedaMese === "altro") base = base.filter(r => !App.ATTI_CON_SCHEDA.includes(r.atto));
       else base = base.filter(r => r.atto === filtri.schedaMese);
       const righe = filtrate(base);
       $("tabella").innerHTML = `${filtri.schedaMese === "tutti" ? `<p class="small" style="margin:0 0 6px">${esc(App.scomposizioneAtti(dati.righe))}</p>` : ""}<div class="muted small" style="margin-bottom:6px">${righe.length} atti su ${base.length} · ${base.filter(r => r.difforme).length} con difformità</div><div class="scroll"><table style="min-width:1250px"><thead><tr>
@@ -269,7 +277,8 @@
 
   async function carica() {
     try {
-      dati = await chiama(vista === "stato" ? `${API}/stato` : vista === "elenco" ? `${API}/monitoraggi` : `${API}/monitoraggi/${encodeURIComponent(parti[1])}`);
+      const periodo = filtri.anno ? `?dal=${filtri.anno}-01-01&al=${filtri.anno}-12-31` : "";
+      dati = await chiama(vista === "stato" ? `${API}/stato${periodo}` : vista === "elenco" ? `${API}/monitoraggi` : `${API}/monitoraggi/${encodeURIComponent(parti[1])}`);
       if (AREA && !document.querySelector(".testata-area")) testataArea(dati.visitatore, vista === "stato" ? "stato" : "monitoraggi");
       ({ stato: disegnaStato, elenco: disegnaElenco, mese: disegnaMese })[vista]();
     } catch (err) {

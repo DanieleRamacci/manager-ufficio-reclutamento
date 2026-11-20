@@ -15,7 +15,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, redirect, request, send_file, send_from_directory
 from werkzeug.utils import secure_filename
 
-from . import accessibilita, atti, collegamento, compat, comunicazioni, config, db, difformita, impostazioni, notifiche, protocollo_email, punteggi, referenti, segreteria, sol_sessione, utenti
+from . import accessibilita, atti, collegamento, compat, comunicazioni, config, db, difformita, esporta, impostazioni, notifiche, protocollo_email, punteggi, referenti, segreteria, sol_sessione, utenti
 
 # esito dell'ultima verifica dei punteggi (solo conteggi, in memoria)
 ULTIMA_VERIFICA: dict = {}
@@ -720,7 +720,7 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
     def api_atti():
         conn = _conn()
         try:
-            righe = atti.elenco_atti(conn, request.args.get("dal") or None, request.args.get("al") or None)
+            righe = atti.elenco_atti(conn, request.args.get("dal") or None, request.args.get("al") or None, con_senza_esito=True)
             per_atto = comunicazioni.per_atto(conn, request.args.get("dal") or None, request.args.get("al") or None)
             for r in righe:  # la comunicazione come nel monitoraggio (spec 009): stato, protocollo dell'email, storico
                 r["comunicazione"] = comunicazioni.comunicazione_di(per_atto, r)
@@ -731,6 +731,12 @@ def crea_blueprint(protezione=lambda f: f, utente_corrente=lambda: None,
                             "totale": len(righe), "atti": righe, "fonti_in_attesa": atti.fonti_in_attesa(conn)})
         finally:
             conn.close()
+
+    @bp.post("/api/esporta-excel")
+    @protezione
+    def api_esporta_excel():
+        """Spec 012: le righe filtrate dello stato complessivo, con le colonne scelte."""
+        return esporta.risposta(request.get_json(silent=True))
 
     return bp
 
